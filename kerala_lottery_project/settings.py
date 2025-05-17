@@ -160,3 +160,5 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
 
 AUTH_USER_MODEL = 'users.User'
+
+ADMIN_SETUP_KEY = os.getenv('ADMIN_SETUP_KEY', 'temporary-setup-key-change-in-production')
