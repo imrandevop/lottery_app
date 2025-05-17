@@ -5,5 +5,6 @@ from .views import HealthCheckView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
+    path('api/lottery/', include('lottery.urls')),
     path('health/', HealthCheckView.as_view(), name='health_check'),
 ]
