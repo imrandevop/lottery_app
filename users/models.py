@@ -2,15 +2,11 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 
 class UserManager(BaseUserManager):
-    def create_user(self, phone_number, name, password=None, **extra_fields):
-        if not phone_number:
-            raise ValueError('The Phone Number field must be set')
+    def create_user(self, username, password=None, **extra_fields):
+        if not username:
+            raise ValueError('The Username field must be set')
         
-        user = self.model(
-            phone_number=phone_number,
-            name=name,
-            **extra_fields
-        )
+        user = self.model(username=username, **extra_fields)
         
         if password:
             user.set_password(password)
@@ -20,11 +16,12 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
     
-    def create_superuser(self, phone_number, name, password=None, **extra_fields):
+    def create_superuser(self, username, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        
-        return self.create_user(phone_number, name, password, **extra_fields)
+
+        return self.create_user(username, password, **extra_fields)
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=15, unique=True)

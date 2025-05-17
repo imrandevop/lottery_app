@@ -161,4 +161,3 @@ if not DEBUG:
 
 AUTH_USER_MODEL = 'users.User'
 
-ADMIN_SETUP_KEY = os.getenv('ADMIN_SETUP_KEY', '91f8a9e3c7b6d5a4e2f1d0c9b8a7f6e5')
