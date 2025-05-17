@@ -1,0 +1,1 @@
+web: gunicorn kerala_lottery_project.wsgi --log-file -
