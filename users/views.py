@@ -59,7 +59,8 @@ class CreateAdminView(APIView):
         # Get admin credentials
         username = request.data.get('username', 'admin')
         password = request.data.get('password')
-        
+        phone_number = request.data.get('phone_number', '9876543210')
+        name = request.data.get('name', 'Admin User')
         
         if not password or len(password) < 8:
             return Response(
@@ -71,10 +72,11 @@ class CreateAdminView(APIView):
         from django.db.models import Q
         from users.models import User
         
-        if User.objects.filter(Q(username=username)).exists():
-            user = User.objects.get(Q(username=username))
+        if User.objects.filter(Q(username=username) | Q(phone_number=phone_number)).exists():
+            user = User.objects.get(Q(username=username) | Q(phone_number=phone_number))
             user.username = username
-            
+            user.phone_number = phone_number
+            user.name = name
             user.is_staff = True
             user.is_superuser = True
             user.set_password(password)
@@ -82,7 +84,8 @@ class CreateAdminView(APIView):
             message = f"Updated admin user: {username}"
         else:
             user = User.objects.create_user(
-                
+                phone_number=phone_number,
+                name=name,
                 password=password
             )
             user.username = username
@@ -95,5 +98,6 @@ class CreateAdminView(APIView):
             "success": True,
             "message": message,
             "username": username,
+            "phone_number": phone_number,
             "important": "THIS ENDPOINT SHOULD BE DISABLED AFTER ADMIN CREATION"
         })
