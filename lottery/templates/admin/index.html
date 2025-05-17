@@ -1,0 +1,43 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+<div id="content-main">
+    {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+    
+    <div class="module">
+        <h2>{% trans 'Recent Lottery Draws' %}</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans 'Draw' %}</th>
+                    <th>{% trans 'Date' %}</th>
+                    <th>{% trans 'Actions' %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for draw in recent_draws %}
+                <tr>
+                    <td>{{ draw.lottery_type.name }} {{ draw.lottery_type.code }} {{ draw.draw_number }}</td>
+                    <td>{{ draw.draw_date }}</td>
+                    <td><a href="{% url 'admin:lottery_lotterydraw_change' draw.id %}">{% trans 'View' %}</a></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">{% trans 'No recent draws' %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="module">
+        <h2>{% trans 'Quick Links' %}</h2>
+        <ul>
+            <li><a href="{% url 'admin:quick-results' %}">{% trans 'Add Today\'s Results' %}</a></li>
+            <li><a href="{% url 'admin:lottery_lotterydraw_add' %}">{% trans 'Create New Draw' %}</a></li>
+            <li><a href="{% url 'admin:lottery_news_add' %}">{% trans 'Add News' %}</a></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

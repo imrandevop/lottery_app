@@ -1,0 +1,79 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block extrahead %}{{ block.super }}
+<script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
+{{ media }}
+{% endblock %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" type="text/css" href="{% static "admin/css/forms.css" %}">{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post">
+        {% csrf_token %}
+        <fieldset class="module aligned">
+            <h2>{{ title }}</h2>
+            
+            {% for field in form %}
+                <div class="form-row field-{{ field.name }}">
+                    <div>
+                        <label class="required" for="id_{{ field.name }}">{{ field.label }}:</label>
+                        {{ field }}
+                        {% if field.errors %}
+                            <ul class="errorlist">
+                                {% for error in field.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </fieldset>
+        
+        <div class="submit-row">
+            <input type="submit" value="Verify" class="default" name="_verify">
+        </div>
+    </form>
+    
+    {% if result %}
+        <fieldset class="module aligned">
+            <h2>Verification Result</h2>
+            <div class="form-row">
+                <div>
+                    {% if result.is_winner %}
+                        <div style="color: green; font-weight: bold; font-size: 1.2em; margin-bottom: 10px;">
+                            Congratulations! This ticket is a winner!
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Draw</th>
+                                    <th>Draw Date</th>
+                                    <th>Prize</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ticket in result.tickets %}
+                                    <tr>
+                                        <td>{{ ticket.draw.lottery_type.name }} {{ ticket.draw.lottery_type.code }} {{ ticket.draw.draw_number }}</td>
+                                        <td>{{ ticket.draw.draw_date }}</td>
+                                        <td>{{ ticket.prize_category.name }}</td>
+                                        <td>{{ ticket.prize_category.amount }} Rs</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div style="color: red; font-weight: bold;">
+                            Sorry, this ticket is not a winner.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </fieldset>
+    {% endif %}
+</div>
+{% endblock %}
