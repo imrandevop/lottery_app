@@ -8,5 +8,5 @@ urlpatterns = [
     path('results/<int:draw_id>/', SingleDrawResultView.as_view(), name='single_draw_result'),
     
    
-        path('admin/api/lottery/lotterydraw/<int:draw_id>/', get_lottery_draw, name='api_get_lottery_draw'),
+    path('admin/api/lottery/lotterydraw/<int:draw_id>/', get_lottery_draw, name='api_get_lottery_draw'),
 ]
