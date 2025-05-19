@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import LotteryResultsView, SingleDrawResultView
-from . import admin_views
+from . import views
 
 urlpatterns = [
     # Results URLs
@@ -8,6 +8,5 @@ urlpatterns = [
     path('results/<int:draw_id>/', SingleDrawResultView.as_view(), name='single_draw_result'),
     
    
-    path('admin/api/prize-categories/', admin_views.get_prize_categories, name='api_prize_categories'),
-    path('admin/api/draw-lottery-type/', admin_views.get_draw_lottery_type, name='api_draw_lottery_type'),
+    path('admin/get_prices/<int:lottery_id>/', views.get_prices_for_lottery),
 ]

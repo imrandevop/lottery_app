@@ -111,18 +111,10 @@ class WinningTicketForm(forms.ModelForm):
     class Meta:
         model = WinningTicket
         fields = '__all__'
-        
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Start with all prizes
-        if self.instance and self.instance.draw_id:
-            # If we have a draw already, filter prizes by its lottery type
-            try:
-                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                    lottery_type=self.instance.draw.lottery_type
-                )
-            except:
-                pass
+
+    class Media:
+        js = ('admin/js/winningticket_filter.js',)
+
 
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
