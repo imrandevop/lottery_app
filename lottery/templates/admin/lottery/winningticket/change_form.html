@@ -1,0 +1,56 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+(function($) {
+    $(document).ready(function() {
+        // Initial setup
+        var drawSelect = $('#id_draw');
+        var prizeCategorySelect = $('#id_prize_category');
+        
+        // Function to update prize categories based on selected draw
+        function updatePrizeCategories() {
+            var drawId = drawSelect.val();
+            if (!drawId) return;
+            
+            // Save current selection if possible
+            var currentPrize = prizeCategorySelect.val();
+            
+            // Get lottery type for the selected draw via AJAX
+            $.getJSON('/admin/lottery/get-lottery-type/', {draw_id: drawId}, function(data) {
+                // Clear and disable select while loading
+                prizeCategorySelect.empty().prop('disabled', true);
+                
+                // Get filtered prize categories
+                $.getJSON('/admin/lottery/get-prizes-for-lottery/', {lottery_type_id: data.lottery_type_id}, function(prizeData) {
+                    // Add options
+                    prizeCategorySelect.append($('<option value="">---------</option>'));
+                    $.each(prizeData.prizes, function(index, prize) {
+                        var option = $('<option></option>').val(prize.id).text(prize.name);
+                        prizeCategorySelect.append(option);
+                    });
+                    
+                    // Try to restore previous selection
+                    if (currentPrize) {
+                        prizeCategorySelect.val(currentPrize);
+                    }
+                    
+                    // Enable select
+                    prizeCategorySelect.prop('disabled', false);
+                });
+            });
+        }
+        
+        // Bind change event to draw select
+        drawSelect.change(updatePrizeCategories);
+        
+        // Run on page load if draw is already selected
+        if (drawSelect.val()) {
+            updatePrizeCategories();
+        }
+    });
+})(django.jQuery);
+</script>
+{% endblock %}

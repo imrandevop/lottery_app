@@ -7,6 +7,10 @@ from datetime import timedelta
 from django.db.models import Q
 from .models import LotteryDraw, LotteryType, WinningTicket, PrizeCategory
 from .serializers import LotteryResultSerializer, DateGroupedResultsSerializer
+from django.http import JsonResponse
+from django.contrib.admin.views.decorators import staff_member_required
+ 
+
 
 class LotteryResultsView(APIView):
     """
@@ -164,3 +168,38 @@ class SingleDrawResultView(APIView):
                 {"error": "Draw not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+@staff_member_required
+def get_lottery_type_for_draw(request):
+    """Get the lottery type for a given draw ID."""
+    draw_id = request.GET.get('draw_id')
+    try:
+        draw = LotteryDraw.objects.get(id=draw_id)
+        return JsonResponse({
+            'lottery_type_id': draw.lottery_type.id,
+            'lottery_type_name': str(draw.lottery_type)
+        })
+    except (LotteryDraw.DoesNotExist, ValueError):
+        return JsonResponse({'error': 'Invalid draw ID'}, status=400)
+
+@staff_member_required
+def get_prizes_for_lottery_type(request):
+    """Get prize categories for a given lottery type ID."""
+    lottery_type_id = request.GET.get('lottery_type_id')
+    
+    try:
+        prizes = PrizeCategory.objects.filter(lottery_type_id=lottery_type_id).order_by('amount')
+        
+        # Also include prizes that don't have a lottery type (if any)
+        prizes_without_type = PrizeCategory.objects.filter(lottery_type__isnull=True).order_by('amount')
+        
+        # Combine the querysets
+        all_prizes = list(prizes) + list(prizes_without_type)
+        
+        # Format for JSON response
+        prize_data = [{'id': p.id, 'name': str(p)} for p in all_prizes]
+        
+        return JsonResponse({'prizes': prize_data})
+    except ValueError:
+        return JsonResponse({'error': 'Invalid lottery type ID'}, status=400)

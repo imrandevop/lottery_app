@@ -300,6 +300,9 @@ class WinningTicketAdmin(admin.ModelAdmin):
             except LotteryDraw.DoesNotExist:
                 pass
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        
+    # Add this line to use the custom form template
+    change_form_template = 'admin/lottery/winningticket/change_form.html'
 
 
 
