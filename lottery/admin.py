@@ -71,6 +71,9 @@ class LotteryDrawAdminForm(forms.ModelForm):
 class LotteryDrawAdmin(admin.ModelAdmin):
     inlines = [WinningTicketInline]
     
+    class Media:
+        js = ('admin/js/lottery_draw_filter.js',)
+    
     def get_form(self, request, obj=None, **kwargs):
         request._obj_ = obj
         return super().get_form(request, obj, **kwargs)
@@ -118,6 +121,9 @@ class WinningTicketForm(forms.ModelForm):
 
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
+    
+    class Media:
+        js = ('admin/js/winningticket_filter.js',)
     
     def get_form(self, request, obj=None, **kwargs):
         if request.method == 'GET' and 'draw' in request.GET:
