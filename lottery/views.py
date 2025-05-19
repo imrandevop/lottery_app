@@ -170,7 +170,33 @@ class SingleDrawResultView(APIView):
             )
 
 
-def get_prices_for_lottery(request, lottery_id):
-    prices = PrizeCategory.objects.filter(lottery_id=lottery_id)
-    data = [{'id': p.id, 'label': str(p)} for p in prices]
-    return JsonResponse(data, safe=False)
+def get_prize_categories_by_lottery_type(request, lottery_type_id):
+    """API endpoint to get prize categories by lottery type"""
+    print(f"API called with lottery_type_id: {lottery_type_id}")
+    
+    if lottery_type_id:
+        categories = list(PrizeCategory.objects.filter(
+            lottery_type_id=lottery_type_id
+        ).values('id', 'name', 'display_name').order_by('amount'))
+        print(f"Found {len(categories)} categories")
+        return JsonResponse(categories, safe=False)
+    
+    print("No lottery_type_id provided")
+    return JsonResponse([], safe=False)
+
+def get_lottery_draw(request, draw_id):
+    """API endpoint to get lottery draw details"""
+    try:
+        draw = LotteryDraw.objects.get(id=draw_id)
+        return JsonResponse({
+            'id': draw.id,
+            'lottery_type': draw.lottery_type_id,
+            'draw_number': draw.draw_number,
+            'draw_date': draw.draw_date.isoformat() if hasattr(draw, 'draw_date') else None,
+        })
+    except LotteryDraw.DoesNotExist:
+        return JsonResponse({'error': 'Draw not found'}, status=404)
+    
+def test_json_view(request):
+    """Simple test view to return JSON"""
+    return JsonResponse({'test': 'success'})
