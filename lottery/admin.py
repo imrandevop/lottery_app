@@ -37,7 +37,14 @@ class WinningTicketInline(admin.TabularInline):
     model = WinningTicket
     extra = 1
     fields = ('series', 'number', 'prize_category', 'location')
-    autocomplete_fields = ['prize_category']
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Filter prize categories based on the lottery type of the current draw
+        if db_field.name == "prize_category" and hasattr(request, '_obj_') and request._obj_ is not None:
+            kwargs["queryset"] = PrizeCategory.objects.filter(
+                Q(lottery_type=request._obj_.lottery_type) | Q(lottery_type__isnull=True)
+            ).order_by('lottery_type', 'amount')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class LotteryDrawAdmin(admin.ModelAdmin):
     list_display = ('draw_name', 'lottery_type', 'draw_number', 'draw_date', 'result_declared', 'is_new', 'winner_count')
@@ -66,6 +73,11 @@ class LotteryDrawAdmin(admin.ModelAdmin):
     def mark_as_not_new(self, request, queryset):
         queryset.update(is_new=False)
     mark_as_not_new.short_description = "Remove NEW tag from selected draws"
+
+    def get_form(self, request, obj=None, **kwargs):
+    # Store the object for use in formfield_for_foreignkey
+        request._obj_ = obj
+        return super().get_form(request, obj, **kwargs)
     
     def get_urls(self):
         urls = super().get_urls()
@@ -100,10 +112,15 @@ class LotteryDrawAdmin(admin.ModelAdmin):
                 )
                 
                 # Get first prize category
-                first_prize = PrizeCategory.objects.filter(name__icontains='First Prize').first()
+                first_prize = PrizeCategory.objects.filter(
+                    Q(name__icontains='First Prize') | Q(name__icontains='1st Prize'),
+                    lottery_type=lottery_type
+                ).first()
+
                 if not first_prize:
                     first_prize = PrizeCategory.objects.create(
                         name='First Prize',
+                        lottery_type=lottery_type,
                         amount=lottery_type.first_prize_amount,
                         display_name=f'1st Prize Rs {lottery_type.first_prize_amount}/- [{lottery_type.first_prize_amount // 100000} Lakhs]',
                         display_amount=f'Rs {lottery_type.first_prize_amount}/- [{lottery_type.first_prize_amount // 100000} Lakhs]'
@@ -180,6 +197,7 @@ class LotteryDrawAdmin(admin.ModelAdmin):
                             # Get or create prize category
                             prize_category, _ = PrizeCategory.objects.get_or_create(
                                 name=prize_name,
+                                lottery_type=lottery_type,
                                 defaults={'amount': prize_amount}
                             )
                             
@@ -251,13 +269,14 @@ class LotteryDrawAdmin(admin.ModelAdmin):
         return render(request, 'admin/lottery/verify_ticket.html', context)
 
 class PrizeCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'display_name', 'amount', 'display_amount')
+    list_display = ('name', 'display_name', 'amount', 'display_amount', 'lottery_type')
+    list_filter = ('lottery_type', 'amount')
     search_fields = ('name', 'display_name')
-    list_filter = ('amount',)
+    autocomplete_fields = ['lottery_type']
 
 class WinningTicketAdmin(admin.ModelAdmin):
     list_display = ('ticket_number', 'draw_info', 'prize_category', 'location')
-    list_filter = ('draw__lottery_type', 'prize_category', 'draw__draw_date')
+    list_filter = ('draw__lottery_type', 'prize_category__lottery_type', 'prize_category', 'draw__draw_date')
     search_fields = ('series', 'number', 'location')
     autocomplete_fields = ['draw', 'prize_category']
     
@@ -268,6 +287,19 @@ class WinningTicketAdmin(admin.ModelAdmin):
     def draw_info(self, obj):
         return f"{obj.draw.lottery_type.name} {obj.draw.lottery_type.code} {obj.draw.draw_number} ({obj.draw.draw_date})"
     draw_info.short_description = 'Draw'
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # If we're filtering prize categories and we have a draw
+        if db_field.name == "prize_category" and request.GET.get('draw__id'):
+            draw_id = request.GET.get('draw__id')
+            try:
+                draw = LotteryDraw.objects.get(id=draw_id)
+                kwargs["queryset"] = PrizeCategory.objects.filter(
+                    Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
+                ).order_by('lottery_type', 'amount')
+            except LotteryDraw.DoesNotExist:
+                pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 

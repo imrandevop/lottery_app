@@ -42,6 +42,7 @@ class PrizeCategory(models.Model):
     display_name = models.CharField(max_length=100, blank=True)  # e.g., "1st Prize Rs 700000/- [70 Lakhs]"
     amount = models.IntegerField()  # Prize amount in rupees
     display_amount = models.CharField(max_length=50, blank=True)  # Formatted amount with lakhs, etc.
+    lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='prize_categories', null=True, blank=True)
     
     def save(self, *args, **kwargs):
         # Auto-format display amount if not provided
@@ -62,7 +63,12 @@ class PrizeCategory(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.name} ({self.amount} Rs)"
+        lottery_info = f" ({self.lottery_type.code})" if self.lottery_type else ""
+        return f"{self.name}{lottery_info} ({self.amount} Rs)"
+    
+    class Meta:
+        verbose_name = "Prize Category"
+        verbose_name_plural = "Prize Categories"
 
 class WinningTicket(models.Model):
     draw = models.ForeignKey(LotteryDraw, on_delete=models.CASCADE, related_name='winners')
