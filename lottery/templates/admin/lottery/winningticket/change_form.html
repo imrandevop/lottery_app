@@ -6,25 +6,36 @@
 <script>
 (function($) {
     $(document).ready(function() {
+        console.log('WinningTicket admin JS loaded');
+        
         // Initial setup
         var drawSelect = $('#id_draw');
         var prizeCategorySelect = $('#id_prize_category');
+        
+        console.log('Draw select found:', drawSelect.length > 0);
+        console.log('Prize category select found:', prizeCategorySelect.length > 0);
         
         // Function to update prize categories based on selected draw
         function updatePrizeCategories() {
             var drawId = drawSelect.val();
             if (!drawId) return;
             
+            console.log('Draw selected:', drawId);
+            
             // Save current selection if possible
             var currentPrize = prizeCategorySelect.val();
             
             // Get lottery type for the selected draw via AJAX
-            $.getJSON('/admin/lottery/get-lottery-type/', {draw_id: drawId}, function(data) {
+            $.getJSON("{% url 'get_lottery_type_for_draw' %}", {draw_id: drawId}, function(data) {
+                console.log('Got lottery type data:', data);
+                
                 // Clear and disable select while loading
                 prizeCategorySelect.empty().prop('disabled', true);
                 
                 // Get filtered prize categories
-                $.getJSON('/admin/lottery/get-prizes-for-lottery/', {lottery_type_id: data.lottery_type_id}, function(prizeData) {
+                $.getJSON("{% url 'get_prizes_for_lottery_type' %}", {lottery_type_id: data.lottery_type_id}, function(prizeData) {
+                    console.log('Got prize data:', prizeData);
+                    
                     // Add options
                     prizeCategorySelect.append($('<option value="">---------</option>'));
                     $.each(prizeData.prizes, function(index, prize) {
@@ -39,15 +50,23 @@
                     
                     // Enable select
                     prizeCategorySelect.prop('disabled', false);
+                }).fail(function(jqXHR, textStatus, errorThrown) {
+                    console.error('Error getting prize data:', textStatus, errorThrown);
+                    prizeCategorySelect.prop('disabled', false);
                 });
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                console.error('Error getting lottery type data:', textStatus, errorThrown);
+                prizeCategorySelect.prop('disabled', false);
             });
         }
         
         // Bind change event to draw select
         drawSelect.change(updatePrizeCategories);
+        console.log('Change event handler attached');
         
         // Run on page load if draw is already selected
         if (drawSelect.val()) {
+            console.log('Initial draw selected, updating prize categories');
             updatePrizeCategories();
         }
     });
