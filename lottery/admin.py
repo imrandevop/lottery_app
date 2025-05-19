@@ -274,7 +274,26 @@ class PrizeCategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'display_name')
     autocomplete_fields = ['lottery_type']
 
+class WinningTicketForm(forms.ModelForm):
+    class Meta:
+        model = WinningTicket
+        fields = '__all__'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Initially restrict prize choices if we have a draw
+        if 'draw' in self.initial:
+            draw_id = self.initial['draw']
+            try:
+                draw = LotteryDraw.objects.get(id=draw_id)
+                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                    Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
+                ).order_by('lottery_type', 'amount')
+            except LotteryDraw.DoesNotExist:
+                pass
+
 class WinningTicketAdmin(admin.ModelAdmin):
+    form = WinningTicketForm  # Make sure this line is present
     list_display = ('ticket_number', 'draw_info', 'prize_category', 'location')
     list_filter = ('draw__lottery_type', 'prize_category__lottery_type', 'prize_category', 'draw__draw_date')
     search_fields = ('series', 'number', 'location')
@@ -300,10 +319,9 @@ class WinningTicketAdmin(admin.ModelAdmin):
             except LotteryDraw.DoesNotExist:
                 pass
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
-        
+    
     # Add this line to use the custom form template
     change_form_template = 'admin/lottery/winningticket/change_form.html'
-
 
 
 # Admin site registration

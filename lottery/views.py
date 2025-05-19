@@ -185,6 +185,7 @@ def get_lottery_type_for_draw(request):
 
 @staff_member_required
 def get_prizes_for_lottery_type(request):
+
     """Get prize categories for a given lottery type ID."""
     lottery_type_id = request.GET.get('lottery_type_id')
     
@@ -203,3 +204,19 @@ def get_prizes_for_lottery_type(request):
         return JsonResponse({'prizes': prize_data})
     except ValueError:
         return JsonResponse({'error': 'Invalid lottery type ID'}, status=400)
+    
+# In views.py
+@staff_member_required
+def filter_prizes_by_draw(request):
+    draw_id = request.GET.get('draw_id')
+    try:
+        draw = LotteryDraw.objects.get(id=draw_id)
+        prizes = PrizeCategory.objects.filter(
+            Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
+        ).order_by('lottery_type', 'amount')
+        
+        return JsonResponse({
+            'prizes': [{'id': p.id, 'name': str(p)} for p in prizes]
+        })
+    except LotteryDraw.DoesNotExist:
+        return JsonResponse({'error': 'Invalid draw ID'}, status=400)

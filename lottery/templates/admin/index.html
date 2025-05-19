@@ -40,4 +40,10 @@
         </ul>
     </div>
 </div>
+
+<script>
+    if (typeof django === 'undefined') {
+        var django = {jQuery: jQuery};
+    }
+</script>
 {% endblock %}
