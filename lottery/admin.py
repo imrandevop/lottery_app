@@ -7,6 +7,7 @@ from django import forms
 import csv
 import io
 from django.db.models import Q
+from django.http import JsonResponse
 
 from .models import LotteryType, LotteryDraw, PrizeCategory, WinningTicket
 
@@ -38,20 +39,15 @@ class WinningTicketInline(admin.TabularInline):
     extra = 1
     fields = ('series', 'number', 'prize_category', 'location')
     
-    def get_formset(self, request, obj=None, **kwargs):
-        formset = super().get_formset(request, obj, **kwargs)
-        if obj:  # If this is not a new object
-            formset.form.base_fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                lottery_type=obj.lottery_type
-            ).order_by('amount')
-        return formset
-    
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        # This keeps your existing filter logic
-        if db_field.name == "prize_category" and hasattr(request, '_obj_') and request._obj_ is not None:
-            kwargs["queryset"] = PrizeCategory.objects.filter(
-                lottery_type=request._obj_.lottery_type
-            ).order_by('amount')
+        if db_field.name == "prize_category":
+            if hasattr(request, '_obj_') and request._obj_ is not None:
+                kwargs["queryset"] = PrizeCategory.objects.filter(
+                    lottery_type=request._obj_.lottery_type
+                ).order_by('amount')
+            else:
+                # If we don't have a lottery type yet, show no options
+                kwargs["queryset"] = PrizeCategory.objects.none()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
 class LotteryDrawAdminForm(forms.ModelForm):
@@ -59,9 +55,23 @@ class LotteryDrawAdminForm(forms.ModelForm):
         model = LotteryDraw
         fields = '__all__'
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Start with no choices for prize_category fields in inline forms
+        if 'instance' in kwargs and kwargs['instance']:
+            # If we're editing an existing object, restrict prize categories
+            lottery_type = kwargs['instance'].lottery_type
+            if lottery_type:
+                # This will affect the PrizeCategory dropdowns in the inline formsets
+                # The formset itself will use this queryset as a basis
+                prize_field = self.fields.get('first_prize_category', None)
+                if prize_field:
+                    prize_field.queryset = PrizeCategory.objects.filter(
+                        lottery_type=lottery_type
+                    ).order_by('amount')
+    
     class Media:
         js = ('admin/js/lottery_type_filter.js',)
-
 
 class LotteryDrawAdmin(admin.ModelAdmin):
     form = LotteryDrawAdminForm
@@ -93,7 +103,7 @@ class LotteryDrawAdmin(admin.ModelAdmin):
     mark_as_not_new.short_description = "Remove NEW tag from selected draws"
 
     def get_form(self, request, obj=None, **kwargs):
-    # Store the object for use in formfield_for_foreignkey
+        # Store the object for use in formfield_for_foreignkey
         request._obj_ = obj
         return super().get_form(request, obj, **kwargs)
     
@@ -103,8 +113,32 @@ class LotteryDrawAdmin(admin.ModelAdmin):
             path('quick-results/', self.admin_site.admin_view(self.quick_results_view), name='quick-results'),
             path('bulk-upload/', self.admin_site.admin_view(self.bulk_upload_view), name='bulk-upload'),
             path('verify-ticket/', self.admin_site.admin_view(self.verify_ticket_view), name='verify-ticket'),
+            path('get-prize-categories/', self.admin_site.admin_view(self.get_prize_categories), name='get-prize-categories'),
+            path('<path:object_id>/lottery_type/', self.admin_site.admin_view(self.lottery_type_view), name='lotterydraw_lottery_type'),
         ]
         return custom_urls + urls
+    
+    def get_prize_categories(self, request):
+        """API endpoint to get prize categories for a lottery type"""
+        lottery_type_id = request.GET.get('lottery_type_id')
+        categories = []
+        
+        if lottery_type_id:
+            categories = list(PrizeCategory.objects.filter(
+                lottery_type_id=lottery_type_id
+            ).values('id', 'name', 'display_name').order_by('amount'))
+        
+        return JsonResponse(categories, safe=False)
+    
+    def lottery_type_view(self, request, object_id=None):
+        """Return the lottery type ID for a given draw"""
+        try:
+            draw = self.get_object(request, object_id)
+            if draw:
+                return JsonResponse({'lottery_type_id': draw.lottery_type_id})
+        except:
+            pass
+        return JsonResponse({'lottery_type_id': None})
     
     def quick_results_view(self, request):
         if request.method == 'POST':
@@ -291,21 +325,69 @@ class PrizeCategoryAdmin(admin.ModelAdmin):
     list_filter = ('lottery_type', 'amount')
     search_fields = ('name', 'display_name')
     autocomplete_fields = ['lottery_type']
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('by-lottery-type/<int:lottery_type_id>/', self.admin_site.admin_view(self.by_lottery_type_view), name='prizecategory_by_lottery_type'),
+        ]
+        return custom_urls + urls
+
+    def by_lottery_type_view(self, request, lottery_type_id=None):
+        """Return prize categories for a lottery type"""
+        if lottery_type_id:
+            categories = list(PrizeCategory.objects.filter(
+                lottery_type_id=lottery_type_id
+            ).values('id', 'name', 'display_name').order_by('amount'))
+            return JsonResponse(categories, safe=False)
+        return JsonResponse([], safe=False)
+
+    def changelist_view(self, request, extra_context=None):
+        """Override to allow filtering by lottery_type in AJAX requests"""
+        if 'lottery_type' in request.GET:
+            lottery_type_id = request.GET.get('lottery_type')
+            categories = list(PrizeCategory.objects.filter(
+                lottery_type_id=lottery_type_id
+            ).values('id', 'name', 'display_name').order_by('amount'))
+            return JsonResponse(categories, safe=False)
+        return super().changelist_view(request, extra_context)
 
 class WinningTicketAdminForm(forms.ModelForm):
     class Meta:
         model = WinningTicket
         fields = '__all__'
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # If we have an instance or initial data with a draw, filter prize categories
+        instance = kwargs.get('instance')
+        if instance and instance.draw_id:
+            try:
+                draw = LotteryDraw.objects.get(id=instance.draw_id)
+                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                    lottery_type=draw.lottery_type
+                ).order_by('amount')
+            except LotteryDraw.DoesNotExist:
+                pass
+        elif 'initial' in kwargs and 'draw' in kwargs['initial']:
+            draw_id = kwargs['initial']['draw']
+            try:
+                draw = LotteryDraw.objects.get(id=draw_id)
+                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                    lottery_type=draw.lottery_type
+                ).order_by('amount')
+            except LotteryDraw.DoesNotExist:
+                pass
+    
     class Media:
         js = ('admin/js/lottery_ticket_filter.js',)
 
 class WinningTicketAdmin(admin.ModelAdmin):
-    form = WinningTicketAdminForm  # Make sure this line is present
+    form = WinningTicketAdminForm
     list_display = ('ticket_number', 'draw_info', 'prize_category', 'location')
     list_filter = ('draw__lottery_type', 'prize_category__lottery_type', 'prize_category', 'draw__draw_date')
     search_fields = ('series', 'number', 'location')
-    autocomplete_fields = ['draw', 'prize_category']
+    autocomplete_fields = ['draw']
     
     def ticket_number(self, obj):
         return f"{obj.series} {obj.number}"
@@ -317,24 +399,45 @@ class WinningTicketAdmin(admin.ModelAdmin):
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         # If we're filtering prize categories and we have a draw
-        if db_field.name == "prize_category" and request.GET.get('draw__id'):
-            draw_id = request.GET.get('draw__id')
+        if db_field.name == "prize_category" and request.GET.get('draw'):
+            draw_id = request.GET.get('draw')
             try:
                 draw = LotteryDraw.objects.get(id=draw_id)
                 kwargs["queryset"] = PrizeCategory.objects.filter(
-                    Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
-                ).order_by('lottery_type', 'amount')
+                    lottery_type=draw.lottery_type
+                ).order_by('amount')
             except LotteryDraw.DoesNotExist:
                 pass
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     # Add this line to use the custom form template
     change_form_template = 'admin/lottery/winningticket/change_form.html'
-
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('get-prize-categories-for-draw/', self.admin_site.admin_view(self.get_prize_categories_for_draw), name='get-prize-categories-for-draw'),
+        ]
+        return custom_urls + urls
+    
+    def get_prize_categories_for_draw(self, request):
+        """API endpoint to get prize categories for a draw"""
+        draw_id = request.GET.get('draw_id')
+        categories = []
+        
+        if draw_id:
+            try:
+                draw = LotteryDraw.objects.get(id=draw_id)
+                categories = list(PrizeCategory.objects.filter(
+                    lottery_type=draw.lottery_type
+                ).values('id', 'name', 'display_name').order_by('amount'))
+            except LotteryDraw.DoesNotExist:
+                pass
+        
+        return JsonResponse(categories, safe=False)
 
 # Admin site registration
 admin.site.register(LotteryType, LotteryTypeAdmin)
 admin.site.register(LotteryDraw, LotteryDrawAdmin)
 admin.site.register(PrizeCategory, PrizeCategoryAdmin)
 admin.site.register(WinningTicket, WinningTicketAdmin)
-

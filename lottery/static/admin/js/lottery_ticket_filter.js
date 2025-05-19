@@ -1,40 +1,40 @@
 (function($) {
     $(document).ready(function() {
-        // Function to update prize categories based on draw's lottery type
+        // Function to update prize categories based on selected draw
         function updatePrizeCategories() {
             var drawId = $('#id_draw').val();
-            if (drawId) {
-                // Get the lottery type for this draw via AJAX
-                $.getJSON('/admin/api/draw-lottery-type/', {draw_id: drawId}, function(data) {
-                    if (data.lottery_type_id) {
-                        // Update prize category dropdown
-                        var select = $('#id_prize_category');
-                        var currentValue = select.val();
-                        
-                        // Fetch appropriate prize categories
-                        $.getJSON('/admin/api/prize-categories/', {lottery_type_id: data.lottery_type_id}, function(categories) {
-                            // Clear existing options
-                            select.empty();
-                            // Add an empty option
-                            select.append($('<option value="">---------</option>'));
-                            // Add new options
-                            $.each(categories, function(index, item) {
-                                select.append(
-                                    $('<option></option>').val(item.id).text(item.name)
-                                );
-                            });
-                            // Try to restore the previous value if it still exists
-                            select.val(currentValue);
-                        });
-                    }
+            if (!drawId) return;
+            
+            // Get the prize category select element
+            var prizeCategorySelect = $('#id_prize_category');
+            if (!prizeCategorySelect.length) return;
+            
+            // Save current value
+            var currentValue = prizeCategorySelect.val();
+            
+            // Fetch prize categories for this draw via AJAX
+            $.getJSON('/admin/lottery/winningticket/get-prize-categories-for-draw/', {draw_id: drawId}, function(data) {
+                // Clear existing options
+                prizeCategorySelect.empty();
+                // Add an empty option
+                prizeCategorySelect.append($('<option value="">---------</option>'));
+                // Add new options
+                $.each(data, function(index, item) {
+                    prizeCategorySelect.append(
+                        $('<option></option>').val(item.id).text(item.name)
+                    );
                 });
-            }
+                // Try to restore the previous value if it still exists
+                prizeCategorySelect.val(currentValue);
+            });
         }
         
         // Bind to draw change event
         $('#id_draw').change(updatePrizeCategories);
         
         // Also run on page load
-        updatePrizeCategories();
+        if ($('#id_draw').length) {
+            updatePrizeCategories();
+        }
     });
 })(django.jQuery);

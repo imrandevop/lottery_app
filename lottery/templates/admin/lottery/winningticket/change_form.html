@@ -1,0 +1,58 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script type="text/javascript">
+    // This function will be called when the draw field changes
+    function updatePrizeCategories(drawSelect) {
+        var drawId = drawSelect ? drawSelect.value : document.getElementById('id_draw').value;
+        if (!drawId) return;
+        
+        // Get the prize category select element
+        var prizeCategorySelect = document.getElementById('id_prize_category');
+        if (!prizeCategorySelect) return;
+        
+        // Make an AJAX request to get prize categories for this draw
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', '/admin/lottery/winningticket/get-prize-categories-for-draw/?draw_id=' + drawId, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                var categories = JSON.parse(xhr.responseText);
+                
+                // Clear current options
+                while (prizeCategorySelect.options.length > 0) {
+                    prizeCategorySelect.remove(0);
+                }
+                
+                // Add empty option
+                var emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.text = '---------';
+                prizeCategorySelect.add(emptyOption);
+                
+                // Add new options
+                categories.forEach(function(category) {
+                    var option = document.createElement('option');
+                    option.value = category.id;
+                    option.text = category.name;
+                    prizeCategorySelect.add(option);
+                });
+            }
+        };
+        xhr.send();
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        var drawSelect = document.getElementById('id_draw');
+        if (drawSelect) {
+            drawSelect.addEventListener('change', function() {
+                updatePrizeCategories(this);
+            });
+            // Also run on page load
+            updatePrizeCategories(drawSelect);
+        }
+    });
+</script>
+{% endblock %}
