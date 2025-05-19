@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils import timezone
+from django.db.models.signals import post_save, pre_save
+from django.dispatch import receiver
 
 class LotteryType(models.Model):
     name = models.CharField(max_length=100)  # e.g., "Akshaya", "Win Win"
@@ -86,3 +88,19 @@ class WinningTicket(models.Model):
     @property
     def full_number(self):
         return f"{self.series} {self.number}"
+
+
+@receiver(pre_save, sender=LotteryDraw)
+def set_lottery_draw_defaults(sender, instance, **kwargs):
+    """Set default values for a new lottery draw"""
+    # If this is an existing object, get the old instance
+    try:
+        old_instance = LotteryDraw.objects.get(pk=instance.pk)
+        # If lottery type has changed, clear related winners
+        if old_instance.lottery_type != instance.lottery_type:
+            # This will delete existing winning tickets when lottery type changes
+            # Comment out this line if you don't want this behavior
+            instance.winners.all().delete()
+    except LotteryDraw.DoesNotExist:
+        # This is a new object, nothing to do
+        pass

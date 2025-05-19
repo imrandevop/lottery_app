@@ -38,15 +38,33 @@ class WinningTicketInline(admin.TabularInline):
     extra = 1
     fields = ('series', 'number', 'prize_category', 'location')
     
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        if obj:  # If this is not a new object
+            formset.form.base_fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                lottery_type=obj.lottery_type
+            ).order_by('amount')
+        return formset
+    
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        # Filter prize categories based on the lottery type of the current draw
+        # This keeps your existing filter logic
         if db_field.name == "prize_category" and hasattr(request, '_obj_') and request._obj_ is not None:
             kwargs["queryset"] = PrizeCategory.objects.filter(
-                Q(lottery_type=request._obj_.lottery_type) | Q(lottery_type__isnull=True)
-            ).order_by('lottery_type', 'amount')
+                lottery_type=request._obj_.lottery_type
+            ).order_by('amount')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+class LotteryDrawAdminForm(forms.ModelForm):
+    class Meta:
+        model = LotteryDraw
+        fields = '__all__'
+    
+    class Media:
+        js = ('admin/js/lottery_type_filter.js',)
+
 
 class LotteryDrawAdmin(admin.ModelAdmin):
+    form = LotteryDrawAdminForm
     list_display = ('draw_name', 'lottery_type', 'draw_number', 'draw_date', 'result_declared', 'is_new', 'winner_count')
     list_filter = ('lottery_type', 'draw_date', 'result_declared', 'is_new')
     search_fields = ('lottery_type__name', 'lottery_type__code', 'draw_number')
@@ -274,26 +292,16 @@ class PrizeCategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'display_name')
     autocomplete_fields = ['lottery_type']
 
-class WinningTicketForm(forms.ModelForm):
+class WinningTicketAdminForm(forms.ModelForm):
     class Meta:
         model = WinningTicket
         fields = '__all__'
     
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Initially restrict prize choices if we have a draw
-        if 'draw' in self.initial:
-            draw_id = self.initial['draw']
-            try:
-                draw = LotteryDraw.objects.get(id=draw_id)
-                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                    Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
-                ).order_by('lottery_type', 'amount')
-            except LotteryDraw.DoesNotExist:
-                pass
+    class Media:
+        js = ('admin/js/lottery_ticket_filter.js',)
 
 class WinningTicketAdmin(admin.ModelAdmin):
-    form = WinningTicketForm  # Make sure this line is present
+    form = WinningTicketAdminForm  # Make sure this line is present
     list_display = ('ticket_number', 'draw_info', 'prize_category', 'location')
     list_filter = ('draw__lottery_type', 'prize_category__lottery_type', 'prize_category', 'draw__draw_date')
     search_fields = ('series', 'number', 'location')

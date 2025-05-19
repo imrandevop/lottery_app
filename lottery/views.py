@@ -171,52 +171,28 @@ class SingleDrawResultView(APIView):
 
 
 @staff_member_required
-def get_lottery_type_for_draw(request):
-    """Get the lottery type for a given draw ID."""
-    draw_id = request.GET.get('draw_id')
-    try:
-        draw = LotteryDraw.objects.get(id=draw_id)
-        return JsonResponse({
-            'lottery_type_id': draw.lottery_type.id,
-            'lottery_type_name': str(draw.lottery_type)
-        })
-    except (LotteryDraw.DoesNotExist, ValueError):
-        return JsonResponse({'error': 'Invalid draw ID'}, status=400)
-
-@staff_member_required
-def get_prizes_for_lottery_type(request):
-
-    """Get prize categories for a given lottery type ID."""
+def get_prize_categories(request):
     lottery_type_id = request.GET.get('lottery_type_id')
+    prize_categories = []
     
-    try:
-        prizes = PrizeCategory.objects.filter(lottery_type_id=lottery_type_id).order_by('amount')
-        
-        # Also include prizes that don't have a lottery type (if any)
-        prizes_without_type = PrizeCategory.objects.filter(lottery_type__isnull=True).order_by('amount')
-        
-        # Combine the querysets
-        all_prizes = list(prizes) + list(prizes_without_type)
-        
-        # Format for JSON response
-        prize_data = [{'id': p.id, 'name': str(p)} for p in all_prizes]
-        
-        return JsonResponse({'prizes': prize_data})
-    except ValueError:
-        return JsonResponse({'error': 'Invalid lottery type ID'}, status=400)
+    if lottery_type_id:
+        prize_categories = list(PrizeCategory.objects.filter(
+            lottery_type_id=lottery_type_id
+        ).values('id', 'name', 'display_name').order_by('amount'))
     
-# In views.py
+    return JsonResponse(prize_categories, safe=False)
+
+
 @staff_member_required
-def filter_prizes_by_draw(request):
+def get_draw_lottery_type(request):
     draw_id = request.GET.get('draw_id')
-    try:
-        draw = LotteryDraw.objects.get(id=draw_id)
-        prizes = PrizeCategory.objects.filter(
-            Q(lottery_type=draw.lottery_type) | Q(lottery_type__isnull=True)
-        ).order_by('lottery_type', 'amount')
-        
-        return JsonResponse({
-            'prizes': [{'id': p.id, 'name': str(p)} for p in prizes]
-        })
-    except LotteryDraw.DoesNotExist:
-        return JsonResponse({'error': 'Invalid draw ID'}, status=400)
+    result = {'lottery_type_id': None}
+    
+    if draw_id:
+        try:
+            draw = LotteryDraw.objects.get(id=draw_id)
+            result['lottery_type_id'] = draw.lottery_type_id
+        except LotteryDraw.DoesNotExist:
+            pass
+    
+    return JsonResponse(result)
