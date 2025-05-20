@@ -14,8 +14,8 @@ class LotteryType(models.Model):
         return f"{self.name} ({self.code})"
     
     class Meta:
-        verbose_name = "Lottery name"
-        verbose_name_plural = "Lottery names"
+        verbose_name = "Lottery detail"
+        verbose_name_plural = "Lottery details"
 
 class LotteryDraw(models.Model):
     lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='draws')
