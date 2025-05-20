@@ -14,8 +14,8 @@ class LotteryType(models.Model):
         return f"{self.name} ({self.code})"
     
     class Meta:
-        verbose_name = "Lottery detail"
-        verbose_name_plural = "Lottery details"
+        verbose_name = "Lottery"
+        verbose_name_plural = "Lotteries"
 
 class LotteryDraw(models.Model):
     lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='draws')
@@ -28,8 +28,8 @@ class LotteryDraw(models.Model):
         unique_together = ('lottery_type', 'draw_number')
         ordering = ['-draw_date', '-draw_number']
         
-        verbose_name = "Lottery result"
-        verbose_name_plural = "Lottery results"
+        verbose_name = "Lottery History"
+        verbose_name_plural = "Lottery History"
     
     def __str__(self):
         return f"{self.lottery_type.name} {self.lottery_type.code} {self.draw_number}"
@@ -79,6 +79,7 @@ class PrizeCategory(models.Model):
         verbose_name = "Prize Category"
         verbose_name_plural = "Prize Categories"
 
+# We keep the WinningTicket model but won't register it with the admin
 class WinningTicket(models.Model):
     draw = models.ForeignKey(LotteryDraw, on_delete=models.CASCADE, related_name='winners')
     series = models.CharField(max_length=10)  # e.g., "AY", "NB", etc.

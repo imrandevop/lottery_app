@@ -1,0 +1,9 @@
+{% if has_add_permission %}
+  <a href="{% url cl.opts|admin_urlname:'add' %}{% if is_popup %}?_popup=1{% endif %}" class="addlink">
+    {% if cl.opts.model_name == 'lotterytype' %}
+      New
+    {% else %}
+      {% blocktranslate with cl.opts.verbose_name as name %}Add {{ name }}{% endblocktranslate %}
+    {% endif %}
+  </a>
+{% endif %}

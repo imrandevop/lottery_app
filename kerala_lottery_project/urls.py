@@ -3,6 +3,7 @@ from django.urls import path, include
 from .views import HealthCheckView
 
 
+
 urlpatterns = [
     path('admin/', admin.site.urls),    
     path('api/users/', include('users.urls')),

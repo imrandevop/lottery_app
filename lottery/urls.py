@@ -6,6 +6,13 @@ from .views import (
     test_json_view
 )
 from .admin_views import get_lottery_draw as admin_get_lottery_draw
+from .admin_site import lottery_admin_site
+from .models import LotteryType, LotteryDraw, PrizeCategory
+from .admin import LotteryTypeAdmin, LotteryDrawAdmin, PrizeCategoryAdmin
+
+lottery_admin_site.register(LotteryType, LotteryTypeAdmin)
+lottery_admin_site.register(LotteryDraw, LotteryDrawAdmin)
+lottery_admin_site.register(PrizeCategory, PrizeCategoryAdmin)
 
 urlpatterns = [
     # Results URLs
