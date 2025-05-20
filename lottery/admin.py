@@ -84,49 +84,34 @@ class WinningTicketForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Add debug printing to help troubleshoot
-        print("Initializing WinningTicketForm")
-        
         # Add an onchange event to the draw field to submit the form
         self.fields['draw'].widget.attrs.update({'onchange': 'this.form.submit()'})
         
         # Get the form data (POST data)
         data = kwargs.get('data')
         
-        # CASE 1: If we have POST data with a draw
+        # Initially show ALL prize categories instead of none
+        # This helps ensure something is visible by default
+        self.fields['prize_category'].queryset = PrizeCategory.objects.all().order_by('lottery_type', 'amount')
+        
+        # If we have POST data with a draw, filter prize categories
         if data and 'draw' in data:
             draw_id = data.get('draw')
             try:
                 draw = LotteryDraw.objects.get(id=draw_id)
-                lottery_type = draw.lottery_type
-                print(f"Selected draw: {draw}, with lottery type: {lottery_type}")
-                
-                # Get prize categories for this lottery type
-                categories = PrizeCategory.objects.filter(lottery_type=lottery_type).order_by('amount')
-                print(f"Found {categories.count()} prize categories")
-                
-                # Set the queryset for prize_category field
-                self.fields['prize_category'].queryset = categories
-                
-            except (ValueError, LotteryDraw.DoesNotExist) as e:
-                print(f"Error getting draw: {e}")
-                self.fields['prize_category'].queryset = PrizeCategory.objects.none()
+                # Filter prize categories by lottery type
+                self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                    lottery_type=draw.lottery_type
+                ).order_by('amount')
+            except (ValueError, LotteryDraw.DoesNotExist):
+                pass  # Keep the default (all categories)
         
-        # CASE 2: If we have an instance with a draw
+        # If we have an instance with a draw, filter prize categories
         elif self.instance and self.instance.pk and self.instance.draw:
-            lottery_type = self.instance.draw.lottery_type
-            print(f"Editing existing ticket with draw: {self.instance.draw}, lottery type: {lottery_type}")
-            
-            # Get prize categories for this lottery type
-            categories = PrizeCategory.objects.filter(lottery_type=lottery_type).order_by('amount')
-            print(f"Found {categories.count()} prize categories")
-            
-            self.fields['prize_category'].queryset = categories
-        
-        # CASE 3: Default case - no draw selected
-        else:
-            print("No draw selected, setting empty queryset")
-            self.fields['prize_category'].queryset = PrizeCategory.objects.none()
+            # Filter prize categories by lottery type
+            self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
+                lottery_type=self.instance.draw.lottery_type
+            ).order_by('amount')
 
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
