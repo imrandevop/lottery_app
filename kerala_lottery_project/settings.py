@@ -32,7 +32,9 @@ INSTALLED_APPS = [
     
     # Local apps
     'users',
-    'lottery',
+    
+
+    'lottery.apps.LotteryConfig',
 ]
 
 MIDDLEWARE = [

@@ -1,26 +1,29 @@
-from django.urls import path
-from django.shortcuts import render
-from django.utils import timezone
+from django.contrib import admin
 from django import forms
+from django.urls import path
 from django.http import JsonResponse
-from django.contrib import admin  # Import the standard admin module
-from .admin_site import lottery_admin_site
+from django.utils import timezone
 
-from .models import LotteryType, LotteryDraw, PrizeCategory, WinningTicket
-
+from .models import LotteryType, LotteryDraw, PrizeCategory
 
 class LotteryTypeAdmin(admin.ModelAdmin):
     list_display = ('name', 'code', 'price', 'first_prize_amount')
     search_fields = ('name', 'code')
     list_filter = ('price',)
     
-    # Custom verbose name to change the display in admin UI
+    # Change button text from "Add" to "New"
     def get_model_perms(self, request):
         perms = super().get_model_perms(request)
-        if perms:
-            # This changes how it appears in the admin index
-            self.model._meta.verbose_name_plural = "Lotteries"
         return perms
+        
+    # Override to change "Add" to "New"
+    def add_view(self, request, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['title'] = 'New Lottery'
+        return super().add_view(request, form_url, extra_context)
+        
+    # Custom class attribute to be used in templates
+    add_button_label = "New"
 
 class QuickResultEntryForm(forms.Form):
     lottery_type = forms.ModelChoiceField(queryset=LotteryType.objects.all())
@@ -50,14 +53,6 @@ class LotteryDrawAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'draw_date', 'result_declared')
     list_filter = ('lottery_type', 'draw_date', 'result_declared')
     search_fields = ('draw_number', 'lottery_type__name')
-    
-    # Change display name to "Lottery History"
-    def get_model_perms(self, request):
-        perms = super().get_model_perms(request)
-        if perms:
-            # This changes how it appears in the admin index
-            self.model._meta.verbose_name_plural = "Lottery History"
-        return perms
 
 class PrizeCategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'display_name', 'amount', 'display_amount', 'lottery_type')
@@ -80,10 +75,3 @@ class PrizeCategoryAdmin(admin.ModelAdmin):
             ).values('id', 'name', 'display_name').order_by('amount'))
             return JsonResponse(categories, safe=False)
         return JsonResponse([], safe=False)
-
-# Admin site registration
-admin.site.register(LotteryType, LotteryTypeAdmin)
-admin.site.register(LotteryDraw, LotteryDrawAdmin)
-admin.site.register(PrizeCategory, PrizeCategoryAdmin)
-# Removed WinningTicket registration to hide this feature
-# Removed WinningTicket registration to hide this feature

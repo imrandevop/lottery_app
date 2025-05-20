@@ -19,10 +19,9 @@ class LotteryType(models.Model):
 
 class LotteryDraw(models.Model):
     lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='draws')
-    draw_number = models.IntegerField()  # e.g., 620 for "Akshaya AK 620"
+    draw_number = models.IntegerField()
     draw_date = models.DateField()
     result_declared = models.BooleanField(default=False)
-    is_new = models.BooleanField(default=True)  # To show "NEW" tag in frontend
     
     class Meta:
         unique_together = ('lottery_type', 'draw_number')
