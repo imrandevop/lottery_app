@@ -84,18 +84,49 @@ class WinningTicketForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Initially set prize_category queryset to empty
-        self.fields['prize_category'].queryset = PrizeCategory.objects.none()
-        
-        # If we have an instance with a draw
-        if self.instance and self.instance.pk and self.instance.draw:
-            # Set the prize category queryset based on the draw's lottery type
-            self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                lottery_type=self.instance.draw.lottery_type
-            ).order_by('amount')
+        # Add debug printing to help troubleshoot
+        print("Initializing WinningTicketForm")
         
         # Add an onchange event to the draw field to submit the form
         self.fields['draw'].widget.attrs.update({'onchange': 'this.form.submit()'})
+        
+        # Get the form data (POST data)
+        data = kwargs.get('data')
+        
+        # CASE 1: If we have POST data with a draw
+        if data and 'draw' in data:
+            draw_id = data.get('draw')
+            try:
+                draw = LotteryDraw.objects.get(id=draw_id)
+                lottery_type = draw.lottery_type
+                print(f"Selected draw: {draw}, with lottery type: {lottery_type}")
+                
+                # Get prize categories for this lottery type
+                categories = PrizeCategory.objects.filter(lottery_type=lottery_type).order_by('amount')
+                print(f"Found {categories.count()} prize categories")
+                
+                # Set the queryset for prize_category field
+                self.fields['prize_category'].queryset = categories
+                
+            except (ValueError, LotteryDraw.DoesNotExist) as e:
+                print(f"Error getting draw: {e}")
+                self.fields['prize_category'].queryset = PrizeCategory.objects.none()
+        
+        # CASE 2: If we have an instance with a draw
+        elif self.instance and self.instance.pk and self.instance.draw:
+            lottery_type = self.instance.draw.lottery_type
+            print(f"Editing existing ticket with draw: {self.instance.draw}, lottery type: {lottery_type}")
+            
+            # Get prize categories for this lottery type
+            categories = PrizeCategory.objects.filter(lottery_type=lottery_type).order_by('amount')
+            print(f"Found {categories.count()} prize categories")
+            
+            self.fields['prize_category'].queryset = categories
+        
+        # CASE 3: Default case - no draw selected
+        else:
+            print("No draw selected, setting empty queryset")
+            self.fields['prize_category'].queryset = PrizeCategory.objects.none()
 
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
@@ -109,11 +140,22 @@ class WinningTicketAdmin(admin.ModelAdmin):
         """
         Override changeform_view to handle the draw field change
         """
+        # Add debug printing
+        print(f"changeform_view called: POST data: {request.method == 'POST'}, object_id: {object_id}")
+        
         # If this is a POST request with a draw field but not saving
         if request.method == "POST" and 'draw' in request.POST and '_save' not in request.POST:
             try:
                 draw_id = request.POST.get('draw')
+                print(f"Processing draw change: draw_id: {draw_id}")
+                
                 draw = LotteryDraw.objects.get(id=draw_id)
+                lottery_type = draw.lottery_type
+                print(f"Found draw with lottery type: {lottery_type}")
+                
+                # Get prize categories for this lottery type
+                categories = PrizeCategory.objects.filter(lottery_type=lottery_type).order_by('amount')
+                print(f"Found {categories.count()} prize categories: {[c.name for c in categories]}")
                 
                 # If editing an existing object
                 if object_id:
@@ -124,9 +166,7 @@ class WinningTicketAdmin(admin.ModelAdmin):
                     form = self.get_form(request)(request.POST)
                 
                 # Update the prize_category queryset
-                form.fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                    lottery_type=draw.lottery_type
-                ).order_by('amount')
+                form.fields['prize_category'].queryset = categories
                 
                 # Update the context with the modified form
                 extra_context = extra_context or {}
@@ -135,11 +175,10 @@ class WinningTicketAdmin(admin.ModelAdmin):
                     'prize_categories_filtered': True,
                 })
                 
-            except (ValueError, LotteryDraw.DoesNotExist):
-                pass
+            except (ValueError, LotteryDraw.DoesNotExist) as e:
+                print(f"Error getting draw: {e}")
         
         return super().changeform_view(request, object_id, form_url, extra_context)
-
 # Admin site registration
 admin.site.register(LotteryType, LotteryTypeAdmin)
 admin.site.register(LotteryDraw, LotteryDrawAdmin)
