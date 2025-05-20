@@ -1,6 +1,49 @@
 {% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
 
-{% block extrahead %}
-    {{ block.super }}
-    {{ inline_js|safe }}
+{% block field_sets %}
+<form id="filter-form" method="get" action="">
+    {{ adminform.form.lottery_type.errors }}
+    <div class="form-row field-lottery_type">
+        <div class="field-box{% if adminform.form.lottery_type.errors %} errors{% endif %}">
+            <label for="id_lottery_type">{{ adminform.form.lottery_type.label }}:</label>
+            {{ adminform.form.lottery_type }}
+            {% if adminform.form.lottery_type.help_text %}
+                <div class="help">{{ adminform.form.lottery_type.help_text|safe }}</div>
+            {% endif %}
+            {% if show_filter_button %}
+                <input type="submit" value="Filter Prize Categories" style="margin-left: 10px;">
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+<script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get the filter form and main form
+        var filterForm = document.getElementById('filter-form');
+        var mainForm = document.getElementById('{{ opts.model_name }}_form');
+        
+        // When filter form submits, prevent default and redirect with the lottery_type parameter
+        filterForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var lotteryType = document.getElementById('id_lottery_type').value;
+            if (lotteryType) {
+                window.location.href = '?lottery_type=' + lotteryType;
+            }
+        });
+        
+        // Move lottery_type from main form to filter form
+        var lotteryTypeField = document.getElementById('id_lottery_type');
+        if (lotteryTypeField) {
+            // Clone the lottery type field to avoid duplicate IDs
+            var mainFormLotteryType = mainForm.querySelector('div.field-lottery_type');
+            if (mainFormLotteryType) {
+                mainFormLotteryType.style.display = 'none';
+            }
+        }
+    });
+</script>
+
+{{ block.super }}
 {% endblock %}
