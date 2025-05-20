@@ -12,6 +12,10 @@ class LotteryType(models.Model):
     
     def __str__(self):
         return f"{self.name} ({self.code})"
+    
+    class Meta:
+        verbose_name = "Lottery name"
+        verbose_name_plural = "Lottery names"
 
 class LotteryDraw(models.Model):
     lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='draws')
@@ -23,6 +27,9 @@ class LotteryDraw(models.Model):
     class Meta:
         unique_together = ('lottery_type', 'draw_number')
         ordering = ['-draw_date', '-draw_number']
+        
+        verbose_name = "Lottery result"
+        verbose_name_plural = "Lottery results"
     
     def __str__(self):
         return f"{self.lottery_type.name} {self.lottery_type.code} {self.draw_number}"
