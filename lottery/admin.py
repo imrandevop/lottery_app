@@ -207,7 +207,7 @@ class LotteryDrawAdmin(admin.ModelAdmin):
         </script>
         """
 
-admin.site.register(LotteryDraw, LotteryDrawAdmin)
+
 
 class PrizeCategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'display_name', 'amount', 'display_amount', 'lottery_type')
