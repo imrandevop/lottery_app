@@ -1,17 +1,6 @@
 {% extends "admin/change_form.html" %}
-{% load static %}
 
 {% block extrahead %}
-{{ block.super }}
-<script type="text/javascript">
-    document.addEventListener('DOMContentLoaded', function() {
-        var lotteryTypeSelect = document.getElementById('id_lottery_type');
-        if (lotteryTypeSelect) {
-            lotteryTypeSelect.addEventListener('change', function() {
-                // This will trigger the updatePrizeCategories function from lottery_type_filter.js
-                django.jQuery('#id_lottery_type').trigger('change');
-            });
-        }
-    });
-</script>
+    {{ block.super }}
+    {{ inline_js|safe }}
 {% endblock %}

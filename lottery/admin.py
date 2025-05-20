@@ -71,12 +71,143 @@ class LotteryDrawAdminForm(forms.ModelForm):
 class LotteryDrawAdmin(admin.ModelAdmin):
     inlines = [WinningTicketInline]
     
-    class Media:
-        js = ('admin/js/lottery_draw_filter.js',)
-    
     def get_form(self, request, obj=None, **kwargs):
         request._obj_ = obj
         return super().get_form(request, obj, **kwargs)
+    
+    def add_view(self, request, form_url='', extra_context=None):
+        """Override the add view to include inline JavaScript"""
+        extra_context = extra_context or {}
+        extra_context['inline_js'] = self._get_inline_js()
+        return super().add_view(request, form_url, extra_context)
+    
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Override the change view to include inline JavaScript"""
+        extra_context = extra_context or {}
+        extra_context['inline_js'] = self._get_inline_js()
+        return super().change_view(request, object_id, form_url, extra_context)
+    
+    def _get_inline_js(self):
+        """Return the inline JavaScript for filtering prize categories in inline formsets"""
+        return """
+        <script type="text/javascript">
+        (function($) {
+            $(document).ready(function() {
+                console.log("Inline LotteryDraw filter script loaded");
+                
+                // Get the lottery type select
+                var lotteryTypeSelect = $('#id_lottery_type');
+                
+                // Function to update prize categories in all inline forms
+                function updateAllPrizeCategories(lotteryTypeId) {
+                    console.log("Updating all prize categories for lottery type:", lotteryTypeId);
+                    
+                    if (!lotteryTypeId) {
+                        console.log("No lottery type ID provided");
+                        return;
+                    }
+                    
+                    // For each inline form
+                    $('.dynamic-winningticket_set').each(function() {
+                        var prizeCategorySelect = $(this).find('select[id$="-prize_category"]');
+                        
+                        // Clear current options
+                        prizeCategorySelect.empty();
+                        
+                        // Add loading option
+                        prizeCategorySelect.append('<option value="">Loading...</option>');
+                    });
+                    
+                    // Fetch prize categories for the selected lottery type
+                    var apiUrl = '/api/prize-categories/' + lotteryTypeId + '/';
+                    console.log('Calling API:', apiUrl);
+                    
+                    $.ajax({
+                        url: apiUrl,
+                        type: 'GET',
+                        dataType: 'json',
+                        success: function(data) {
+                            console.log('API response received:', data);
+                            
+                            // For each inline form
+                            $('.dynamic-winningticket_set').each(function() {
+                                var prizeCategorySelect = $(this).find('select[id$="-prize_category"]');
+                                
+                                // Clear current options
+                                prizeCategorySelect.empty();
+                                
+                                // Add empty option
+                                prizeCategorySelect.append('<option value="">---------</option>');
+                                
+                                // Add options for each prize category
+                                $.each(data, function(index, category) {
+                                    console.log("Adding category:", category.name || category.display_name);
+                                    prizeCategorySelect.append(
+                                        $('<option></option>').val(category.id).text(category.display_name || category.name)
+                                    );
+                                });
+                            });
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('API error:', status, error);
+                            console.log('Response text:', xhr.responseText.substring(0, 500));
+                            
+                            // For each inline form
+                            $('.dynamic-winningticket_set').each(function() {
+                                var prizeCategorySelect = $(this).find('select[id$="-prize_category"]');
+                                prizeCategorySelect.empty();
+                                prizeCategorySelect.append('<option value="">Error loading data</option>');
+                            });
+                        }
+                    });
+                }
+                
+                // Update prize categories when lottery type changes
+                lotteryTypeSelect.on('change', function() {
+                    var selectedValue = $(this).val();
+                    console.log('Lottery type changed to:', selectedValue);
+                    updateAllPrizeCategories(selectedValue);
+                });
+                
+                // Initial update if lottery type is already selected
+                if (lotteryTypeSelect.length > 0 && lotteryTypeSelect.val()) {
+                    console.log("Initial lottery type value:", lotteryTypeSelect.val());
+                    updateAllPrizeCategories(lotteryTypeSelect.val());
+                }
+                
+                // When a new inline form is added, update its prize categories
+                $(document).on('formset:added', function(event, $row, formsetName) {
+                    console.log("Formset added:", formsetName);
+                    
+                    if (formsetName === 'winningticket_set' && lotteryTypeSelect.val()) {
+                        var prizeCategorySelect = $row.find('select[id$="-prize_category"]');
+                        
+                        // Clear current options
+                        prizeCategorySelect.empty();
+                        
+                        // Add loading option
+                        prizeCategorySelect.append('<option value="">Loading...</option>');
+                        
+                        // Use existing data to populate if available
+                        var existingSelects = $('.dynamic-winningticket_set').not($row).find('select[id$="-prize_category"]');
+                        if (existingSelects.length > 0) {
+                            // Clone options from an existing select
+                            var firstSelect = existingSelects.first();
+                            firstSelect.find('option').each(function() {
+                                prizeCategorySelect.append($(this).clone());
+                            });
+                        } else {
+                            // Fetch from API if no existing selects
+                            updateAllPrizeCategories(lotteryTypeSelect.val());
+                        }
+                    }
+                });
+            });
+        })(django.jQuery);
+        </script>
+        """
+
+admin.site.register(LotteryDraw, LotteryDrawAdmin)
 
 class PrizeCategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'display_name', 'amount', 'display_amount', 'lottery_type')
@@ -122,30 +253,150 @@ class WinningTicketForm(forms.ModelForm):
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
     
-    class Media:
-        js = ('admin/js/winningticket_filter.js',)
+    def add_view(self, request, form_url='', extra_context=None):
+        """Override the add view to include inline JavaScript"""
+        extra_context = extra_context or {}
+        extra_context['inline_js'] = self._get_inline_js()
+        return super().add_view(request, form_url, extra_context)
     
-    def get_form(self, request, obj=None, **kwargs):
-        if request.method == 'GET' and 'draw' in request.GET:
-            # If a draw ID is provided in GET parameters
-            try:
-                draw_id = request.GET.get('draw')
-                draw = LotteryDraw.objects.get(id=draw_id)
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Override the change view to include inline JavaScript"""
+        extra_context = extra_context or {}
+        extra_context['inline_js'] = self._get_inline_js()
+        return super().change_view(request, object_id, form_url, extra_context)
+    
+    def _get_inline_js(self):
+        """Return the inline JavaScript for filtering prize categories"""
+        return """""
+        <script type="text/javascript">
+        (function($) {
+            $(document).ready(function() {
+                console.log("Inline filter script loaded");
                 
-                # Create a custom form for this specific request
-                class CustomWinningTicketForm(WinningTicketForm):
-                    def __init__(self, *args, **kwargs):
-                        super().__init__(*args, **kwargs)
-                        self.fields['prize_category'].queryset = PrizeCategory.objects.filter(
-                            lottery_type=draw.lottery_type
-                        )
+                // Get the lottery type select and prize category select elements
+                var lotteryTypeSelect = $('#id_lottery_type');
+                var drawSelect = $('#id_draw');
+                var prizeCategorySelect = $('#id_prize_category');
                 
-                return CustomWinningTicketForm
-            except:
-                pass
+                // Function to update prize categories based on lottery type
+                function updatePrizeCategories(lotteryTypeId) {
+                    console.log("Updating prize categories for lottery type:", lotteryTypeId);
+                    
+                    if (!lotteryTypeId) {
+                        console.log("No lottery type ID provided");
+                        return;
+                    }
+                    
+                    // Clear current options
+                    prizeCategorySelect.empty();
+                    
+                    // Add loading option
+                    prizeCategorySelect.append('<option value="">Loading...</option>');
+                    
+                    // Use the API endpoint
+                    var apiUrl = '/api/prize-categories/' + lotteryTypeId + '/';
+                    console.log('Calling API:', apiUrl);
+                    
+                    // Fetch prize categories with error handling
+                    $.ajax({
+                        url: apiUrl,
+                        type: 'GET',
+                        dataType: 'json',
+                        success: function(data) {
+                            console.log('API response received:', data);
+                            prizeCategorySelect.empty();
+                            
+                            // Add empty option
+                            prizeCategorySelect.append('<option value="">---------</option>');
+                            
+                            // Add options for each prize category
+                            $.each(data, function(index, category) {
+                                console.log("Adding category:", category.name || category.display_name);
+                                prizeCategorySelect.append(
+                                    $('<option></option>').val(category.id).text(category.display_name || category.name)
+                                );
+                            });
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('API error:', status, error);
+                            console.log('Response text:', xhr.responseText.substring(0, 500));
+                            
+                            prizeCategorySelect.empty();
+                            prizeCategorySelect.append('<option value="">Error loading data</option>');
+                        }
+                    });
+                }
                 
-        return super().get_form(request, obj, **kwargs)
-
+                // Function to update prize categories based on draw
+                function updatePrizeCategoriesFromDraw(drawId) {
+                    console.log("Updating prize categories for draw:", drawId);
+                    
+                    if (!drawId) {
+                        console.log("No draw ID provided");
+                        return;
+                    }
+                    
+                    // Clear current options
+                    prizeCategorySelect.empty();
+                    
+                    // Add loading option
+                    prizeCategorySelect.append('<option value="">Loading...</option>');
+                    
+                    // Fetch draw details to get lottery type
+                    var apiUrl = '/api/lottery-draw/' + drawId + '/';
+                    console.log('Calling API:', apiUrl);
+                    
+                    $.ajax({
+                        url: apiUrl,
+                        type: 'GET',
+                        dataType: 'json',
+                        success: function(data) {
+                            console.log('Draw API response:', data);
+                            if (data && data.lottery_type) {
+                                updatePrizeCategories(data.lottery_type);
+                            } else {
+                                console.error('No lottery_type in draw data');
+                                prizeCategorySelect.empty();
+                                prizeCategorySelect.append('<option value="">Error: No lottery type found</option>');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Draw API error:', status, error);
+                            prizeCategorySelect.empty();
+                            prizeCategorySelect.append('<option value="">Error loading draw data</option>');
+                        }
+                    });
+                }
+                
+                // Update prize categories when lottery type changes
+                lotteryTypeSelect.on('change', function() {
+                    var selectedValue = $(this).val();
+                    console.log('Lottery type changed to:', selectedValue);
+                    updatePrizeCategories(selectedValue);
+                });
+                
+                // Update prize categories when draw changes
+                drawSelect.on('change', function() {
+                    var selectedValue = $(this).val();
+                    console.log('Draw changed to:', selectedValue);
+                    updatePrizeCategoriesFromDraw(selectedValue);
+                });
+                
+                // Initial update if lottery type is already selected
+                if (lotteryTypeSelect.length > 0 && lotteryTypeSelect.val()) {
+                    console.log("Initial lottery type value:", lotteryTypeSelect.val());
+                    updatePrizeCategories(lotteryTypeSelect.val());
+                }
+                
+                // Initial update if draw is already selected
+                if (drawSelect.length > 0 && drawSelect.val()) {
+                    console.log("Initial draw value:", drawSelect.val());
+                    updatePrizeCategoriesFromDraw(drawSelect.val());
+                }
+            });
+        })(django.jQuery);
+        </script>
+        """
 # Admin site registration
 admin.site.register(LotteryType, LotteryTypeAdmin)
 admin.site.register(LotteryDraw, LotteryDrawAdmin)

@@ -8,7 +8,8 @@ from django.db.models import Q
 from .models import LotteryDraw, WinningTicket, PrizeCategory
 from .serializers import LotteryResultSerializer, DateGroupedResultsSerializer
 from django.http import JsonResponse
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.admin.views.decorators import csrf_exempt
+
  
 
 
@@ -200,3 +201,51 @@ def get_lottery_draw(request, draw_id):
 def test_json_view(request):
     """Simple test view to return JSON"""
     return JsonResponse({'test': 'success'})
+
+@csrf_exempt
+def get_prize_categories_by_lottery_type(request, lottery_type_id):
+    """API endpoint to get prize categories by lottery type"""
+    print(f"API called with lottery_type_id: {lottery_type_id}")
+    
+    if lottery_type_id:
+        try:
+            categories = list(PrizeCategory.objects.filter(
+                lottery_type_id=lottery_type_id
+            ).values('id', 'name', 'display_name').order_by('amount'))
+            print(f"Found {len(categories)} categories")
+            return JsonResponse(categories, safe=False)
+        except Exception as e:
+            print(f"Error fetching categories: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse([], safe=False)
+
+@csrf_exempt
+def get_lottery_draw(request, draw_id):
+    """API endpoint to get lottery draw details"""
+    print(f"API called with draw_id: {draw_id}")
+    
+    try:
+        draw = LotteryDraw.objects.get(id=draw_id)
+        data = {
+            'id': draw.id,
+            'lottery_type': draw.lottery_type_id,
+            'draw_number': draw.draw_number,
+        }
+        
+        if hasattr(draw, 'draw_date') and draw.draw_date is not None:
+            data['draw_date'] = draw.draw_date.isoformat()
+        
+        print(f"Found draw: {data}")
+        return JsonResponse(data)
+    except LotteryDraw.DoesNotExist:
+        print(f"Draw not found: {draw_id}")
+        return JsonResponse({'error': 'Draw not found'}, status=404)
+    except Exception as e:
+        print(f"Error fetching draw: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+def test_json_view(request):
+    """Simple test view to return JSON"""
+    print("Test JSON view called")
+    return JsonResponse({'test': 'success', 'message': 'API is working correctly'})
