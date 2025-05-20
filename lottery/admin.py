@@ -261,7 +261,7 @@ class WinningTicketForm(forms.ModelForm):
 
 class WinningTicketAdmin(admin.ModelAdmin):
     form = WinningTicketForm
-    
+    list_display = ('series', 'number', 'prize_category', 'draw')
     def add_view(self, request, form_url='', extra_context=None):
         """Override the add view to include inline JavaScript"""
         extra_context = extra_context or {}
