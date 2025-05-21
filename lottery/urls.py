@@ -13,10 +13,10 @@ urlpatterns = [
     path('results/<int:draw_id>/', SingleDrawResultView.as_view(), name='single_draw_result'),
     
     # API endpoints
-    path('api/lottery-draw/<int:draw_id>/', 
+    path('lottery-draw/<int:draw_id>/', 
          get_lottery_draw, 
          name='api_get_lottery_draw'),
-    path('api/test-json/', 
+    path('test-json/', 
          test_json_view, 
          name='test_json'),
 ]
