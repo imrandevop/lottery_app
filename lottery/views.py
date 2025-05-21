@@ -1,3 +1,4 @@
+# views.py (path: lottery/views.py)
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -5,13 +6,16 @@ from rest_framework.permissions import AllowAny
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q
-from .models import LotteryDraw, WinningTicket, PrizeCategory
-from .serializers import LotteryResultSerializer, DateGroupedResultsSerializer
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
- 
-
+from .models import (
+    LotteryType, LotteryDraw, 
+    FirstPrize, SecondPrize, ThirdPrize, FourthPrize, 
+    FifthPrize, ConsolationPrize, SixthPrize, SeventhPrize, 
+    EighthPrize, NinthPrize, TenthPrize
+)
+from .serializers import LotteryResultSerializer, DateGroupedResultsSerializer
 
 class LotteryResultsView(APIView):
     """
@@ -23,7 +27,7 @@ class LotteryResultsView(APIView):
     - end_date: End date for range in YYYY-MM-DD format
     - days: Number of days to fetch (from today backwards)
     - lottery_type: ID of lottery type
-    - lottery_code: Code of lottery type (e.g., 'AK' for Akshaya)
+    - lottery_code: Code of lottery type (e.g., 'SK' for Suvarna Keralam)
     - draw_number: Specific draw number
     - period: Predefined period ('today', 'yesterday', 'week', 'month', 'all')
     - group_by_date: Whether to group results by date (true/false)
@@ -102,19 +106,91 @@ class LotteryResultsView(APIView):
         if draw_number:
             filter_conditions &= Q(draw_number=draw_number)
         
-        # Apply search if provided
+        # Apply search for ticket numbers
         if search:
-            winner_draws = WinningTicket.objects.filter(
-                Q(number__contains=search) | Q(series__iexact=search)
-            ).values_list('draw_id', flat=True)
+            search_draws_ids = set()
             
-            filter_conditions &= Q(id__in=winner_draws)
+            # Search in FirstPrize
+            first_prize_draws = FirstPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(first_prize_draws)
+            
+            # Search in SecondPrize
+            second_prize_draws = SecondPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(second_prize_draws)
+            
+            # Search in ThirdPrize
+            third_prize_draws = ThirdPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(third_prize_draws)
+            
+            # Search in FourthPrize
+            fourth_prize_draws = FourthPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(fourth_prize_draws)
+            
+            # Search in FifthPrize
+            fifth_prize_draws = FifthPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(fifth_prize_draws)
+            
+            # Search in ConsolationPrize
+            consolation_prize_draws = ConsolationPrize.objects.filter(
+                ticket_number__icontains=search
+            ).values_list('draw_id', flat=True)
+            search_draws_ids.update(consolation_prize_draws)
+            
+            # For 4-digit numbers (6th-10th prizes)
+            if len(search) <= 4:
+                # Search in SixthPrize
+                sixth_prize_draws = SixthPrize.objects.filter(
+                    number__icontains=search
+                ).values_list('draw_id', flat=True)
+                search_draws_ids.update(sixth_prize_draws)
+                
+                # Search in SeventhPrize
+                seventh_prize_draws = SeventhPrize.objects.filter(
+                    number__icontains=search
+                ).values_list('draw_id', flat=True)
+                search_draws_ids.update(seventh_prize_draws)
+                
+                # Search in EighthPrize
+                eighth_prize_draws = EighthPrize.objects.filter(
+                    number__icontains=search
+                ).values_list('draw_id', flat=True)
+                search_draws_ids.update(eighth_prize_draws)
+                
+                # Search in NinthPrize
+                ninth_prize_draws = NinthPrize.objects.filter(
+                    number__icontains=search
+                ).values_list('draw_id', flat=True)
+                search_draws_ids.update(ninth_prize_draws)
+                
+                # Search in TenthPrize
+                tenth_prize_draws = TenthPrize.objects.filter(
+                    number__icontains=search
+                ).values_list('draw_id', flat=True)
+                search_draws_ids.update(tenth_prize_draws)
+            
+            if search_draws_ids:
+                filter_conditions &= Q(id__in=search_draws_ids)
+            else:
+                # If no draws match the search, return empty result
+                return Response([])
         
         # Fetch the filtered draws with related data
         draws = LotteryDraw.objects.filter(filter_conditions).select_related(
             'lottery_type'
         ).prefetch_related(
-            'winners', 'winners__prize_category'
+            'first_prize', 'second_prize', 'third_prize', 'fourth_prize',
+            'fifth_prizes', 'consolation_prizes', 'sixth_prizes', 
+            'seventh_prizes', 'eighth_prizes', 'ninth_prizes', 'tenth_prizes'
         ).order_by('-draw_date', '-draw_number')
         
         # Return the response based on grouping preference
@@ -169,56 +245,6 @@ class SingleDrawResultView(APIView):
                 {"error": "Draw not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-
-def get_prize_categories_by_lottery_type(request, lottery_type_id):
-    """API endpoint to get prize categories by lottery type"""
-    print(f"API called with lottery_type_id: {lottery_type_id}")
-    
-    if lottery_type_id:
-        categories = list(PrizeCategory.objects.filter(
-            lottery_type_id=lottery_type_id
-        ).values('id', 'name', 'display_name').order_by('amount'))
-        print(f"Found {len(categories)} categories")
-        return JsonResponse(categories, safe=False)
-    
-    print("No lottery_type_id provided")
-    return JsonResponse([], safe=False)
-
-def get_lottery_draw(request, draw_id):
-    """API endpoint to get lottery draw details"""
-    try:
-        draw = LotteryDraw.objects.get(id=draw_id)
-        return JsonResponse({
-            'id': draw.id,
-            'lottery_type': draw.lottery_type_id,
-            'draw_number': draw.draw_number,
-            'draw_date': draw.draw_date.isoformat() if hasattr(draw, 'draw_date') else None,
-        })
-    except LotteryDraw.DoesNotExist:
-        return JsonResponse({'error': 'Draw not found'}, status=404)
-    
-def test_json_view(request):
-    """Simple test view to return JSON"""
-    return JsonResponse({'test': 'success'})
-
-@csrf_exempt
-def get_prize_categories_by_lottery_type(request, lottery_type_id):
-    """API endpoint to get prize categories by lottery type"""
-    print(f"API called with lottery_type_id: {lottery_type_id}")
-    
-    if lottery_type_id:
-        try:
-            categories = list(PrizeCategory.objects.filter(
-                lottery_type_id=lottery_type_id
-            ).values('id', 'name', 'display_name').order_by('amount'))
-            print(f"Found {len(categories)} categories")
-            return JsonResponse(categories, safe=False)
-        except Exception as e:
-            print(f"Error fetching categories: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=500)
-    
-    return JsonResponse([], safe=False)
 
 @csrf_exempt
 def get_lottery_draw(request, draw_id):

@@ -1,189 +1,333 @@
+# admin.py (path: lottery/admin.py)
 from django.contrib import admin
 from django import forms
 from django.urls import path, reverse
 from django.http import JsonResponse, HttpResponseRedirect
 from django.utils import timezone
-from django.template.response import TemplateResponse
-from django.contrib.admin.helpers import AdminForm
-from django.utils.html import format_html
 from django.shortcuts import render
 from django.core.exceptions import PermissionDenied
 
-
-from .models import LotteryType, LotteryDraw, PrizeCategory, WinningTicket  
+from .models import (
+    LotteryType, LotteryDraw, 
+    FirstPrize, SecondPrize, ThirdPrize, FourthPrize, 
+    FifthPrize, ConsolationPrize, SixthPrize, SeventhPrize, 
+    EighthPrize, NinthPrize, TenthPrize
+)
 
 class LotteryTypeAdmin(admin.ModelAdmin):
     list_display = ('name', 'code', 'price', 'first_prize_amount')
     search_fields = ('name', 'code')
     list_filter = ('price',)
+
+    def add_result_view(self, request):
+        """Custom view for adding lottery results with a user-friendly interface"""
+        if not self.has_add_permission(request):
+            raise PermissionDenied
+            
+        if request.method == 'POST':
+            form = LotteryResultForm(request.POST)
+            if form.is_valid():
+                lottery_draw = form.save()
+                
+                # Process First Prize
+                first_prize_ticket = request.POST.get('firstprize-0-ticket_number', '').strip().upper()
+                first_prize_place = request.POST.get('firstprize-0-place', '').strip().upper()
+                
+                if first_prize_ticket:
+                    FirstPrize.objects.create(
+                        draw=lottery_draw,
+                        ticket_number=first_prize_ticket,
+                        place=first_prize_place,
+                        amount=10000000.00  # ₹1,00,00,000/-
+                    )
+                    
+                    # Create consolation prizes with the same last 6 digits
+                    # but different series (RA, RB, RC, etc.)
+                    if len(first_prize_ticket) >= 2:
+                        winning_series = first_prize_ticket[:2]
+                        winning_number = first_prize_ticket[2:] if len(first_prize_ticket) > 2 else first_prize_ticket
+                        
+                        # Common series in Kerala lotteries
+                        all_series = ['RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RJ', 'RK', 'RL', 'RM']
+                        
+                        # Remove the winning series
+                        if winning_series in all_series:
+                            all_series.remove(winning_series)
+                        
+                        # Create consolation prizes
+                        for series in all_series:
+                            ConsolationPrize.objects.create(
+                                draw=lottery_draw,
+                                ticket_number=f"{series}{winning_number}",
+                                amount=5000.00  # ₹5,000/-
+                            )
+                
+                # Process Second Prize
+                second_prize_ticket = request.POST.get('secondprize-0-ticket_number', '').strip().upper()
+                second_prize_place = request.POST.get('secondprize-0-place', '').strip().upper()
+                
+                if second_prize_ticket:
+                    SecondPrize.objects.create(
+                        draw=lottery_draw,
+                        ticket_number=second_prize_ticket,
+                        place=second_prize_place,
+                        amount=3000000.00  # ₹30,00,000/-
+                    )
+                
+                # Process Third Prize
+                third_prize_ticket = request.POST.get('thirdprize-0-ticket_number', '').strip().upper()
+                third_prize_place = request.POST.get('thirdprize-0-place', '').strip().upper()
+                
+                if third_prize_ticket:
+                    ThirdPrize.objects.create(
+                        draw=lottery_draw,
+                        ticket_number=third_prize_ticket,
+                        place=third_prize_place,
+                        amount=2500000.00  # ₹25,00,000/-
+                    )
+                
+                # Process Fourth Prize
+                fourth_prize_ticket = request.POST.get('fourthprize-0-ticket_number', '').strip().upper()
+                fourth_prize_place = request.POST.get('fourthprize-0-place', '').strip().upper()
+                
+                if fourth_prize_ticket:
+                    FourthPrize.objects.create(
+                        draw=lottery_draw,
+                        ticket_number=fourth_prize_ticket,
+                        place=fourth_prize_place,
+                        amount=1500000.00  # ₹15,00,000/-
+                    )
+                
+                # Process Fifth Prizes
+                fifth_prizes_text = request.POST.get('fifth_prizes_bulk', '').strip()
+                if fifth_prizes_text:
+                    for line in fifth_prizes_text.split('\n'):
+                        parts = line.strip().split(None, 1)  # Split into ticket and place
+                        if parts:
+                            ticket = parts[0].strip().upper()
+                            place = parts[1].strip().upper() if len(parts) > 1 else ""
+                            
+                            if ticket:
+                                FifthPrize.objects.create(
+                                    draw=lottery_draw,
+                                    ticket_number=ticket,
+                                    place=place,
+                                    amount=100000.00  # ₹1,00,000/-
+                                )
+                
+                # Process bulk entries for 6th-10th prizes
+                if form.cleaned_data.get('bulk_sixth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_sixth_prizes'],
+                        SixthPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_seventh_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_seventh_prizes'],
+                        SeventhPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_eighth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_eighth_prizes'],
+                        EighthPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_ninth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_ninth_prizes'],
+                        NinthPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_tenth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_tenth_prizes'],
+                        TenthPrize,
+                        lottery_draw
+                    )
+                
+                self.message_user(request, f"Successfully added lottery draw {lottery_draw}")
+                return HttpResponseRedirect(reverse('admin:lottery_lotterydraw_change', args=[lottery_draw.pk]))
+        else:
+            form = LotteryResultForm()
+        
+        context = {
+            'title': 'Add Lottery Result',
+            'form': form,
+            'opts': self.model._meta,
+            'has_change_permission': self.has_change_permission(request),
+        }
+        
+        return render(request, 'admin/lottery/lotterydraw/add_result.html', context)
+
+class FirstPrizeInline(admin.StackedInline):
+    model = FirstPrize
+    extra = 1
+    max_num = 1
     
-    # Change button text from "Add" to "New"
-    def get_model_perms(self, request):
-        perms = super().get_model_perms(request)
-        return perms
-        
-    # Override to change "Add" to "New"
-    def add_view(self, request, form_url='', extra_context=None):
-        extra_context = extra_context or {}
-        extra_context['title'] = 'New Lottery'
-        return super().add_view(request, form_url, extra_context)
-        
-    # Custom class attribute to be used in templates
-    add_button_label = "New"
+class SecondPrizeInline(admin.StackedInline):
+    model = SecondPrize
+    extra = 1
+    max_num = 1
+    
+class ThirdPrizeInline(admin.StackedInline):
+    model = ThirdPrize
+    extra = 1
+    max_num = 1
+    
+class FourthPrizeInline(admin.StackedInline):
+    model = FourthPrize
+    extra = 1
+    max_num = 1
 
-class QuickResultEntryForm(forms.Form):
-    lottery_type = forms.ModelChoiceField(queryset=LotteryType.objects.all())
-    draw_number = forms.IntegerField(min_value=1)
-    draw_date = forms.DateField(widget=forms.SelectDateWidget(), initial=timezone.now().date())
-    first_prize_ticket_series = forms.CharField(max_length=10)
-    first_prize_ticket_number = forms.CharField(max_length=10)
-    first_prize_location = forms.CharField(max_length=100, required=False)
+class FifthPrizeInline(admin.TabularInline):
+    model = FifthPrize
+    extra = 1
+    
+class ConsolationPrizeInline(admin.TabularInline):
+    model = ConsolationPrize
+    extra = 1
 
-class BulkResultUploadForm(forms.Form):
-    csv_file = forms.FileField()
-    lottery_type = forms.ModelChoiceField(queryset=LotteryType.objects.all())
-    draw_number = forms.IntegerField(min_value=1)
-    draw_date = forms.DateField(widget=forms.SelectDateWidget(), initial=timezone.now().date())
+class SixthPrizeInline(admin.TabularInline):
+    model = SixthPrize
+    extra = 1
+    
+class SeventhPrizeInline(admin.TabularInline):
+    model = SeventhPrize
+    extra = 1
+    
+class EighthPrizeInline(admin.TabularInline):
+    model = EighthPrize
+    extra = 1
+    
+class NinthPrizeInline(admin.TabularInline):
+    model = NinthPrize
+    extra = 1
+    
+class TenthPrizeInline(admin.TabularInline):
+    model = TenthPrize
+    extra = 1
 
-class TicketVerificationForm(forms.Form):
-    ticket_series = forms.CharField(max_length=10)
-    ticket_number = forms.CharField(max_length=10)
-
-class LotteryDrawAdminForm(forms.ModelForm):
+class LotteryResultForm(forms.ModelForm):
+    """Custom form for batch entry of prizes"""
+    # For bulk entry of 4-digit numbers
+    bulk_sixth_prizes = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}), 
+        required=False,
+        help_text="Enter 6th prize numbers (₹5,000/-), separated by spaces or new lines"
+    )
+    bulk_seventh_prizes = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}), 
+        required=False,
+        help_text="Enter 7th prize numbers (₹1,000/-), separated by spaces or new lines"
+    )
+    bulk_eighth_prizes = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}), 
+        required=False,
+        help_text="Enter 8th prize numbers (₹500/-), separated by spaces or new lines"
+    )
+    bulk_ninth_prizes = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}), 
+        required=False,
+        help_text="Enter 9th prize numbers (₹100/-), separated by spaces or new lines"
+    )
+    bulk_tenth_prizes = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}), 
+        required=False,
+        help_text="Enter 10th prize numbers (₹50/-), separated by spaces or new lines"
+    )
+    
     class Meta:
         model = LotteryDraw
-        fields = '__all__'
+        fields = ('lottery_type', 'draw_number', 'draw_date', 'result_declared')
 
 class LotteryDrawAdmin(admin.ModelAdmin):
+    form = LotteryResultForm
     list_display = ('full_name', 'draw_date', 'result_declared')
     list_filter = ('lottery_type', 'draw_date', 'result_declared')
     search_fields = ('draw_number', 'lottery_type__name')
+    
+    inlines = [
+        FirstPrizeInline, SecondPrizeInline, ThirdPrizeInline, FourthPrizeInline,
+        FifthPrizeInline, ConsolationPrizeInline, SixthPrizeInline, SeventhPrizeInline,
+        EighthPrizeInline, NinthPrizeInline, TenthPrizeInline
+    ]
+    
+    fieldsets = (
+        ('Lottery Draw Information', {
+            'fields': ('lottery_type', 'draw_number', 'draw_date', 'result_declared')
+        }),
+        ('Bulk Entry for Lower Prizes', {
+            'fields': (
+                'bulk_sixth_prizes', 'bulk_seventh_prizes', 'bulk_eighth_prizes',
+                'bulk_ninth_prizes', 'bulk_tenth_prizes'
+            ),
+            'classes': ('collapse',),
+        }),
+    )
     
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
             path('add-result/', self.admin_site.admin_view(self.add_result_view), name='add_lottery_result'),
-            path('get-prize-categories/', self.admin_site.admin_view(self.get_prize_categories), name='get_prize_categories'),
         ]
         return custom_urls + urls
     
     def add_result_view(self, request):
+        """Custom view for adding lottery results with a user-friendly interface"""
         if not self.has_add_permission(request):
             raise PermissionDenied
             
         if request.method == 'POST':
-            form = DynamicResultEntryForm(request.POST)
+            form = LotteryResultForm(request.POST)
             if form.is_valid():
-                # Process the form data
-                lottery_type = form.cleaned_data['lottery_type']
-                draw_number = form.cleaned_data['draw_number']
-                draw_date = form.cleaned_data['draw_date']
-                result_declared = form.cleaned_data['result_declared']
+                lottery_draw = form.save()
                 
-                # Create the LotteryDraw instance
-                lottery_draw = LotteryDraw.objects.create(
-                    lottery_type=lottery_type,
-                    draw_number=draw_number,
-                    draw_date=draw_date,
-                    result_declared=result_declared
-                )
+                # Process bulk entries for prize numbers
+                if form.cleaned_data.get('bulk_sixth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_sixth_prizes'],
+                        SixthPrize,
+                        lottery_draw
+                    )
                 
-                # Process prize data
-                prize_categories = PrizeCategory.objects.filter(
-                    lottery_type=lottery_type
-                ).order_by('amount')
+                if form.cleaned_data.get('bulk_seventh_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_seventh_prizes'],
+                        SeventhPrize,
+                        lottery_draw
+                    )
                 
-                for category in prize_categories:
-                    category_name = category.name.lower().replace(' ', '_')
-                    
-                    # Handle first prize and consolation prizes
-                    if "1st" in category.name:
-                        first_prize_ticket = form.cleaned_data.get(f'{category_name}_ticket')
-                        if first_prize_ticket:
-                            # Split into series and number
-                            if len(first_prize_ticket) >= 3:
-                                series = first_prize_ticket[:2]
-                                number = first_prize_ticket[2:]
-                                location = form.cleaned_data.get(f'{category_name}_location', '')
-                                
-                                # Create first prize winning ticket
-                                WinningTicket.objects.create(
-                                    draw=lottery_draw,
-                                    series=series,
-                                    number=number,
-                                    prize_category=category,
-                                    location=location
-                                )
-                                
-                                # Create consolation prizes with same number but different series
-                                consolation_category = PrizeCategory.objects.filter(
-                                    lottery_type=lottery_type, 
-                                    name__icontains='Consolation'
-                                ).first()
-                                
-                                if consolation_category:
-                                    consolation_count = form.cleaned_data.get('consolation_count', 0)
-                                    
-                                    # Get all possible series (common Kerala lottery series)
-                                    all_series = ['RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RJ', 'RK', 'RL', 'RM']
-                                    
-                                    # Remove the winning series
-                                    if series in all_series:
-                                        all_series.remove(series)
-                                    
-                                    # Create consolation tickets
-                                    for i in range(min(consolation_count, len(all_series))):
-                                        WinningTicket.objects.create(
-                                            draw=lottery_draw,
-                                            series=all_series[i],
-                                            number=number,
-                                            prize_category=consolation_category,
-                                            location=""
-                                        )
-                    
-                    # Handle 2nd-5th prizes
-                    elif "2nd" in category.name or "3rd" in category.name or "4th" in category.name or "5th" in category.name:
-                        tickets_text = form.cleaned_data.get(f'{category_name}_tickets', '')
-                        if tickets_text:
-                            for line in tickets_text.strip().split('\n'):
-                                parts = line.strip().split()
-                                if parts:
-                                    ticket = parts[0]
-                                    if len(ticket) >= 3:
-                                        series = ticket[:2]
-                                        number = ticket[2:]
-                                        location = ' '.join(parts[1:]) if len(parts) > 1 else ''
-                                        
-                                        WinningTicket.objects.create(
-                                            draw=lottery_draw,
-                                            series=series,
-                                            number=number,
-                                            prize_category=category,
-                                            location=location
-                                        )
-                    
-                    # Handle 6th-10th prizes (4-digit numbers)
-                    else:
-                        numbers_text = form.cleaned_data.get(f'{category_name}_numbers', '')
-                        if numbers_text:
-                            # Split by any whitespace (space, newline, tab)
-                            import re
-                            numbers = re.split(r'\s+', numbers_text.strip())
-                            
-                            for number in numbers:
-                                if number.strip():
-                                    WinningTicket.objects.create(
-                                        draw=lottery_draw,
-                                        series="",  # No series for lower prize numbers
-                                        number=number.strip(),
-                                        prize_category=category,
-                                        location=""
-                                    )
+                if form.cleaned_data.get('bulk_eighth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_eighth_prizes'],
+                        EighthPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_ninth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_ninth_prizes'],
+                        NinthPrize,
+                        lottery_draw
+                    )
+                
+                if form.cleaned_data.get('bulk_tenth_prizes'):
+                    self._process_bulk_entries(
+                        form.cleaned_data['bulk_tenth_prizes'],
+                        TenthPrize,
+                        lottery_draw
+                    )
                 
                 self.message_user(request, f"Successfully added lottery draw {lottery_draw}")
-                return HttpResponseRedirect(reverse('admin:index'))
+                return HttpResponseRedirect(reverse('admin:lottery_lotterydraw_change', args=[lottery_draw.pk]))
         else:
-            form = DynamicResultEntryForm()
+            form = LotteryResultForm()
         
         context = {
             'title': 'Add Lottery Result',
@@ -194,158 +338,87 @@ class LotteryDrawAdmin(admin.ModelAdmin):
         
         return render(request, 'admin/lottery/lotterydraw/add_result.html', context)
     
-    def get_prize_categories(self, request):
-        """AJAX view to get prize categories for a lottery type"""
-        lottery_type_id = request.GET.get('lottery_type_id')
+    def _process_bulk_entries(self, bulk_text, model_class, lottery_draw):
+        """Helper method to process bulk entries for prize numbers"""
+        # Split by whitespace (spaces, tabs, newlines)
+        import re
+        numbers = re.split(r'\s+', bulk_text.strip())
         
-        if lottery_type_id:
-            try:
-                prize_categories = PrizeCategory.objects.filter(
-                    lottery_type_id=lottery_type_id
-                ).order_by('amount')
-                
-                data = [
-                    {
-                        'id': category.id,
-                        'name': category.name,
-                        'display_name': category.display_name,
-                        'amount': category.amount,
-                    }
-                    for category in prize_categories
-                ]
-                
-                return JsonResponse({'categories': data})
-            except Exception as e:
-                return JsonResponse({'error': str(e)}, status=400)
+        for number in numbers:
+            if number.strip():
+                model_class.objects.create(
+                    draw=lottery_draw,
+                    number=number.strip()
+                )
+    
+    def save_model(self, request, obj, form, change):
+        """Handle bulk entries when saving via the normal admin form"""
+        super().save_model(request, obj, form, change)
         
-        return JsonResponse({'categories': []})
-
-class PrizeCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'display_name', 'amount', 'display_amount', 'lottery_type')
-    list_filter = ('lottery_type', 'amount')
-    search_fields = ('name', 'display_name')
-    autocomplete_fields = ['lottery_type']
-    
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('by-lottery-type/<int:lottery_type_id>/', self.admin_site.admin_view(self.by_lottery_type_view), name='prizecategory_by_lottery_type'),
-        ]
-        return custom_urls + urls
-
-    def by_lottery_type_view(self, request, lottery_type_id=None):
-        """Return prize categories for a lottery type"""
-        if lottery_type_id:
-            categories = list(PrizeCategory.objects.filter(
-                lottery_type_id=lottery_type_id
-            ).values('id', 'name', 'display_name').order_by('amount'))
-            return JsonResponse(categories, safe=False)
-        return JsonResponse([], safe=False)
-    
-
-class DynamicResultEntryForm(forms.Form):
-    lottery_type = forms.ModelChoiceField(
-        queryset=LotteryType.objects.all(),
-        widget=forms.Select(attrs={'class': 'lottery-type-select'})
-    )
-    draw_number = forms.IntegerField(min_value=1)
-    draw_date = forms.DateField(
-        widget=forms.DateInput(attrs={'type': 'date'}),
-        initial=timezone.now().date()
-    )
-    result_declared = forms.BooleanField(required=False, initial=False)
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Initially, don't add prize fields until lottery type is selected
-        lottery_type_id = self.data.get('lottery_type')
+        # Process bulk entries
+        if form.cleaned_data.get('bulk_sixth_prizes'):
+            self._process_bulk_entries(
+                form.cleaned_data['bulk_sixth_prizes'],
+                SixthPrize,
+                obj
+            )
         
-        if lottery_type_id:
-            try:
-                lottery_type = LotteryType.objects.get(id=lottery_type_id)
-                prize_categories = PrizeCategory.objects.filter(
-                    lottery_type=lottery_type
-                ).order_by('amount')
-                
-                for category in prize_categories:
-                    category_name = category.name.lower().replace(' ', '_')
-                    
-                    # For top prizes (1st to 5th), we need ticket series, number and location
-                    if "1st" in category.name or "2nd" in category.name or "3rd" in category.name or "4th" in category.name or "5th" in category.name:
-                        # For first prize, we also create consolation prizes
-                        if "1st" in category.name:
-                            # Add first prize fields
-                            self.fields[f'{category_name}_ticket'] = forms.CharField(
-                                label=f"{category.name} Ticket Number (with series)",
-                                max_length=20,
-                                required=True,
-                                help_text="Format: XX123456 (series + number)"
-                            )
-                            self.fields[f'{category_name}_location'] = forms.CharField(
-                                label=f"{category.name} Location",
-                                max_length=100,
-                                required=False
-                            )
-                            
-                            # Add consolation prize fields
-                            self.fields[f'consolation_count'] = forms.IntegerField(
-                                label="Number of Consolation Prizes",
-                                min_value=0,
-                                initial=11,  # Most Kerala lotteries have 11 consolation prizes
-                                required=False
-                            )
-                        else:
-                            # Add normal fields for 2nd-5th prizes
-                            self.fields[f'{category_name}_tickets'] = forms.CharField(
-                                label=f"{category.name} Ticket Numbers",
-                                widget=forms.Textarea(attrs={'rows': 3}),
-                                help_text="One ticket per line. Format: XX123456 LOCATION"
-                            )
-                    else:
-                        # For lower prizes (6th to 10th), we only need 4-digit numbers
-                        self.fields[f'{category_name}_numbers'] = forms.CharField(
-                            label=f"{category.name} - ₹{category.amount} Numbers",
-                            widget=forms.Textarea(attrs={'rows': 5}),
-                            help_text="Enter 4-digit numbers, separated by spaces or new lines"
-                        )
-            except (LotteryType.DoesNotExist, ValueError):
-                pass
+        if form.cleaned_data.get('bulk_seventh_prizes'):
+            self._process_bulk_entries(
+                form.cleaned_data['bulk_seventh_prizes'],
+                SeventhPrize,
+                obj
+            )
+        
+        if form.cleaned_data.get('bulk_eighth_prizes'):
+            self._process_bulk_entries(
+                form.cleaned_data['bulk_eighth_prizes'],
+                EighthPrize,
+                obj
+            )
+        
+        if form.cleaned_data.get('bulk_ninth_prizes'):
+            self._process_bulk_entries(
+                form.cleaned_data['bulk_ninth_prizes'],
+                NinthPrize,
+                obj
+            )
+        
+        if form.cleaned_data.get('bulk_tenth_prizes'):
+            self._process_bulk_entries(
+                form.cleaned_data['bulk_tenth_prizes'],
+                TenthPrize,
+                obj
+            )
 
-class LotteryAppAdminSite(admin.AdminSite):
-    site_header = 'Lottery Administration'
-    site_title = 'Lottery Admin'
-    index_title = 'Kerala Lottery Management'
-    
-    def get_app_list(self, request):
-        app_list = super().get_app_list(request)
-        # Add custom action buttons to the app list
-        for app in app_list:
-            if app['app_label'] == 'lottery':  # Replace with your actual app name
-                app['custom_actions'] = [
-                    {
-                        'name': 'Add Lottery Result',
-                        'url': reverse('admin:add_lottery_result'),
-                        'description': 'Add a new lottery draw result with winners'
-                    }
-                ]
-        return app_list
-    
-    def index(self, request, extra_context=None):
-        extra_context = extra_context or {}
-        extra_context['custom_actions'] = [
-            {
-                'name': 'Add Lottery Result',
-                'url': reverse('admin:add_lottery_result'),
-                'description': 'Add a new lottery draw result with winners',
-                'icon': 'icon-plus'
-            }
-        ]
-        return super().index(request, extra_context)
-    
-
-admin_site = LotteryAppAdminSite(name='admin')
-# Register your models here.
+# Register all models with admin
 admin.site.register(LotteryType, LotteryTypeAdmin)
 admin.site.register(LotteryDraw, LotteryDrawAdmin)
-admin.site.register(PrizeCategory, PrizeCategoryAdmin)
-# We keep the WinningTicket model but won't register it with 
+admin.site.register(FirstPrize)
+admin.site.register(SecondPrize)
+admin.site.register(ThirdPrize)
+admin.site.register(FourthPrize)
+admin.site.register(FifthPrize)
+admin.site.register(ConsolationPrize)
+admin.site.register(SixthPrize)
+admin.site.register(SeventhPrize)
+admin.site.register(EighthPrize)
+admin.site.register(NinthPrize)
+admin.site.register(TenthPrize)
+
+# If you're using a custom admin site as in your existing code
+from .admin_site import lottery_admin_site
+
+lottery_admin_site.register(LotteryType, LotteryTypeAdmin)
+lottery_admin_site.register(LotteryDraw, LotteryDrawAdmin)
+lottery_admin_site.register(FirstPrize)
+lottery_admin_site.register(SecondPrize)
+lottery_admin_site.register(ThirdPrize)
+lottery_admin_site.register(FourthPrize)
+lottery_admin_site.register(FifthPrize)
+lottery_admin_site.register(ConsolationPrize)
+lottery_admin_site.register(SixthPrize)
+lottery_admin_site.register(SeventhPrize)
+lottery_admin_site.register(EighthPrize)
+lottery_admin_site.register(NinthPrize)
+lottery_admin_site.register(TenthPrize)

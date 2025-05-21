@@ -1,66 +1,94 @@
+# serializers.py (path: lottery/serializers.py)
 from rest_framework import serializers
-from .models import LotteryType, LotteryDraw, PrizeCategory, WinningTicket
+from .models import (
+    LotteryType, LotteryDraw,
+    FirstPrize, SecondPrize, ThirdPrize, FourthPrize, 
+    FifthPrize, ConsolationPrize, SixthPrize, SeventhPrize, 
+    EighthPrize, NinthPrize, TenthPrize
+)
 
-class WinningTicketSerializer(serializers.ModelSerializer):
-    full_number = serializers.CharField(read_only=True)
-    
+class LotteryTypeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = WinningTicket
-        fields = ['id', 'series', 'number', 'location', 'full_number']
+        model = LotteryType
+        fields = ['id', 'name', 'code', 'price', 'first_prize_amount']
 
-class PrizeCategoryResultSerializer(serializers.ModelSerializer):
-    winners = serializers.SerializerMethodField()
-    display_name = serializers.CharField(read_only=True)
-    display_amount = serializers.CharField(read_only=True)
-    
+class FirstPrizeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PrizeCategory
-        fields = ['id', 'name', 'display_name', 'amount', 'display_amount', 'winners']
-    
-    def get_winners(self, obj):
-        draw_id = self.context.get('draw_id')
-        if draw_id:
-            winners = WinningTicket.objects.filter(
-                draw_id=draw_id,
-                prize_category=obj
-            )
-            return WinningTicketSerializer(winners, many=True).data
-        return []
+        model = FirstPrize
+        fields = ['id', 'ticket_number', 'place', 'amount']
+
+class SecondPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SecondPrize
+        fields = ['id', 'ticket_number', 'place', 'amount']
+
+class ThirdPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ThirdPrize
+        fields = ['id', 'ticket_number', 'place', 'amount']
+
+class FourthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FourthPrize
+        fields = ['id', 'ticket_number', 'place', 'amount']
+
+class FifthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FifthPrize
+        fields = ['id', 'ticket_number', 'place', 'amount']
+
+class ConsolationPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConsolationPrize
+        fields = ['id', 'ticket_number', 'amount']
+
+class SixthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SixthPrize
+        fields = ['id', 'number', 'amount']
+
+class SeventhPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SeventhPrize
+        fields = ['id', 'number', 'amount']
+
+class EighthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EighthPrize
+        fields = ['id', 'number', 'amount']
+
+class NinthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NinthPrize
+        fields = ['id', 'number', 'amount']
+
+class TenthPrizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TenthPrize
+        fields = ['id', 'number', 'amount']
 
 class LotteryResultSerializer(serializers.ModelSerializer):
-    lottery_name = serializers.CharField(source='lottery_type.name')
-    lottery_code = serializers.CharField(source='lottery_type.code')
-    full_name = serializers.CharField(read_only=True)
-    prize_categories = serializers.SerializerMethodField()
-    first_prize_winner = serializers.SerializerMethodField()
+    lottery_type = LotteryTypeSerializer()
+    first_prize = FirstPrizeSerializer(read_only=True)
+    second_prize = SecondPrizeSerializer(read_only=True)
+    third_prize = ThirdPrizeSerializer(read_only=True)
+    fourth_prize = FourthPrizeSerializer(read_only=True)
+    fifth_prizes = FifthPrizeSerializer(many=True, read_only=True)
+    consolation_prizes = ConsolationPrizeSerializer(many=True, read_only=True)
+    sixth_prizes = SixthPrizeSerializer(many=True, read_only=True)
+    seventh_prizes = SeventhPrizeSerializer(many=True, read_only=True)
+    eighth_prizes = EighthPrizeSerializer(many=True, read_only=True)
+    ninth_prizes = NinthPrizeSerializer(many=True, read_only=True)
+    tenth_prizes = TenthPrizeSerializer(many=True, read_only=True)
     
     class Meta:
         model = LotteryDraw
         fields = [
-            'id', 'lottery_name', 'lottery_code', 'draw_number', 
-            'draw_date', 'full_name', 'is_new', 'prize_categories',
-            'first_prize_winner'
+            'id', 'lottery_type', 'draw_number', 'draw_date', 'result_declared',
+            'first_prize', 'second_prize', 'third_prize', 'fourth_prize',
+            'fifth_prizes', 'consolation_prizes', 'sixth_prizes', 
+            'seventh_prizes', 'eighth_prizes', 'ninth_prizes', 'tenth_prizes'
         ]
-    
-    def get_prize_categories(self, obj):
-        return PrizeCategoryResultSerializer(
-            PrizeCategory.objects.all(),
-            context={'draw_id': obj.id},
-            many=True
-        ).data
-    
-    def get_first_prize_winner(self, obj):
-        first_prize = WinningTicket.objects.filter(
-            draw=obj,
-            prize_category__name__icontains='First Prize'
-        ).first()
-        
-        if first_prize:
-            return {
-                'full_number': first_prize.full_number,
-                'location': first_prize.location
-            }
-        return None
 
 class DateGroupedResultsSerializer(serializers.Serializer):
     date = serializers.DateField()
