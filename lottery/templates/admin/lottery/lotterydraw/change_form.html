@@ -69,46 +69,74 @@
         }
 
         /* Fixed save button styles */
+        /* Fixed save button with improved styling */
         .submit-row {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            background-color: #f5f5f5;
-            padding: 10px;
+            background-color: #f8f8f8;
+            padding: 12px 15px;
             z-index: 1000;
             box-shadow: 0px -2px 5px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
             margin: 0;
             border-top: 1px solid #ddd;
+            display: flex;
+            align-items: center;
         }
 
-        /* Add padding to the bottom of the content to prevent the fixed submit-row from overlapping content */
+        /* Add padding to prevent content overlap */
         #content {
-            padding-bottom: 60px;
+            padding-bottom: 65px;
         }
 
-        /* Style the save buttons to match your existing UI */
-        .submit-row input, .submit-row a {
-            background-color: #417690;
-            color: white;
-            border: none;
+        /* Match button styling to your interface */
+        .submit-row input[type="submit"], 
+        .submit-row a.deletelink {
             border-radius: 4px;
-            padding: 8px 15px;
+            border: none;
+            padding: 10px 20px;
+            font-weight: normal;
+            font-size: 14px;
+            margin-right: 8px;
+            transition: background-color 0.2s;
             cursor: pointer;
-            margin-right: 5px;
         }
 
         .submit-row input.default {
-            background-color: #004aad;
-            font-weight: bold;
+            background-color: #004aad; /* Match your blue header color */
+            color: white;
+            font-weight: 600;
         }
 
-        .submit-row .deletelink {
+        .submit-row input[type="submit"] {
+            background-color: #417690;
+            color: white;
+        }
+
+        .submit-row input[type="submit"]:hover,
+        .submit-row input.default:hover {
+            background-color: #003d91; /* Slightly darker on hover */
+        }
+
+        .submit-row a.deletelink {
             background-color: #ba2121;
+            color: white;
             float: right;
             margin-left: auto;
+        }
+
+        .submit-row a.deletelink:hover {
+            background-color: #a41515;
+        }
+
+        /* Fix spacing between buttons */
+        .submit-row > * {
+            margin-right: 10px;
+        }
+
+        .submit-row > *:last-child {
+            margin-right: 0;
         }
     </style>
 {% endblock %}
