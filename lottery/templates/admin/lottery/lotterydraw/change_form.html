@@ -68,10 +68,45 @@
             background-color: #f9f9f9;
         }
 
-     
+        /* Preview button styling */
+        .preview-button {
+            background-color: #004aad;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 20px 0;
+            transition: background-color 0.3s;
+        }
+        
+        .preview-button:hover {
+            background-color: #003d91;
+        }
+        
+        .preview-button:active {
+            background-color: #002d7a;
+        }
+
+        /* Hide preview by default */
+        .lottery-preview {
+            display: none;
+            margin-top: 20px;
+            border: 2px solid #004aad;
+            border-radius: 8px;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+
+        /* Show preview when active */
+        .lottery-preview.show {
+            display: block;
+        }
 
         /* Alternative approach - if you know the exact content wrapper class */
-       .submit-row {
+        .submit-row {
             position: fixed;
             bottom: 0;
             left: 320px; /* Sidebar width */
@@ -144,198 +179,223 @@
 {% endblock %}
 
 {% block content %}
-    <div class="prize-header">
-        Lotto App
+    <!-- Add the preview button -->
+    <div style="text-align: center; margin: 20px 0;">
+        <button type="button" class="preview-button" onclick="togglePreview()">
+            <span id="preview-btn-text">Show Lottery Preview</span>
+        </button>
     </div>
-    
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <div>
-            <span style="font-weight: bold;">Date: </span>
-            {{ original.draw_date }}
+
+    <!-- Wrap the entire preview in a hidden container -->
+    <div id="lottery-preview-container" class="lottery-preview">
+        <div class="prize-header">
+            Lotto App
         </div>
-        <div>
-            <span style="font-weight: bold;">Draw: </span>
-            {{ original.draw_code }}
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div>
+                <span style="font-weight: bold;">Date: </span>
+                {{ original.draw_date }}
+            </div>
+            <div>
+                <span style="font-weight: bold;">Draw: </span>
+                {{ original.draw_code }}
+            </div>
         </div>
-    </div>
-    
-    <!-- First Prize -->
-    {% if original.first_prize %}
-    <div class="prize-container">
-        <div class="prize-title">1st Prize</div>
-        <div class="prize-amount">₹ {{ original.first_prize.amount|floatformat:"0" }}/-</div>
-        <div class="prize-ticket">{{ original.first_prize.ticket_number }}</div>
-        <div class="prize-place">{{ original.first_prize.place }}</div>
-    </div>
-    {% endif %}
-    
-    <!-- Consolation Prizes -->
-    {% if original.consolation_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">Consolation Prize</div>
-        <div class="prize-amount">₹ {{ original.consolation_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="consolation-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.consolation_prizes.all %}
-                        <td>{{ prize.ticket_number }}</td>
-                        {% if forloop.counter|divisibleby:2 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- Second Prize -->
-    {% if original.second_prize %}
-    <div class="prize-container">
-        <div class="prize-title">2nd Prize</div>
-        <div class="prize-amount">₹ {{ original.second_prize.amount|floatformat:"0" }}/-</div>
-        <div class="prize-ticket">{{ original.second_prize.ticket_number }}</div>
-        <div class="prize-place">{{ original.second_prize.place }}</div>
-    </div>
-    {% endif %}
-    
-    <!-- Third Prize -->
-    {% if original.third_prize %}
-    <div class="prize-container">
-        <div class="prize-title">3rd Prize</div>
-        <div class="prize-amount">₹ {{ original.third_prize.amount|floatformat:"0" }}/-</div>
-        <div class="prize-ticket">{{ original.third_prize.ticket_number }}</div>
-        <div class="prize-place">{{ original.third_prize.place }}</div>
-    </div>
-    {% endif %}
-    
-    <!-- Fourth Prize -->
-    {% if original.fourth_prize %}
-    <div class="prize-container">
-        <div class="prize-title">4th Prize</div>
-        <div class="prize-amount">₹ {{ original.fourth_prize.amount|floatformat:"0" }}/-</div>
-        <div class="prize-ticket">{{ original.fourth_prize.ticket_number }}</div>
-        <div class="prize-place">{{ original.fourth_prize.place }}</div>
-    </div>
-    {% endif %}
-    
-    <!-- Fifth Prize -->
-    {% if original.fifth_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">5th Prize</div>
-        <div class="prize-amount">₹ {{ original.fifth_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="consolation-table">
-            <tbody>
-                {% for prize in original.fifth_prizes.all %}
+        
+        <!-- First Prize -->
+        {% if original.first_prize %}
+        <div class="prize-container">
+            <div class="prize-title">1st Prize</div>
+            <div class="prize-amount">₹ {{ original.first_prize.amount|floatformat:"0" }}/-</div>
+            <div class="prize-ticket">{{ original.first_prize.ticket_number }}</div>
+            <div class="prize-place">{{ original.first_prize.place }}</div>
+        </div>
+        {% endif %}
+        
+        <!-- Consolation Prizes -->
+        {% if original.consolation_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">Consolation Prize</div>
+            <div class="prize-amount">₹ {{ original.consolation_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="consolation-table">
+                <tbody>
                     <tr>
-                        <td>{{ prize.ticket_number }}</td>
-                        <td>{{ prize.place }}</td>
+                        {% for prize in original.consolation_prizes.all %}
+                            <td>{{ prize.ticket_number }}</td>
+                            {% if forloop.counter|divisibleby:2 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- Sixth Prize -->
-    {% if original.sixth_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">6th Prize</div>
-        <div class="prize-amount">₹ {{ original.sixth_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="minor-prize-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.sixth_prizes.all %}
-                        <td>{{ prize.number }}</td>
-                        {% if forloop.counter|divisibleby:4 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Second Prize -->
+        {% if original.second_prize %}
+        <div class="prize-container">
+            <div class="prize-title">2nd Prize</div>
+            <div class="prize-amount">₹ {{ original.second_prize.amount|floatformat:"0" }}/-</div>
+            <div class="prize-ticket">{{ original.second_prize.ticket_number }}</div>
+            <div class="prize-place">{{ original.second_prize.place }}</div>
+        </div>
+        {% endif %}
+        
+        <!-- Third Prize -->
+        {% if original.third_prize %}
+        <div class="prize-container">
+            <div class="prize-title">3rd Prize</div>
+            <div class="prize-amount">₹ {{ original.third_prize.amount|floatformat:"0" }}/-</div>
+            <div class="prize-ticket">{{ original.third_prize.ticket_number }}</div>
+            <div class="prize-place">{{ original.third_prize.place }}</div>
+        </div>
+        {% endif %}
+        
+        <!-- Fourth Prize -->
+        {% if original.fourth_prize %}
+        <div class="prize-container">
+            <div class="prize-title">4th Prize</div>
+            <div class="prize-amount">₹ {{ original.fourth_prize.amount|floatformat:"0" }}/-</div>
+            <div class="prize-ticket">{{ original.fourth_prize.ticket_number }}</div>
+            <div class="prize-place">{{ original.fourth_prize.place }}</div>
+        </div>
+        {% endif %}
+        
+        <!-- Fifth Prize -->
+        {% if original.fifth_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">5th Prize</div>
+            <div class="prize-amount">₹ {{ original.fifth_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="consolation-table">
+                <tbody>
+                    {% for prize in original.fifth_prizes.all %}
+                        <tr>
+                            <td>{{ prize.ticket_number }}</td>
+                            <td>{{ prize.place }}</td>
+                        </tr>
                     {% endfor %}
-                </tr>
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Sixth Prize -->
+        {% if original.sixth_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">6th Prize</div>
+            <div class="prize-amount">₹ {{ original.sixth_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="minor-prize-table">
+                <tbody>
+                    <tr>
+                        {% for prize in original.sixth_prizes.all %}
+                            <td>{{ prize.number }}</td>
+                            {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Seventh Prize -->
+        {% if original.seventh_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">7th Prize</div>
+            <div class="prize-amount">₹ {{ original.seventh_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="minor-prize-table">
+                <tbody>
+                    <tr>
+                        {% for prize in original.seventh_prizes.all %}
+                            <td>{{ prize.number }}</td>
+                            {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Eighth Prize -->
+        {% if original.eighth_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">8th Prize</div>
+            <div class="prize-amount">₹ {{ original.eighth_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="minor-prize-table">
+                <tbody>
+                    <tr>
+                        {% for prize in original.eighth_prizes.all %}
+                            <td>{{ prize.number }}</td>
+                            {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Ninth Prize -->
+        {% if original.ninth_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">9th Prize</div>
+            <div class="prize-amount">₹ {{ original.ninth_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="minor-prize-table">
+                <tbody>
+                    <tr>
+                        {% for prize in original.ninth_prizes.all %}
+                            <td>{{ prize.number }}</td>
+                            {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- Tenth Prize -->
+        {% if original.tenth_prizes.all %}
+        <div class="prize-container">
+            <div class="prize-title">10th Prize</div>
+            <div class="prize-amount">₹ {{ original.tenth_prizes.first.amount|floatformat:"0" }}/-</div>
+            <table class="minor-prize-table">
+                <tbody>
+                    <tr>
+                        {% for prize in original.tenth_prizes.all %}
+                            <td>{{ prize.number }}</td>
+                            {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                </tr><tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
     
-    <!-- Seventh Prize -->
-    {% if original.seventh_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">7th Prize</div>
-        <div class="prize-amount">₹ {{ original.seventh_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="minor-prize-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.seventh_prizes.all %}
-                        <td>{{ prize.number }}</td>
-                        {% if forloop.counter|divisibleby:4 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- Eighth Prize -->
-    {% if original.eighth_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">8th Prize</div>
-        <div class="prize-amount">₹ {{ original.eighth_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="minor-prize-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.eighth_prizes.all %}
-                        <td>{{ prize.number }}</td>
-                        {% if forloop.counter|divisibleby:4 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- Ninth Prize -->
-    {% if original.ninth_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">9th Prize</div>
-        <div class="prize-amount">₹ {{ original.ninth_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="minor-prize-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.ninth_prizes.all %}
-                        <td>{{ prize.number }}</td>
-                        {% if forloop.counter|divisibleby:4 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- Tenth Prize -->
-    {% if original.tenth_prizes.all %}
-    <div class="prize-container">
-        <div class="prize-title">10th Prize</div>
-        <div class="prize-amount">₹ {{ original.tenth_prizes.first.amount|floatformat:"0" }}/-</div>
-        <table class="minor-prize-table">
-            <tbody>
-                <tr>
-                    {% for prize in original.tenth_prizes.all %}
-                        <td>{{ prize.number }}</td>
-                        {% if forloop.counter|divisibleby:4 and not forloop.last %}
-                            </tr><tr>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
+    <script>
+        function togglePreview() {
+            const previewContainer = document.getElementById('lottery-preview-container');
+            const buttonText = document.getElementById('preview-btn-text');
+            
+            if (previewContainer.classList.contains('show')) {
+                previewContainer.classList.remove('show');
+                buttonText.textContent = 'Show Lottery Preview';
+            } else {
+                previewContainer.classList.add('show');
+                buttonText.textContent = 'Hide Lottery Preview';
+            }
+        }
+    </script>
     
     {{ block.super }}
 {% endblock %}
