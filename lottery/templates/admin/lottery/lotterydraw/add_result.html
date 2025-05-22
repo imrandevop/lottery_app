@@ -94,11 +94,13 @@
             border-radius: 4px;
         }
 
-    /* Fixed save button with improved styling */
+
+
+        /* Alternative approach - if you know the exact content wrapper class */
         .submit-row {
             position: fixed;
             bottom: 0;
-            left: 0;
+            left: 320px; /* Sidebar width */
             right: 0;
             background-color: #f8f8f8;
             padding: 12px 15px;
@@ -108,28 +110,7 @@
             border-top: 1px solid #ddd;
             display: flex;
             align-items: center;
-        }
-
-        /* Add padding to prevent content overlap */
-        #content {
-            padding-bottom: 65px;
-        }
-
-        /* Fixed save button with improved styling */
-        .submit-row {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background-color: #f8f8f8;
-            padding: 12px 15px;
-            z-index: 1000;
-            box-shadow: 0px -2px 5px rgba(0, 0, 0, 0.1);
-            margin: 0;
-            border-top: 1px solid #ddd;
-            display: flex;
-            align-items: center;
-        }
+        } 
 
         /* Add padding to prevent content overlap */
         #content {

@@ -68,11 +68,13 @@
             background-color: #f9f9f9;
         }
 
-       /* Fixed save button with improved styling */
-        .submit-row {
+     
+
+        /* Alternative approach - if you know the exact content wrapper class */
+       .submit-row {
             position: fixed;
             bottom: 0;
-            left: 0;
+            left: 320px; /* Sidebar width */
             right: 0;
             background-color: #f8f8f8;
             padding: 12px 15px;
@@ -137,6 +139,7 @@
         .submit-row > *:last-child {
             margin-right: 0;
         }
+
     </style>
 {% endblock %}
 
