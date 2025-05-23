@@ -62,7 +62,7 @@ class TodayResultAPIView(APIView):
             
             # Get consolation prizes
             consolation_prizes = []
-            for prize in draw.consolation_prizes.all():
+            for prize in draw.consolation_prizes.all()[:6]:
                 consolation_prizes.append({
                     "ticket_number": prize.ticket_number,
                     "amount": int(prize.amount)
