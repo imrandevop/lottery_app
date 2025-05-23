@@ -17,6 +17,356 @@ from .models import (
 )
 from .serializers import LotteryResultSerializer, DateGroupedResultsSerializer
 
+class TodayResultAPIView(APIView):
+    """
+    API endpoint that returns today's lottery results in the exact format shown in the image
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        today = timezone.now().date()
+        
+        # Get today's lottery draws
+        today_draws = LotteryDraw.objects.filter(
+            draw_date=today,
+            result_declared=True
+        ).select_related('lottery_type').prefetch_related(
+            'first_prize', 'consolation_prizes'
+        ).order_by('-draw_number')
+        
+        if not today_draws.exists():
+            return Response({
+                "status": "success",
+                "message": "No results available for today",
+                "data": [],
+                "date": today.isoformat(),
+                "date_display": "Today Result"
+            })
+        
+        results = []
+        
+        for draw in today_draws:
+            # Build the lottery name exactly as shown in image
+            lottery_name = f"{draw.lottery_type.name} {draw.lottery_type.code} {draw.draw_number}"
+            
+            # Get first prize info
+            first_prize_data = None
+            if hasattr(draw, 'first_prize') and draw.first_prize:
+                first_prize_data = {
+                    "amount": int(draw.first_prize.amount),
+                    "amount_display": f"Rs {int(draw.first_prize.amount)}/-",
+                    "amount_lakhs": f"[{int(draw.first_prize.amount) // 100000} Lakhs]",
+                    "ticket_number": draw.first_prize.ticket_number,
+                    "place": draw.first_prize.place
+                }
+            
+            # Get consolation prizes
+            consolation_prizes = []
+            for prize in draw.consolation_prizes.all():
+                consolation_prizes.append({
+                    "ticket_number": prize.ticket_number,
+                    "amount": int(prize.amount)
+                })
+            
+            # Group consolation prizes in sets of 3 for display (as shown in image)
+            consolation_rows = []
+            for i in range(0, len(consolation_prizes), 3):
+                row = consolation_prizes[i:i+3]
+                consolation_rows.append(row)
+            
+            result_item = {
+                "lottery_name": lottery_name,
+                "lottery_type": draw.lottery_type.name,
+                "lottery_code": draw.lottery_type.code,
+                "draw_number": draw.draw_number,
+                "is_new": draw.draw_date == today,  # Mark as NEW if it's today
+                "first_prize": first_prize_data,
+                "consolation_prizes": consolation_prizes,
+                "consolation_rows": consolation_rows,  # Grouped for display
+                "consolation_amount": 8000 if consolation_prizes else 0,  # Default amount as shown
+                "draw_date": draw.draw_date.isoformat()
+            }
+            
+            results.append(result_item)
+        
+        return Response({
+            "status": "success",
+            "data": results,
+            "date": today.isoformat(),
+            "date_display": "Today Result",
+            "total_results": len(results)
+        })
+
+
+class PreviousDaysResultAPIView(APIView):
+    """
+    API endpoint that returns previous days' lottery results in the same format
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        # Get query parameters
+        days_back = int(request.query_params.get('days', 7))  # Default 7 days
+        specific_date = request.query_params.get('date')  # Format: YYYY-MM-DD
+        
+        today = timezone.now().date()
+        
+        if specific_date:
+            try:
+                target_date = timezone.datetime.strptime(specific_date, '%Y-%m-%d').date()
+                draws = LotteryDraw.objects.filter(
+                    draw_date=target_date,
+                    result_declared=True
+                )
+                
+                date_display = self._get_date_display(target_date, today)
+                
+            except ValueError:
+                return Response(
+                    {"error": "Invalid date format. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Get results from previous days (excluding today)
+            start_date = today - timedelta(days=days_back)
+            draws = LotteryDraw.objects.filter(
+                draw_date__gte=start_date,
+                draw_date__lt=today,  # Exclude today
+                result_declared=True
+            )
+            date_display = f"Previous {days_back} Days Results"
+        
+        draws = draws.select_related('lottery_type').prefetch_related(
+            'first_prize', 'consolation_prizes'
+        ).order_by('-draw_date', '-draw_number')
+        
+        if not draws.exists():
+            return Response({
+                "status": "success",
+                "message": "No results available for the specified period",
+                "data": [],
+                "date_display": date_display
+            })
+        
+        # Group results by date
+        grouped_results = {}
+        
+        for draw in draws:
+            date_key = draw.draw_date.isoformat()
+            
+            if date_key not in grouped_results:
+                grouped_results[date_key] = {
+                    "date": draw.draw_date.isoformat(),
+                    "date_display": self._get_date_display(draw.draw_date, today),
+                    "results": []
+                }
+            
+            # Build the lottery name
+            lottery_name = f"{draw.lottery_type.name} {draw.lottery_type.code} {draw.draw_number}"
+            
+            # Get first prize info
+            first_prize_data = None
+            if hasattr(draw, 'first_prize') and draw.first_prize:
+                first_prize_data = {
+                    "amount": int(draw.first_prize.amount),
+                    "amount_display": f"Rs {int(draw.first_prize.amount)}/-",
+                    "amount_lakhs": f"[{int(draw.first_prize.amount) // 100000} Lakhs]",
+                    "ticket_number": draw.first_prize.ticket_number,
+                    "place": draw.first_prize.place
+                }
+            
+            # Get consolation prizes
+            consolation_prizes = []
+            for prize in draw.consolation_prizes.all():
+                consolation_prizes.append({
+                    "ticket_number": prize.ticket_number,
+                    "amount": int(prize.amount)
+                })
+            
+            # Group consolation prizes in rows of 3
+            consolation_rows = []
+            for i in range(0, len(consolation_prizes), 3):
+                row = consolation_prizes[i:i+3]
+                consolation_rows.append(row)
+            
+            result_item = {
+                "lottery_name": lottery_name,
+                "lottery_type": draw.lottery_type.name,
+                "lottery_code": draw.lottery_type.code,
+                "draw_number": draw.draw_number,
+                "is_new": False,  # Previous results are not new
+                "first_prize": first_prize_data,
+                "consolation_prizes": consolation_prizes,
+                "consolation_rows": consolation_rows,
+                "consolation_amount": 8000 if consolation_prizes else 0,
+                "draw_date": draw.draw_date.isoformat()
+            }
+            
+            grouped_results[date_key]["results"].append(result_item)
+        
+        # Convert to list and sort by date (most recent first)
+        result_list = list(grouped_results.values())
+        result_list.sort(key=lambda x: x['date'], reverse=True)
+        
+        return Response({
+            "status": "success",
+            "data": result_list,
+            "date_display": date_display,
+            "total_dates": len(result_list),
+            "total_results": sum(len(group["results"]) for group in result_list)
+        })
+    
+    def _get_date_display(self, date, today):
+        """Helper method to format date display"""
+        if date == today:
+            return "Today Result"
+        elif date == today - timedelta(days=1):
+            return "Yesterday Result"
+        else:
+            return f"{date.strftime('%d %b %Y')} Result"
+
+
+class CombinedResultsAPIView(APIView):
+    """
+    API endpoint that returns both today's and previous days' results in one call
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        days_back = int(request.query_params.get('days', 7))
+        today = timezone.now().date()
+        start_date = today - timedelta(days=days_back)
+        
+        # Get all draws including today
+        draws = LotteryDraw.objects.filter(
+            draw_date__gte=start_date,
+            result_declared=True
+        ).select_related('lottery_type').prefetch_related(
+            'first_prize', 'consolation_prizes'
+        ).order_by('-draw_date', '-draw_number')
+        
+        if not draws.exists():
+            return Response({
+                "status": "success",
+                "message": "No results available",
+                "data": []
+            })
+        
+        # Group results by date
+        grouped_results = {}
+        
+        for draw in draws:
+            date_key = draw.draw_date.isoformat()
+            
+            if date_key not in grouped_results:
+                # Determine date display
+                if draw.draw_date == today:
+                    date_display = "Today Result"
+                elif draw.draw_date == today - timedelta(days=1):
+                    date_display = "Yesterday Result"
+                else:
+                    date_display = f"{draw.draw_date.strftime('%d %b %Y')} Result"
+                
+                grouped_results[date_key] = {
+                    "date": draw.draw_date.isoformat(),
+                    "date_display": date_display,
+                    "is_today": draw.draw_date == today,
+                    "results": []
+                }
+            
+            # Build lottery result data
+            lottery_name = f"{draw.lottery_type.name} {draw.lottery_type.code} {draw.draw_number}"
+            
+            first_prize_data = None
+            if hasattr(draw, 'first_prize') and draw.first_prize:
+                first_prize_data = {
+                    "amount": int(draw.first_prize.amount),
+                    "amount_display": f"Rs {int(draw.first_prize.amount)}/-",
+                    "amount_lakhs": f"[{int(draw.first_prize.amount) // 100000} Lakhs]",
+                    "ticket_number": draw.first_prize.ticket_number,
+                    "place": draw.first_prize.place
+                }
+            
+            consolation_prizes = []
+            for prize in draw.consolation_prizes.all():
+                consolation_prizes.append({
+                    "ticket_number": prize.ticket_number,
+                    "amount": int(prize.amount)
+                })
+            
+            consolation_rows = []
+            for i in range(0, len(consolation_prizes), 3):
+                row = consolation_prizes[i:i+3]
+                consolation_rows.append(row)
+            
+            result_item = {
+                "lottery_name": lottery_name,
+                "lottery_type": draw.lottery_type.name,
+                "lottery_code": draw.lottery_type.code,
+                "draw_number": draw.draw_number,
+                "is_new": draw.draw_date == today,
+                "first_prize": first_prize_data,
+                "consolation_prizes": consolation_prizes,
+                "consolation_rows": consolation_rows,
+                "consolation_amount": 8000 if consolation_prizes else 0,
+                "draw_date": draw.draw_date.isoformat()
+            }
+            
+            grouped_results[date_key]["results"].append(result_item)
+        
+        # Convert to list and sort by date
+        result_list = list(grouped_results.values())
+        result_list.sort(key=lambda x: x['date'], reverse=True)
+        
+        return Response({
+            "status": "success",
+            "data": result_list,
+            "total_dates": len(result_list),
+            "total_results": sum(len(group["results"]) for group in result_list)
+        })
+
+
+# Simple function-based view for basic today's result
+@csrf_exempt
+def today_result_simple(request):
+    """Simple function-based view for today's results"""
+    today = timezone.now().date()
+    
+    draws = LotteryDraw.objects.filter(
+        draw_date=today,
+        result_declared=True
+    ).select_related('lottery_type').prefetch_related('first_prize', 'consolation_prizes')
+    
+    results = []
+    for draw in draws:
+        lottery_name = f"{draw.lottery_type.name} {draw.lottery_type.code} {draw.draw_number}"
+        
+        first_prize = None
+        if hasattr(draw, 'first_prize') and draw.first_prize:
+            first_prize = {
+                "ticket_number": draw.first_prize.ticket_number,
+                "place": draw.first_prize.place,
+                "amount": int(draw.first_prize.amount)
+            }
+        
+        consolation_prizes = [
+            {"ticket_number": prize.ticket_number, "amount": int(prize.amount)}
+            for prize in draw.consolation_prizes.all()
+        ]
+        
+        results.append({
+            "lottery_name": lottery_name,
+            "winner_list_title": f"{lottery_name} Winner List",
+            "first_prize": first_prize,
+            "consolation_prizes": consolation_prizes,
+            "is_new": True
+        })
+    
+    return JsonResponse({
+        "status": "success",
+        "date_display": "Today Result",
+        "results": results
+    })
 
 
 class LotteryResultsView(APIView):
