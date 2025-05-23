@@ -38,9 +38,9 @@ class TodayResultAPIView(APIView):
             return Response({
                 "status": "success",
                 "message": "No results available for today",
-                "data": [],
                 "date": today.isoformat(),
-                "date_display": "Today Result"
+                "date_display": "Today Result",
+                "data": [],
             })
         
         results = []
