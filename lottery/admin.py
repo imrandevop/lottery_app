@@ -189,6 +189,7 @@ class FifthPrizeInline(admin.TabularInline):
     model = FifthPrize
     extra = 1
     
+    
 class ConsolationPrizeInline(admin.TabularInline):
     model = ConsolationPrize
     extra = 1
@@ -253,8 +254,8 @@ class LotteryDrawAdmin(admin.ModelAdmin):
     search_fields = ('draw_number', 'lottery_type__name')
     
     inlines = [
-        FirstPrizeInline, SecondPrizeInline, ThirdPrizeInline, FourthPrizeInline,
-        FifthPrizeInline, ConsolationPrizeInline, SixthPrizeInline, SeventhPrizeInline,
+        FirstPrizeInline, ConsolationPrizeInline, SecondPrizeInline, ThirdPrizeInline, FourthPrizeInline,
+        FifthPrizeInline,  SixthPrizeInline, SeventhPrizeInline,
         EighthPrizeInline, NinthPrizeInline, TenthPrizeInline
     ]
     

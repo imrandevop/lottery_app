@@ -1,39 +1,4 @@
-# from django.contrib import admin
-# from django.urls import reverse
 
-# class LotteryAppAdminSite(admin.AdminSite):
-#     site_header = 'Lottery Administration'
-#     site_title = 'Lottery Admin'
-#     index_title = 'Kerala Lottery Management'
-    
-#     def get_app_list(self, request):
-#         app_list = super().get_app_list(request)
-#         # Add custom action buttons to the app list
-#         for app in app_list:
-#             if app['app_label'] == 'lottery':
-#                 app['custom_actions'] = [
-#                     {
-#                         'name': 'Add Lottery Result',
-#                         'url': reverse('lottery_admin:add_lottery_result'),
-#                         'description': 'Add a new lottery draw result with winners'
-#                     }
-#                 ]
-#         return app_list
-    
-#     def index(self, request, extra_context=None):
-#         extra_context = extra_context or {}
-#         extra_context['custom_actions'] = [
-#             {
-#                 'name': 'Add Lottery Result',
-#                 'url': reverse('lottery_admin:add_lottery_result'),
-#                 'description': 'Add a new lottery draw result with winners',
-#                 'icon': 'icon-plus'
-#             }
-#         ]
-#         return super().index(request, extra_context)
-
-# # Create an instance of the custom admin site
-# lottery_admin_site = LotteryAppAdminSite(name='lottery_admin')
 
 from django.contrib.admin import AdminSite
 
