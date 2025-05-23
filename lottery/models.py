@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+import uuid
 
 class LotteryType(models.Model):
     name = models.CharField(max_length=100)  # e.g., "SUVARNA KERALAM"
@@ -19,6 +20,8 @@ class LotteryType(models.Model):
         verbose_name_plural = "Lotteries"
 
 class LotteryDraw(models.Model):
+    # Simple unique ID for results
+    result_id = models.CharField(max_length=12, unique=True, blank=True, null=True)
     lottery_type = models.ForeignKey(LotteryType, on_delete=models.CASCADE, related_name='draws')
     draw_number = models.IntegerField()
     draw_date = models.DateField()
@@ -32,6 +35,12 @@ class LotteryDraw(models.Model):
     
     def __str__(self):
         return f"{self.lottery_type.name} {self.lottery_type.code}-{self.draw_number}"
+    
+    def save(self, *args, **kwargs):
+        if not self.result_id:
+            # Generate simple unique ID: LT + 10 digits
+            self.result_id = f"LT{str(uuid.uuid4().int)[:10]}"
+        super().save(*args, **kwargs)
     
     @property
     def draw_code(self):

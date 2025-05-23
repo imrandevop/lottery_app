@@ -84,7 +84,7 @@ class LotteryResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = LotteryDraw
         fields = [
-            'id', 'lottery_type', 'draw_number', 'draw_date', 'result_declared',
+            'id', 'result_id', 'lottery_type', 'draw_number', 'draw_date', 'result_declared',
             'first_prize', 'second_prize', 'third_prize', 'fourth_prize',
             'fifth_prizes', 'consolation_prizes', 'sixth_prizes', 
             'seventh_prizes', 'eighth_prizes', 'ninth_prizes', 'tenth_prizes'
