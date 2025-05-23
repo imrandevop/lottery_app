@@ -38,9 +38,9 @@ class TodayResultAPIView(APIView):
             return Response({
                 "status": "success",
                 "message": "No results available for today",
-                "date": today.isoformat(),
-                "date_display": "Today Result",
                 "data": [],
+                "date": today.isoformat(),
+                "date_display": "Today Result"
             })
         
         results = []
@@ -60,15 +60,15 @@ class TodayResultAPIView(APIView):
                     "place": draw.first_prize.place
                 }
             
-            # Get consolation prizes
+            # Get consolation prizes (limit to 6 as shown in image)
             consolation_prizes = []
-            for prize in draw.consolation_prizes.all()[:6]:
+            for prize in draw.consolation_prizes.all()[:6]:  # Limit to 6 prizes
                 consolation_prizes.append({
                     "ticket_number": prize.ticket_number,
                     "amount": int(prize.amount)
                 })
             
-            # Group consolation prizes in sets of 3 for display (as shown in image)
+            # Group consolation prizes in sets of 3 for display (2 rows × 3 columns as shown in image)
             consolation_rows = []
             for i in range(0, len(consolation_prizes), 3):
                 row = consolation_prizes[i:i+3]
@@ -175,15 +175,15 @@ class PreviousDaysResultAPIView(APIView):
                     "place": draw.first_prize.place
                 }
             
-            # Get consolation prizes
+            # Get consolation prizes (limit to 6 as shown in image)
             consolation_prizes = []
-            for prize in draw.consolation_prizes.all():
+            for prize in draw.consolation_prizes.all()[:6]:  # Limit to 6 prizes
                 consolation_prizes.append({
                     "ticket_number": prize.ticket_number,
                     "amount": int(prize.amount)
                 })
             
-            # Group consolation prizes in rows of 3
+            # Group consolation prizes in rows of 3 (2 rows × 3 columns as shown in image)
             consolation_rows = []
             for i in range(0, len(consolation_prizes), 3):
                 row = consolation_prizes[i:i+3]
@@ -288,7 +288,7 @@ class CombinedResultsAPIView(APIView):
                 }
             
             consolation_prizes = []
-            for prize in draw.consolation_prizes.all():
+            for prize in draw.consolation_prizes.all()[:6]:  # Limit to 6 prizes
                 consolation_prizes.append({
                     "ticket_number": prize.ticket_number,
                     "amount": int(prize.amount)
@@ -351,7 +351,7 @@ def today_result_simple(request):
         
         consolation_prizes = [
             {"ticket_number": prize.ticket_number, "amount": int(prize.amount)}
-            for prize in draw.consolation_prizes.all()
+            for prize in draw.consolation_prizes.all()[:6]  # Limit to 6 prizes
         ]
         
         results.append({
