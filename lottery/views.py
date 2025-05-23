@@ -301,6 +301,7 @@ class CombinedResultsAPIView(APIView):
                 consolation_rows.append(row)
             
             result_item = {
+                "result_id": draw.result_id,
                 "lottery_name": lottery_name,
                 "lottery_type": draw.lottery_type.name,
                 "lottery_code": draw.lottery_type.code,
