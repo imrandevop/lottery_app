@@ -91,8 +91,8 @@ class TodayResultAPIView(APIView):
         
         return Response({
             "status": "success",
-            "data": results,
             "date": today.isoformat(),
+            "data": results,
             "date_display": "Today Result",
             "total_results": len(results)
         })
@@ -144,8 +144,9 @@ class PreviousDaysResultAPIView(APIView):
             return Response({
                 "status": "success",
                 "message": "No results available for the specified period",
+                "date_display": date_display,
                 "data": [],
-                "date_display": date_display
+                
             })
         
         # Group results by date
@@ -210,9 +211,9 @@ class PreviousDaysResultAPIView(APIView):
         
         return Response({
             "status": "success",
+            "total_dates": len(result_list),
             "data": result_list,
             "date_display": date_display,
-            "total_dates": len(result_list),
             "total_results": sum(len(group["results"]) for group in result_list)
         })
     
@@ -320,8 +321,8 @@ class CombinedResultsAPIView(APIView):
         
         return Response({
             "status": "success",
-            "data": result_list,
             "total_dates": len(result_list),
+            "data": result_list,
             "total_results": sum(len(group["results"]) for group in result_list)
         })
 
