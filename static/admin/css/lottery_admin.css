@@ -1,0 +1,481 @@
+/* Lottery Admin Form Styles */
+
+/* Main header styling */
+.lottery-header {
+    background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+    color: white;
+    padding: 20px;
+    margin: 0 -20px 30px -20px;
+    border-radius: 0 0 12px 12px;
+    font-weight: 600;
+    text-align: center;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(0, 74, 173, 0.2);
+}
+
+/* Preview button in top right */
+.preview-button-container {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    z-index: 1000;
+}
+
+.preview-toggle-btn {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.preview-toggle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(40, 167, 69, 0.4);
+}
+
+/* Form sections */
+.form-section {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e9ecef;
+}
+
+.section-title {
+    background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+    color: white;
+    padding: 16px 20px;
+    margin: -24px -24px 20px -24px;
+    border-radius: 12px 12px 0 0;
+    font-weight: 600;
+    font-size: 18px;
+    text-align: center;
+}
+
+/* Prize sections */
+.prize-section,
+.prize-container {
+    background: white;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e9ecef;
+    overflow: hidden;
+}
+
+.prize-header,
+.prize-title {
+    background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+    color: white;
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+}
+
+.prize-amount {
+    background: #f8f9fa;
+    color: #495057;
+    padding: 12px 20px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 16px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.prize-content {
+    padding: 20px;
+}
+
+.prize-ticket {
+    text-align: center;
+    padding: 20px;
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #004aad;
+    letter-spacing: 2px;
+}
+
+.prize-place {
+    text-align: center;
+    color: #6c757d;
+    margin-top: -10px;
+    padding-bottom: 20px;
+    font-weight: 500;
+}
+
+/* Input styling */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.form-control:focus {
+    border-color: #004aad;
+    box-shadow: 0 0 0 3px rgba(0, 74, 173, 0.1);
+    outline: none;
+}
+
+.form-control.ticket-number {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.form-control.place {
+    text-transform: uppercase;
+}
+
+/* Toggle switch styling */
+.toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: #ccc;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.toggle-switch.active {
+    background: #004aad;
+}
+
+.toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch.active .toggle-slider {
+    transform: translateX(30px);
+}
+
+.toggle-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Entry mode styling */
+.entry-mode {
+    display: none;
+    animation: fadeInUp 0.3s ease;
+}
+
+.entry-mode.active {
+    display: block;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Bulk entry styling */
+.bulk-entry textarea {
+    min-height: 120px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Normal entry styling */
+.normal-entry {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.entry-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    position: relative;
+}
+
+.add-entry-btn {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.add-entry-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.remove-entry-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Tables */
+.consolation-table,
+.minor-prize-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+}
+
+.consolation-table td,
+.minor-prize-table td {
+    border: 1px solid #dee2e6;
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 600;
+    color: #495057;
+}
+
+.minor-prize-table tr:nth-child(even) td {
+    background-color: #f8f9fa;
+}
+
+/* Preview container */
+.lottery-preview {
+    display: none;
+    margin-top: 20px;
+    border: 2px solid #004aad;
+    border-radius: 12px;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.lottery-preview.show {
+    display: block;
+    animation: fadeInUp 0.3s ease;
+}
+
+/* Draw information */
+.draw-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.draw-info-item {
+    text-align: center;
+}
+
+.draw-info-label {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-bottom: 4px;
+}
+
+.draw-info-value {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Submit button styling */
+.submit-row {
+    position: fixed;
+    bottom: 0;
+    left: 320px;
+    right: 0;
+    background: white;
+    padding: 16px 24px;
+    z-index: 1000;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
+    border-top: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#content {
+    padding-bottom: 80px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 74, 173, 0.3);
+}
+
+.submit-row input[type="submit"], 
+.submit-row a.deletelink {
+    border-radius: 8px;
+    border: none;
+    padding: 12px 24px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.submit-row input.default {
+    background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+    color: white;
+}
+
+.submit-row input[type="submit"] {
+    background: linear-gradient(135deg, #417690 0%, #5a9fd4 100%);
+    color: white;
+}
+
+.submit-row input[type="submit"]:hover,
+.submit-row input.default:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 74, 173, 0.3);
+}
+
+.submit-row a.deletelink {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    margin-left: auto;
+}
+
+.submit-row a.deletelink:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(220, 53, 69, 0.3);
+    color: white;
+}
+
+/* Help text styling */
+.help-text {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+/* Two column layout for form fields */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.form-row.single {
+    grid-template-columns: 1fr;
+}
+
+/* Consolation prizes special styling */
+.consolation-note {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    color: #1565c0;
+}
+
+.consolation-note strong {
+    display: block;
+    margin-bottom: 8px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .submit-row {
+        left: 0;
+        padding: 12px 16px;
+    }
+    
+    .preview-button-container {
+        position: static;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    
+    .lottery-header {
+        margin: 0 -16px 20px -16px;
+        font-size: 20px;
+    }
+    
+    .draw-info {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+}

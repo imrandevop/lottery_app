@@ -1,0 +1,27 @@
+/* Hide authentication section completely */
+.app-auth {
+    display: none !important;
+}
+
+/* Style changes for add buttons */
+.addlink {
+    padding: 8px 15px;
+    background: #417690;
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.addlink:hover {
+    background: #205067;
+}
+
+/* Optional: Improve overall admin styling */
+#header {
+    background: #417690;
+    color: white;
+}
+
+.module h2, .module caption, .inline-group h2 {
+    background: #79aec8;
+}

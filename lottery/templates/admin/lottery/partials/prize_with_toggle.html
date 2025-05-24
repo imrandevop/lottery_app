@@ -1,0 +1,61 @@
+<!-- Path: lottery/templates/admin/lottery/partials/prize_with_toggle.html -->
+<div class="prize-section">
+    <div class="prize-header">
+        <span>{{ prize_name }} Prize</span>
+        <div class="toggle-container">
+            <span class="toggle-label">Normal</span>
+            <div class="toggle-switch" onclick="toggleEntryMode('{{ prize_key }}')">
+                <div class="toggle-slider"></div>
+            </div>
+            <span class="toggle-label">Bulk</span>
+        </div>
+    </div>
+    <div class="prize-content">
+        <!-- Normal Entry Mode -->
+        <div id="{{ prize_key }}-normal" class="entry-mode active">
+            <div class="normal-entry">
+                <div class="entry-item" id="{{ prize_key }}-entry-0">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Prize Amount (₹)</label>
+                            <input type="number" name="{{ prize_key }}_amount_0" class="form-control" value="{{ prize_amount }}" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>{% if prize_key == 'sixth' or prize_key == 'seventh' or prize_key == 'eighth' or prize_key == 'ninth' or prize_key == 'tenth' %}Number{% else %}Ticket Number{% endif %}</label>
+                            <input type="text" name="{{ prize_key }}_ticket_0" class="form-control ticket-number" maxlength="20">
+                        </div>
+                    </div>
+                    {% if prize_key == 'fourth' or prize_key == 'fifth' %}
+                    <div class="form-row single">
+                        <div class="form-group">
+                            <label>Place</label>
+                            <input type="text" name="{{ prize_key }}_place_0" class="form-control place" maxlength="100">
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <button type="button" class="add-entry-btn" onclick="addEntry('{{ prize_key }}')">+ Add Another Entry</button>
+            </div>
+        </div>
+        
+        <!-- Bulk Entry Mode -->
+        <div id="{{ prize_key }}-bulk" class="entry-mode bulk-entry">
+            <div class="form-group">
+                <label>Prize Amount (₹)</label>
+                <input type="number" name="{{ prize_key }}_bulk_amount" class="form-control" value="{{ prize_amount }}" step="1">
+            </div>
+            <div class="form-group">
+                <label>Bulk Results</label>
+                <textarea name="{{ prize_key }}_bulk_results" class="form-control" rows="6" 
+                          placeholder="{% if prize_key == 'fourth' or prize_key == 'fifth' %}Format: TICKET_NUMBER PLACE&#10;RX123456 GURUVAYOOR&#10;RY789012 THIRUVANANTHAPURAM{% else %}Format: NUMBER&#10;1234&#10;5678&#10;9012{% endif %}"></textarea>
+                <div class="help-text">
+                    {% if prize_key == 'fourth' or prize_key == 'fifth' %}
+                        Enter one result per line. Format: TICKET_NUMBER PLACE
+                    {% else %}
+                        Enter one number per line
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

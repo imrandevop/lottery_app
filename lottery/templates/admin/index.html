@@ -1,0 +1,195 @@
+<!-- Path: lottery/templates/admin/index.html -->
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #004aad;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            font-size: 1.1em;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .quick-actions {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+        }
+        
+        .quick-actions h3 {
+            color: #004aad;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        
+        .action-btn {
+            background: linear-gradient(135deg, #004aad 0%, #0066cc 100%);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            text-align: center;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 74, 173, 0.3);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .recent-draws {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+        }
+        
+        .recent-draws h3 {
+            color: #004aad;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .draw-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .draw-item:last-child {
+            border-bottom: none;
+        }
+        
+        .draw-name {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .draw-date {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        
+        .draw-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .status-declared {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <h1>{% trans 'Lottery Administration Dashboard' %}</h1>
+    
+    <!-- Dashboard Stats -->
+    <div class="dashboard-stats">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_lottery_types|default:0 }}</div>
+            <div class="stat-label">Active Lotteries</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_draws_today|default:0 }}</div>
+            <div class="stat-label">Today's Draws</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ recent_draws|length|default:0 }}</div>
+            <div class="stat-label">Recent Results</div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <h3>{% trans 'Quick Actions' %}</h3>
+        <div class="action-buttons">
+            <a href="{% url 'admin:add_lottery_result' %}" class="action-btn">
+                ➕ Add New Result
+            </a>
+            <a href="{% url 'admin:lottery_lotterydraw_changelist' %}" class="action-btn">
+                📋 View All Draws
+            </a>
+            <a href="{% url 'admin:lottery_lotterytype_changelist' %}" class="action-btn">
+                🎲 Manage Lotteries
+            </a>
+        </div>
+    </div>
+    
+    <!-- Recent Draws -->
+    {% if recent_draws %}
+    <div class="recent-draws">
+        <h3>{% trans 'Recent Draws' %}</h3>
+        {% for draw in recent_draws %}
+        <div class="draw-item">
+            <div>
+                <div class="draw-name">{{ draw.full_name }}</div>
+                <div class="draw-date">{{ draw.draw_date|date:"M d, Y" }}</div>
+            </div>
+            <div class="draw-status {% if draw.result_declared %}status-declared{% else %}status-pending{% endif %}">
+                {% if draw.result_declared %}Declared{% else %}Pending{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Original admin content -->
+    {{ block.super }}
+{% endblock %}
