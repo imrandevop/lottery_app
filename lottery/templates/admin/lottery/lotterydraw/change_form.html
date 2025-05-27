@@ -10,13 +10,6 @@
 {% endblock %}
 
 {% block content %}
-    <!-- Preview Button -->
-    <div class="preview-button-container">
-        <button type="button" class="preview-toggle-btn" onclick="togglePreview()">
-            <span id="preview-btn-text">Show Preview</span>
-        </button>
-    </div>
-
     <div class="lottery-header">
         {% if original %}
             Lottery Result - {{ original.full_name }}
@@ -126,7 +119,6 @@
                         {% for prize in original.fifth_prizes.all %}
                             <tr>
                                 <td>{{ prize.ticket_number }}</td>
-                                <td>{{ prize.place }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -197,24 +189,33 @@
             <div class="prize-header">
                 <span>1st Prize</span>
             </div>
-            <div class="prize-amount">₹ 1,00,00,000/-</div>
+
+            <!-- Editable Amount Field -->
+            <div class="form-group prize-amount">
+                <label for="id_firstprize-0-amount">Amount</label>
+                <input type="number" name="firstprize-0-amount" id="id_firstprize-0-amount"
+                    class="form-control" step="0.01"
+                    value="{% if original.first_prize %}{{ original.first_prize.amount }}{% endif %}">
+            </div>
+
             <div class="prize-content">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="id_firstprize-0-ticket_number">Ticket Number</label>
                         <input type="text" name="firstprize-0-ticket_number" id="id_firstprize-0-ticket_number" 
-                               class="form-control ticket-number" maxlength="20" required
-                               value="{% if original.first_prize %}{{ original.first_prize.ticket_number }}{% endif %}">
+                            class="form-control ticket-number" maxlength="20" required
+                            value="{% if original.first_prize %}{{ original.first_prize.ticket_number }}{% endif %}">
                     </div>
                     <div class="form-group">
                         <label for="id_firstprize-0-place">Place</label>
                         <input type="text" name="firstprize-0-place" id="id_firstprize-0-place" 
-                               class="form-control place" maxlength="100"
-                               value="{% if original.first_prize %}{{ original.first_prize.place }}{% endif %}">
+                            class="form-control place" maxlength="100"
+                            value="{% if original.first_prize %}{{ original.first_prize.place }}{% endif %}">
                     </div>
                 </div>
             </div>
         </div>
+
         
         <!-- Consolation Prizes -->
         <div class="prize-section">
@@ -229,7 +230,7 @@
                 <div class="form-group">
                     <label for="consolation_amount">Prize Amount (₹)</label>
                     <input type="number" name="consolation_amount" id="consolation_amount" 
-                           class="form-control" value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.amount }}{% else %}5000{% endif %}" step="1">
+                           class="form-control" value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.amount }}{% endif %}" step="1">
                 </div>
             </div>
         </div>
@@ -239,8 +240,13 @@
             <div class="prize-header">
                 <span>2nd Prize</span>
             </div>
-            <div class="prize-amount">₹ 30,00,000/-</div>
             <div class="prize-content">
+                <div class="form-group">
+                    <label for="id_secondprize-0-amount">Prize Amount (₹)</label>
+                    <input type="number" name="secondprize-0-amount" id="id_secondprize-0-amount"
+                        class="form-control" step="0.01"
+                        value="{% if original.second_prize %}{{ original.second_prize.amount }}{% endif %}">
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="id_secondprize-0-ticket_number">Ticket Number</label>
@@ -258,25 +264,58 @@
             </div>
         </div>
         
-        <!-- Third Prize -->
+        <!-- Third Prize with Toggle -->
         <div class="prize-section">
             <div class="prize-header">
                 <span>3rd Prize</span>
+                <div class="toggle-container">
+                    <span class="toggle-label">Normal</span>
+                    <div class="toggle-switch" onclick="toggleEntryMode('third')">
+                        <div class="toggle-slider"></div>
+                    </div>
+                    <span class="toggle-label">Bulk</span>
+                </div>
             </div>
-            <div class="prize-amount">₹ 25,00,000/-</div>
             <div class="prize-content">
-                <div class="form-row">
+                <!-- Normal Entry Mode -->
+                <div id="third-normal" class="entry-mode active">
+                    <div class="normal-entry">
+                        <div class="entry-item" id="third-entry-0">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Prize Amount (₹)</label>
+                                    <input type="number" name="third_amount_0" class="form-control" 
+                                           value="{% if original.third_prize %}{{ original.third_prize.amount }}{% endif %}" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Ticket Number</label>
+                                    <input type="text" name="third_ticket_0" class="form-control ticket-number" maxlength="20"
+                                           value="{% if original.third_prize %}{{ original.third_prize.ticket_number }}{% endif %}">
+                                </div>
+                            </div>
+                            <div class="form-row single">
+                                <div class="form-group">
+                                    <label>Place</label>
+                                    <input type="text" name="third_place_0" class="form-control place" maxlength="100"
+                                           value="{% if original.third_prize %}{{ original.third_prize.place }}{% endif %}">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="add-entry-btn" onclick="addEntry('third')">+ Add Another Entry</button>
+                    </div>
+                </div>
+                
+                <!-- Bulk Entry Mode -->
+                <div id="third-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
-                        <label for="id_thirdprize-0-ticket_number">Ticket Number</label>
-                        <input type="text" name="thirdprize-0-ticket_number" id="id_thirdprize-0-ticket_number" 
-                               class="form-control ticket-number" maxlength="20" required
-                               value="{% if original.third_prize %}{{ original.third_prize.ticket_number }}{% endif %}">
+                        <label>Prize Amount (₹)</label>
+                        <input type="number" name="third_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
-                        <label for="id_thirdprize-0-place">Place</label>
-                        <input type="text" name="thirdprize-0-place" id="id_thirdprize-0-place" 
-                               class="form-control place" maxlength="100"
-                               value="{% if original.third_prize %}{{ original.third_prize.place }}{% endif %}">
+                        <label>Bulk Results</label>
+                        <textarea name="third_bulk_results" class="form-control" rows="6" 
+                                  placeholder="Format: TICKET_NUMBER PLACE&#10;RX123456 GURUVAYOOR&#10;RY789012 THIRUVANANTHAPURAM"></textarea>
+                        <div class="help-text">Enter one result per line. Format: TICKET_NUMBER PLACE</div>
                     </div>
                 </div>
             </div>
@@ -303,7 +342,7 @@
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
                                     <input type="number" name="fourth_amount_0" class="form-control" 
-                                           value="{% if original.fourth_prize %}{{ original.fourth_prize.amount }}{% else %}1500000{% endif %}" step="1">
+                                           value="{% if original.fourth_prize %}{{ original.fourth_prize.amount }}{% endif %}" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Ticket Number</label>
@@ -327,7 +366,7 @@
                 <div id="fourth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="fourth_bulk_amount" class="form-control" value="1500000" step="1">
+                        <input type="number" name="fourth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Results</label>
@@ -359,17 +398,11 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="fifth_amount_0" class="form-control" value="100000" step="1">
+                                    <input type="number" name="fifth_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Ticket Number</label>
                                     <input type="text" name="fifth_ticket_0" class="form-control ticket-number" maxlength="20">
-                                </div>
-                            </div>
-                            <div class="form-row single">
-                                <div class="form-group">
-                                    <label>Place</label>
-                                    <input type="text" name="fifth_place_0" class="form-control place" maxlength="100">
                                 </div>
                             </div>
                         </div>
@@ -381,13 +414,13 @@
                 <div id="fifth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="fifth_bulk_amount" class="form-control" value="100000" step="1">
+                        <input type="number" name="fifth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Results</label>
                         <textarea name="fifth_bulk_results" class="form-control" rows="6" 
-                                  placeholder="Format: TICKET_NUMBER PLACE&#10;RX123456 GURUVAYOOR&#10;RY789012 THIRUVANANTHAPURAM"></textarea>
-                        <div class="help-text">Enter one result per line. Format: TICKET_NUMBER PLACE</div>
+                                  placeholder="Format: TICKET_NUMBER&#10;RX123456&#10;RY789012"></textarea>
+                        <div class="help-text">Enter one ticket number per line</div>
                     </div>
                 </div>
             </div>
@@ -413,7 +446,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="sixth_amount_0" class="form-control" value="5000" step="1">
+                                    <input type="number" name="sixth_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Number</label>
@@ -429,7 +462,7 @@
                 <div id="sixth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="sixth_bulk_amount" class="form-control" value="5000" step="1">
+                        <input type="number" name="sixth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Numbers</label>
@@ -461,7 +494,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="seventh_amount_0" class="form-control" value="1000" step="1">
+                                    <input type="number" name="seventh_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Number</label>
@@ -477,7 +510,7 @@
                 <div id="seventh-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="seventh_bulk_amount" class="form-control" value="1000" step="1">
+                        <input type="number" name="seventh_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Numbers</label>
@@ -509,7 +542,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="eighth_amount_0" class="form-control" value="500" step="1">
+                                    <input type="number" name="eighth_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Number</label>
@@ -525,7 +558,7 @@
                 <div id="eighth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="eighth_bulk_amount" class="form-control" value="500" step="1">
+                        <input type="number" name="eighth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Numbers</label>
@@ -557,7 +590,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="ninth_amount_0" class="form-control" value="100" step="1">
+                                    <input type="number" name="ninth_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Number</label>
@@ -573,7 +606,7 @@
                 <div id="ninth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="ninth_bulk_amount" class="form-control" value="100" step="1">
+                        <input type="number" name="ninth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Numbers</label>
@@ -605,7 +638,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Prize Amount (₹)</label>
-                                    <input type="number" name="tenth_amount_0" class="form-control" value="50" step="1">
+                                    <input type="number" name="tenth_amount_0" class="form-control" step="1">
                                 </div>
                                 <div class="form-group">
                                     <label>Number</label>
@@ -621,7 +654,7 @@
                 <div id="tenth-bulk" class="entry-mode bulk-entry">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="tenth_bulk_amount" class="form-control" value="50" step="1">
+                        <input type="number" name="tenth_bulk_amount" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>Bulk Numbers</label>
@@ -633,7 +666,11 @@
             </div>
         </div>
         
-        <div class="submit-row">
+        <!-- Fixed Bottom Action Bar -->
+        <div class="bottom-action-bar">
+            <button type="button" class="preview-toggle-btn" onclick="togglePreview()">
+                <span id="preview-btn-text">Show Preview</span>
+            </button>
             <input type="submit" value="{% if original %}Save Changes{% else %}Save Lottery Results{% endif %}" class="btn-primary" name="_save">
             {% if original %}
                 <a href="{% url opts|admin_urlname:'delete' original.pk|admin_urlquote %}" class="deletelink">Delete</a>
@@ -654,6 +691,7 @@
         const djangoData = JSON.parse(document.getElementById('django-data').textContent);
 
         let entryCounters = {
+            third: 1,
             fourth: 1,
             fifth: 1,
             sixth: 1,
@@ -687,7 +725,7 @@
             newEntry.className = 'entry-item';
             newEntry.id = `${prize}-entry-${entryCount}`;
             
-            const hasPlace = ['fourth', 'fifth'].includes(prize);
+            const hasPlace = ['third', 'fourth'].includes(prize);
             const fieldLabel = ['sixth', 'seventh', 'eighth', 'ninth', 'tenth'].includes(prize) ? 'Number' : 'Ticket Number';
             const maxLength = ['sixth', 'seventh', 'eighth', 'ninth', 'tenth'].includes(prize) ? '4' : '20';
             
@@ -696,7 +734,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Prize Amount (₹)</label>
-                        <input type="number" name="${prize}_amount_${entryCount}" class="form-control" value="${getDefaultAmount(prize)}" step="1">
+                        <input type="number" name="${prize}_amount_${entryCount}" class="form-control" step="1">
                     </div>
                     <div class="form-group">
                         <label>${fieldLabel}</label>
@@ -724,19 +762,6 @@
 
         function removeEntry(entryId) {
             document.getElementById(entryId).remove();
-        }
-
-        function getDefaultAmount(prize) {
-            const amounts = {
-                fourth: '1500000',
-                fifth: '100000',
-                sixth: '5000',
-                seventh: '1000',
-                eighth: '500',
-                ninth: '100',
-                tenth: '50'
-            };
-            return amounts[prize] || '0';
         }
 
         function togglePreview() {
