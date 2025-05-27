@@ -155,31 +155,49 @@
     <form {% if has_file_field %}enctype="multipart/form-data" {% endif %}action="{{ form_url }}" method="post" id="{{ opts.model_name }}_form" novalidate>
         {% csrf_token %}
         
-        <!-- Lottery Draw Information -->
+        <!-- Lottery Selection and Draw Information -->
         <div class="form-section">
-            <div class="section-title">Lottery Draw Information</div>
+            <div class="section-title">Lottery Selection & Draw Information</div>
             <div class="form-row">
+                <div class="form-group">
+                    <label for="id_lottery_selection">Select Lottery</label>
+                    <select name="lottery_selection" id="id_lottery_selection" class="form-control" required>
+                        <option value="">Choose a lottery...</option>
+                        <option value="weekly_lottery" {% if original.lottery_type.code == 'weekly_lottery' %}selected{% endif %}>Weekly Lottery</option>
+                        <option value="bumper_lottery" {% if original.lottery_type.code == 'bumper_lottery' %}selected{% endif %}>Bumper Lottery</option>
+                        <option value="monthly_lottery" {% if original.lottery_type.code == 'monthly_lottery' %}selected{% endif %}>Monthly Lottery</option>
+                        <option value="special_lottery" {% if original.lottery_type.code == 'special_lottery' %}selected{% endif %}>Special Lottery</option>
+                        <option value="festival_lottery" {% if original.lottery_type.code == 'festival_lottery' %}selected{% endif %}>Festival Lottery</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     {{ form.lottery_type.label_tag }}
                     {{ form.lottery_type|add_class:"form-control" }}
                     {{ form.lottery_type.errors }}
                 </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     {{ form.draw_number.label_tag }}
                     {{ form.draw_number|add_class:"form-control" }}
                     {{ form.draw_number.errors }}
                 </div>
-            </div>
-            <div class="form-row">
                 <div class="form-group">
                     {{ form.draw_date.label_tag }}
                     {{ form.draw_date|add_class:"form-control" }}
                     {{ form.draw_date.errors }}
                 </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     {{ form.result_declared.label_tag }}
                     {{ form.result_declared|add_class:"form-control" }}
                     {{ form.result_declared.errors }}
+                </div>
+                <div class="form-group">
+                    <label for="id_save_to_lottery">Save Draw to Selected Lottery</label>
+                    <input type="checkbox" name="save_to_lottery" id="id_save_to_lottery" class="form-control-check" checked>
+                    <span class="help-text">Check to save this draw to the selected lottery series</span>
                 </div>
             </div>
         </div>
@@ -217,20 +235,71 @@
         </div>
 
         
-        <!-- Consolation Prizes -->
+        <!-- Consolation Prizes with Toggle -->
         <div class="prize-section">
             <div class="prize-header">
                 <span>Consolation Prize</span>
+                <div class="toggle-container">
+                    <span class="toggle-label">Normal</span>
+                    <div class="toggle-switch" onclick="toggleEntryMode('consolation')">
+                        <div class="toggle-slider"></div>
+                    </div>
+                    <span class="toggle-label">Bulk</span>
+                </div>
             </div>
             <div class="prize-content">
-                <div class="consolation-note">
-                    <strong>Auto-Generated from First Prize</strong>
-                    These prizes will be automatically created using the first prize number with different series (RA, RB, RC, etc.).
+                <!-- Normal Entry Mode -->
+                <div id="consolation-normal" class="entry-mode active">
+                    <div class="consolation-note">
+                        <strong>Manual Entry Mode</strong>
+                        Enter each consolation prize ticket number and amount individually.
+                    </div>
+                    <div class="normal-entry">
+                        <div class="entry-item" id="consolation-entry-0">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Prize Amount (₹)</label>
+                                    <input type="number" name="consolation_amount_0" class="form-control" 
+                                           value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.amount }}{% endif %}" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Ticket Number</label>
+                                    <input type="text" name="consolation_ticket_0" class="form-control ticket-number" maxlength="20"
+                                           value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.ticket_number }}{% endif %}">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="add-entry-btn" onclick="addEntry('consolation')">+ Add Another Entry</button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="consolation_amount">Prize Amount (₹)</label>
-                    <input type="number" name="consolation_amount" id="consolation_amount" 
-                           class="form-control" value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.amount }}{% endif %}" step="1">
+                
+                <!-- Bulk Entry Mode -->
+                <div id="consolation-bulk" class="entry-mode bulk-entry">
+                    <div class="consolation-note">
+                        <strong>Auto-Generated from First Prize</strong>
+                        These prizes will be automatically created using the first prize number with different series (RA, RB, RC, etc.).
+                    </div>
+                    <div class="form-group">
+                        <label for="consolation_bulk_amount">Prize Amount (₹)</label>
+                        <input type="number" name="consolation_bulk_amount" id="consolation_bulk_amount" 
+                               class="form-control" value="{% if original.consolation_prizes.first %}{{ original.consolation_prizes.first.amount }}{% endif %}" step="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Auto-Generate Options</label>
+                        <div class="auto-generate-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="auto_generate_consolation" checked> 
+                                Auto-generate from First Prize
+                            </label>
+                            <div class="help-text">If checked, consolation prizes will be generated automatically using first prize number with series prefixes (RA, RB, RC, RD, RE, RF, RG, RH, RJ, RK)</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Manual Bulk Entry (Optional)</label>
+                        <textarea name="consolation_bulk_results" class="form-control" rows="6" 
+                                  placeholder="Format: TICKET_NUMBER&#10;RX123456&#10;RY789012&#10;RZ345678"></textarea>
+                        <div class="help-text">Enter one ticket number per line. This will override auto-generation if provided.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -691,6 +760,7 @@
         const djangoData = JSON.parse(document.getElementById('django-data').textContent);
 
         let entryCounters = {
+            consolation: 1,
             third: 1,
             fourth: 1,
             fifth: 1,
@@ -777,6 +847,24 @@
             }
         }
 
+        // Handle lottery selection changes
+        function handleLotterySelection() {
+            const lotterySelect = document.getElementById('id_lottery_selection');
+            const saveToLotteryCheckbox = document.getElementById('id_save_to_lottery');
+            
+            if (lotterySelect) {
+                lotterySelect.addEventListener('change', function() {
+                    const selectedLottery = this.value;
+                    if (selectedLottery) {
+                        saveToLotteryCheckbox.checked = true;
+                        // You can add logic here to auto-populate draw numbers or other fields
+                        // based on the selected lottery type
+                        console.log('Selected lottery:', selectedLottery);
+                    }
+                });
+            }
+        }
+
         // Auto-format ticket numbers and places
         document.addEventListener('input', function(e) {
             if (e.target.classList.contains('ticket-number')) {
@@ -789,15 +877,34 @@
 
         // Form validation before submit
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize lottery selection handler
+            handleLotterySelection();
+            
             const form = document.getElementById(djangoData.modelName + '_form');
             if (form) {
                 form.addEventListener('submit', function(e) {
                     // Basic validation
+                    const lotterySelect = document.getElementById('id_lottery_selection');
+                    if (lotterySelect && !lotterySelect.value.trim()) {
+                        alert('Please select a lottery type');
+                        e.preventDefault();
+                        lotterySelect.focus();
+                        return false;
+                    }
+                    
                     const firstPrizeTicket = document.getElementById('id_firstprize-0-ticket_number');
                     if (firstPrizeTicket && !firstPrizeTicket.value.trim()) {
                         alert('Please enter the First Prize ticket number');
                         e.preventDefault();
                         firstPrizeTicket.focus();
+                        return false;
+                    }
+                    
+                    const firstPrizeAmount = document.getElementById('id_firstprize-0-amount');
+                    if (firstPrizeAmount && (!firstPrizeAmount.value || firstPrizeAmount.value <= 0)) {
+                        alert('Please enter a valid First Prize amount');
+                        e.preventDefault();
+                        firstPrizeAmount.focus();
                         return false;
                     }
                     

@@ -410,7 +410,43 @@
     color: white;
 }
 
-/* Help text styling */
+/* Checkbox styling */
+.form-control-check {
+    width: auto;
+    margin-right: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 8px;
+    width: 16px;
+    height: 16px;
+}
+
+.auto-generate-options {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+/* Lottery selection styling */
+.form-group select.form-control {
+    background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23666' d='M2 0L0 2h4zm0 5L0 3h4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    padding-right: 40px;
+    appearance: none;
+}
 .help-text {
     font-size: 12px;
     color: #6c757d;
