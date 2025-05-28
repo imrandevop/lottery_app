@@ -27,8 +27,30 @@ class LotteryResultForm(forms.ModelForm):
         model = LotteryDraw
         fields = ('lottery_type', 'draw_number', 'draw_date', 'result_declared')
         widgets = {
-            'draw_date': forms.DateInput(attrs={'type': 'date'}),
+            'draw_date': forms.DateInput(attrs={
+                'type': 'date',
+                'class': 'form-control'
+            }),
+            'lottery_type': forms.Select(attrs={
+                'class': 'form-control'
+            }),
+            'draw_number': forms.TextInput(attrs={
+                'class': 'form-control'
+            }),
+            'result_declared': forms.CheckboxInput(attrs={
+                'class': 'form-control'
+            }),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ensure all fields have the form-control class
+        for field_name, field in self.fields.items():
+            if 'class' not in field.widget.attrs:
+                field.widget.attrs['class'] = 'form-control'
+            else:
+                if 'form-control' not in field.widget.attrs['class']:
+                    field.widget.attrs['class'] += ' form-control'
 
 class LotteryDrawAdmin(admin.ModelAdmin):
     form = LotteryResultForm
@@ -65,41 +87,48 @@ class LotteryDrawAdmin(admin.ModelAdmin):
                 # Process First Prize
                 first_prize_ticket = request.POST.get('firstprize-0-ticket_number', '').strip().upper()
                 first_prize_place = request.POST.get('firstprize-0-place', '').strip().upper()
+                first_prize_amount = request.POST.get('firstprize-0-amount', '')
                 
                 if first_prize_ticket:
                     FirstPrize.objects.create(
                         draw=lottery_draw,
                         ticket_number=first_prize_ticket,
                         place=first_prize_place,
-                        amount=10000000.00  # ₹1,00,00,000/-
+                        amount=float(first_prize_amount) if first_prize_amount else 10000000.00
                     )
                     
-                    # Create consolation prizes
-                    consolation_amount = float(request.POST.get('consolation_amount', 5000))
-                    self._create_consolation_prizes(lottery_draw, first_prize_ticket, consolation_amount)
+                    # Check if auto-generate consolation is enabled
+                    if request.POST.get('auto_generate_consolation'):
+                        consolation_amount = float(request.POST.get('consolation_bulk_amount', 5000))
+                        self._create_consolation_prizes(lottery_draw, first_prize_ticket, consolation_amount)
+                    else:
+                        # Process manual consolation entries
+                        self._process_consolation_prizes(request, lottery_draw)
                 
                 # Process Second Prize
                 second_prize_ticket = request.POST.get('secondprize-0-ticket_number', '').strip().upper()
                 second_prize_place = request.POST.get('secondprize-0-place', '').strip().upper()
+                second_prize_amount = request.POST.get('secondprize-0-amount', '')
                 
                 if second_prize_ticket:
                     SecondPrize.objects.create(
                         draw=lottery_draw,
                         ticket_number=second_prize_ticket,
                         place=second_prize_place,
-                        amount=3000000.00  # ₹30,00,000/-
+                        amount=float(second_prize_amount) if second_prize_amount else 3000000.00
                     )
                 
                 # Process Third Prize
                 third_prize_ticket = request.POST.get('thirdprize-0-ticket_number', '').strip().upper()
                 third_prize_place = request.POST.get('thirdprize-0-place', '').strip().upper()
+                third_prize_amount = request.POST.get('thirdprize-0-amount', '')
                 
                 if third_prize_ticket:
                     ThirdPrize.objects.create(
                         draw=lottery_draw,
                         ticket_number=third_prize_ticket,
                         place=third_prize_place,
-                        amount=2500000.00  # ₹25,00,000/-
+                        amount=float(third_prize_amount) if third_prize_amount else 2500000.00
                     )
                 
                 # Process Fourth to Tenth Prizes
@@ -128,9 +157,54 @@ class LotteryDrawAdmin(admin.ModelAdmin):
             'has_change_permission': self.has_change_permission(request),
             'form_url': request.get_full_path(),
             'has_file_field': False,
+            'original': None,  # This indicates it's an add operation
         }
         
-        return render(request, 'admin/lottery/lotterydraw/add_result.html', context)
+        # Use the same template as change_form
+        return render(request, 'admin/lottery/lotterydraw/change_form.html', context)
+    
+    def _process_consolation_prizes(self, request, lottery_draw):
+        """Process manual consolation prize entries"""
+        # Check if bulk entry was used
+        bulk_results = request.POST.get('consolation_bulk_results', '').strip()
+        bulk_amount = request.POST.get('consolation_bulk_amount', '')
+        
+        if bulk_results:
+            # Process bulk entry
+            amount = float(bulk_amount) if bulk_amount else 5000.00
+            
+            for line in bulk_results.split('\n'):
+                line = line.strip()
+                if line:
+                    ticket = line.strip().upper()
+                    if ticket:
+                        ConsolationPrize.objects.create(
+                            draw=lottery_draw,
+                            ticket_number=ticket,
+                            amount=amount
+                        )
+        else:
+            # Process normal entries
+            counter = 0
+            while True:
+                amount_key = f'consolation_amount_{counter}'
+                ticket_key = f'consolation_ticket_{counter}'
+                
+                amount = request.POST.get(amount_key, '').strip()
+                ticket = request.POST.get(ticket_key, '').strip().upper()
+                
+                if not ticket:
+                    break
+                
+                amount_value = float(amount) if amount else 5000.00
+                
+                ConsolationPrize.objects.create(
+                    draw=lottery_draw,
+                    ticket_number=ticket,
+                    amount=amount_value
+                )
+                
+                counter += 1
     
     def _create_consolation_prizes(self, lottery_draw, first_prize_ticket, amount):
         """Create consolation prizes based on first prize ticket"""
@@ -139,13 +213,13 @@ class LotteryDrawAdmin(admin.ModelAdmin):
             winning_number = first_prize_ticket[2:] if len(first_prize_ticket) > 2 else first_prize_ticket
             
             # Common series in Kerala lotteries
-            all_series = ['RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RJ', 'RK', 'RL', 'RM']
+            all_series = ['RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RJ', 'RK']
             
             # Remove the winning series
             if winning_series in all_series:
                 all_series.remove(winning_series)
             
-            # Create consolation prizes
+            # Create consolation prizes (typically 10 prizes)
             for series in all_series:
                 ConsolationPrize.objects.create(
                     draw=lottery_draw,
@@ -173,15 +247,17 @@ class LotteryDrawAdmin(admin.ModelAdmin):
                         place = parts[1].strip().upper() if len(parts) > 1 else ""
                         
                         if ticket:
-                            if hasattr(model_class._meta.get_field('ticket_number'), 'max_length'):
-                                # For models with ticket_number field (Fourth, Fifth prizes)
+                            try:
+                                # Check if model has ticket_number field
+                                model_class._meta.get_field('ticket_number')
+                                # For models with ticket_number field (Third, Fourth, Fifth prizes)
                                 model_class.objects.create(
                                     draw=lottery_draw,
                                     ticket_number=ticket,
                                     place=place,
                                     amount=amount
                                 )
-                            else:
+                            except:
                                 # For models with number field (Sixth-Tenth prizes)
                                 model_class.objects.create(
                                     draw=lottery_draw,
@@ -205,23 +281,23 @@ class LotteryDrawAdmin(admin.ModelAdmin):
                 
                 amount_value = float(amount) if amount else self._get_default_amount(prize_key)
                 
-                if hasattr(model_class._meta, 'get_field'):
-                    try:
-                        model_class._meta.get_field('ticket_number')
-                        # For models with ticket_number field
-                        model_class.objects.create(
-                            draw=lottery_draw,
-                            ticket_number=ticket,
-                            place=place,
-                            amount=amount_value
-                        )
-                    except:
-                        # For models with number field
-                        model_class.objects.create(
-                            draw=lottery_draw,
-                            number=ticket,
-                            amount=amount_value
-                        )
+                try:
+                    # Check if model has ticket_number field
+                    model_class._meta.get_field('ticket_number')
+                    # For models with ticket_number field
+                    model_class.objects.create(
+                        draw=lottery_draw,
+                        ticket_number=ticket,
+                        place=place,
+                        amount=amount_value
+                    )
+                except:
+                    # For models with number field
+                    model_class.objects.create(
+                        draw=lottery_draw,
+                        number=ticket,
+                        amount=amount_value
+                    )
                 
                 counter += 1
     
