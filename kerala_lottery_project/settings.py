@@ -135,37 +135,9 @@ DATABASES = {
     }
 }
 
-# Production database settings
-if not DEBUG and 'DATABASE_URL' in os.environ:
-    DATABASES['default'] = dj_database_url.config(
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
 
-# Caching - REQUIRED for lottery project performance
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
-        'TIMEOUT': 300,  # 5 minutes default
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'lottery',
-    }
-}
 
-# Fallback to dummy cache if Redis not available
-try:
-    import redis
-    redis_client = redis.Redis.from_url(CACHES['default']['LOCATION'])
-    redis_client.ping()
-except (ImportError, redis.ConnectionError):
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
-        }
-    }
+
 
 # Session configuration
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
