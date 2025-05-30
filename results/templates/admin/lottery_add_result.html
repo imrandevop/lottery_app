@@ -1,0 +1,135 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% load custom_tags %}
+
+{% block title %}Add Lottery Result{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'results/css/lottery_admin.css' %}">
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% endblock %}
+
+{% block nav-sidebar %}
+{% include "admin/nav_sidebar.html" %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:results_lotteryresult_changelist' %}">Lottery results</a>
+    &rsaquo; Add lottery result
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Main content area -->
+<div class="lottery-admin-container">
+    <div class="lottery-form-container">
+        <div class="form-header">
+            Lottery Result Entry System
+        </div>
+        
+        <form method="post" id="lotteryForm">
+            {% csrf_token %}
+            
+            <!-- Lottery Draw Information Section -->
+            <div class="form-section">
+                <h3 class="section-header">Lottery Draw Information</h3>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="lottery">Select Lottery Type</label>
+                            <select name="lottery" id="lottery" class="form-control" required>
+                                <option value="">Select Lottery Type</option>
+                                {% for lottery in lotteries %}
+                                <option value="{{ lottery.id }}">{{ lottery.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="draw_number">Enter draw number</label>
+                            <input type="text" name="draw_number" id="draw_number" class="form-control" placeholder="Enter draw number" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="date">Date</label>
+                            <input type="date" name="date" id="date" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" name="is_published" id="published">
+                                <label for="published">Mark as declared</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Prize Sections -->
+            {% for prize_type, prize_name in prize_types %}
+            <div class="form-section" id="{{ prize_type }}-section">
+                <h3 class="section-header">
+                    {{ prize_name }}
+                    <div class="toggle-container">
+                        <span>Normal</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" onchange="toggleBulkEntry('{{ prize_type }}')">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Bulk</span>
+                    </div>
+                </h3>
+                <div class="section-content">
+                    <div id="{{ prize_type }}-entries">
+                        <div class="prize-entry">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="{{ prize_type }}_amount">Prize Amount (₹)</label>
+                                    <input type="number" name="{{ prize_type }}_prize_amount[]" id="{{ prize_type }}_amount" class="form-control" step="0.01">
+                                </div>
+                                <div class="form-group">
+                                    <label for="{{ prize_type }}_ticket">Ticket Number</label>
+                                    <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket" class="form-control">
+                                </div>
+                                {% if prize_type in '1st,2nd,3rd'|split:"," %}
+                                <div class="form-group">
+                                    <label for="{{ prize_type }}_place">Place</label>
+                                    <input type="text" name="{{ prize_type }}_place[]" id="{{ prize_type }}_place" class="form-control">
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <button type="button" class="btn btn-secondary btn-small add-entry-btn" onclick="addEntry('{{ prize_type }}')">+ Add Another Entry</button>
+                    </div>
+                    
+                    <div id="{{ prize_type }}-bulk" class="bulk-entry-section" style="display: none;">
+                        <label for="{{ prize_type }}-bulk-textarea">Bulk Entry {% if prize_type in '1st,2nd,3rd'|split:"," %}(Format: amount,ticket_number,place per line){% else %}(Format: amount,ticket_number per line){% endif %}</label>
+                        <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="{% if prize_type in '1st,2nd,3rd'|split:"," %}1000,AB123456,Mumbai&#10;1000,CD789012,Delhi{% else %}1000,AB123456&#10;1000,CD789012{% endif %}"></textarea>
+                        <div class="form-row" style="justify-content: flex-end; margin-top: 10px;">
+                            <button type="button" class="btn btn-primary btn-small" onclick="processBulkEntries('{{ prize_type }}')">Process Entries</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            <!-- Fixed Save Button -->
+            <button type="submit" class="btn btn-primary fixed-save-btn">
+                💾 Save Lottery Results
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Include the JavaScript file -->
+<script src="{% static 'results/js/lottery_admin.js' %}"></script>
+{% endblock %}
