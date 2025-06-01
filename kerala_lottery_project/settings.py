@@ -122,6 +122,8 @@ WSGI_APPLICATION = "kerala_lottery_project.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
