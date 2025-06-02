@@ -1,3 +1,5 @@
+# this my admin.py
+
 from django.contrib import admin
 from .models import Lottery, LotteryResult, PrizeEntry
 from django.contrib.auth.models import Group
@@ -47,12 +49,20 @@ class LotteryResultAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('add/', self.admin_site.admin_view(self.redirect_to_custom_add), name='results_lotteryresult_add'),
+            # Add a new URL pattern to catch detail view requests and redirect to edit
+            path('<path:object_id>/', self.admin_site.admin_view(self.redirect_to_custom_edit), name='results_lotteryresult_change'),
         ]
         return custom_urls + urls
     
     def redirect_to_custom_add(self, request):
         """Redirect from the standard admin add page to our custom add view."""
         return HttpResponseRedirect(reverse('results:add_result'))
+    
+    def redirect_to_custom_edit(self, request, object_id):
+        """Redirect from the standard admin detail page to our custom edit view."""
+        # Extract just the numeric ID from the object_id path
+        result_id = object_id.split('/')[0]
+        return HttpResponseRedirect(reverse('results:edit_result', kwargs={'result_id': result_id}))
 
 
 # Register the admin

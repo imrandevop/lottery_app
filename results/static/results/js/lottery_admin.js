@@ -25,7 +25,7 @@ function initLotteryAdmin() {
     // Set up form change tracking
     setupFormChangeTracking();
     
-    // Set today's date as default
+    // Set today's date as default for new entries only
     const dateInput = document.querySelector('input[name="date"]');
     if (dateInput && !dateInput.value) {
         const today = new Date();
@@ -34,6 +34,9 @@ function initLotteryAdmin() {
         const dd = String(today.getDate()).padStart(2, '0');
         dateInput.value = `${yyyy}-${mm}-${dd}`;
     }
+
+    // Check if we're in edit mode and load existing entries
+    loadExistingPrizeEntries();
 
     // Add form submission handler
     document.getElementById('lotteryForm').addEventListener('submit', validateAndSubmit);
@@ -536,3 +539,158 @@ function previewResults() {
 
 // Initialize the lottery admin when the DOM is loaded
 document.addEventListener('DOMContentLoaded', initLotteryAdmin);
+
+/**
+ * Load existing prize entries when in edit mode
+ */
+function loadExistingPrizeEntries() {
+    // Check if we have prize entries data in the page
+    if (typeof prizeEntriesData === 'undefined') {
+        console.log('No prize entries data found - not in edit mode');
+        return; // Not in edit mode or no data
+    }
+    
+    console.log('Loading prize entries data:', prizeEntriesData);
+    
+    // For each prize type
+    Object.keys(prizeEntriesData).forEach(prizeType => {
+        const entries = prizeEntriesData[prizeType];
+        console.log(`Processing ${entries.length} entries for ${prizeType}`);
+        
+        if (!entries || entries.length === 0) return;
+        
+        const entriesContainer = document.getElementById(prizeType + '-entries');
+        if (!entriesContainer) {
+            console.log(`Container for ${prizeType} not found`);
+            return;
+        }
+        
+        // Save the first entry as a template
+        const templateEntry = entriesContainer.children[0].cloneNode(true);
+        
+        // Clear existing entries
+        entriesContainer.innerHTML = '';
+        
+        // Add each entry
+        entries.forEach(entry => {
+            console.log(`Adding entry for ${prizeType}:`, entry);
+            const newEntry = templateEntry.cloneNode(true);
+            
+            // Set values
+            const inputs = newEntry.querySelectorAll('input');
+            if (inputs.length >= 2) {
+                inputs[0].value = entry.prize_amount || '';
+                inputs[1].value = entry.ticket_number || '';
+                
+                if (inputs.length >= 3 && (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd')) {
+                    inputs[2].value = entry.place || '';
+                }
+            }
+            
+            // Add remove button
+            if (!newEntry.querySelector('.remove-entry-btn')) {
+                const actionDiv = document.createElement('div');
+                actionDiv.className = 'entry-actions';
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'remove-entry-btn';
+                removeBtn.innerHTML = '❌ Remove';
+                removeBtn.onclick = function() {
+                    entriesContainer.removeChild(newEntry);
+                    isDirty = true;
+                };
+                
+                actionDiv.appendChild(removeBtn);
+                newEntry.appendChild(actionDiv);
+            }
+            
+            // Set up change tracking
+            newEntry.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', () => {
+                    isDirty = true;
+                });
+            });
+            
+            entriesContainer.appendChild(newEntry);
+        });
+        
+        // If no entries were added, add an empty one
+        if (entriesContainer.children.length === 0) {
+            entriesContainer.appendChild(templateEntry);
+        }
+        
+        // Update counter
+        entryCounters[prizeType] = entriesContainer.children.length;
+    });
+}
+
+/**
+ * Add an entry with existing data
+ * @param {string} prizeType - The type of prize
+ * @param {object} entryData - The existing entry data
+ */
+function addEntryWithData(prizeType, entryData) {
+    console.log(`Adding entry with data for ${prizeType}:`, entryData);
+    
+    const entriesContainer = document.getElementById(prizeType + '-entries');
+    if (!entriesContainer) {
+        console.log(`Container for ${prizeType} not found`);
+        return;
+    }
+    
+    // Find a template entry to clone
+    let templateEntry;
+    if (entriesContainer.children.length > 0) {
+        templateEntry = entriesContainer.children[0];
+    } else {
+        // Try to find a template from another prize type
+        const anyPrizeEntry = document.querySelector('.prize-entry');
+        if (!anyPrizeEntry) {
+            console.log('No template entry found');
+            return;
+        }
+        templateEntry = anyPrizeEntry;
+    }
+    
+    const newEntry = templateEntry.cloneNode(true);
+    
+    // Set values
+    const inputs = newEntry.querySelectorAll('input');
+    if (inputs.length >= 2) {
+        inputs[0].value = entryData.prize_amount || '';
+        inputs[1].value = entryData.ticket_number || '';
+        
+        if (inputs.length >= 3 && (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd')) {
+            inputs[2].value = entryData.place || '';
+        }
+    }
+    
+    // Add remove button if needed
+    if (!newEntry.querySelector('.remove-entry-btn')) {
+        const actionDiv = document.createElement('div');
+        actionDiv.className = 'entry-actions';
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'remove-entry-btn';
+        removeBtn.innerHTML = '❌ Remove';
+        removeBtn.onclick = function() {
+            entriesContainer.removeChild(newEntry);
+            isDirty = true;
+        };
+        
+        actionDiv.appendChild(removeBtn);
+        newEntry.appendChild(actionDiv);
+    }
+    
+    // Set up change tracking
+    newEntry.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', () => {
+            isDirty = true;
+        });
+    });
+    
+    entriesContainer.appendChild(newEntry);
+    console.log(`Added entry to ${prizeType} container`);
+}

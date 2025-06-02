@@ -94,15 +94,16 @@
     font-size: 14px;
 }
 
-/* Standard form controls - More specific selector to avoid conflicts */
+/* Enhanced form control styling - UNIFIED VERSION */
 .lottery-form-container .form-control {
     width: 100%;
-    padding: 8px 12px;
+    padding: 12px 12px;
     border: 1px solid #ced4da;
     border-radius: 4px;
     font-size: 14px;
     transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-    background-color: #fff;
+    box-sizing: border-box;
+    height: 42px;
 }
 
 .lottery-form-container .form-control:focus {

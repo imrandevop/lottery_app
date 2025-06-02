@@ -2,7 +2,7 @@
 {% load static %}
 {% load custom_tags %}
 
-{% block title %}Add Lottery Result{% endblock %}
+{% block title %}{% if is_edit_mode %}Edit Lottery Result{% else %}Add Lottery Result{% endif %}{% endblock %}
 
 {% block extrastyle %}
 {{ block.super }}
@@ -21,7 +21,7 @@
 <div class="breadcrumbs">
     <a href="{% url 'admin:index' %}">Home</a>
     &rsaquo; <a href="/admin/results/lotteryresult/">Lottery results</a>
-    &rsaquo; Add lottery result
+    &rsaquo; {% if is_edit_mode %}Edit lottery result{% else %}Add lottery result{% endif %}
 </div>
 {% endblock %}
 
@@ -30,11 +30,15 @@
 <div class="lottery-admin-container">
     <div class="lottery-form-container">
         <div class="form-header">
-            Lottery Result Entry System
+            {% if is_edit_mode %}Lottery Result Edit System{% else %}Lottery Result Entry System{% endif %}
         </div>
+
+        <!-- Include Preview Section -->
+        {% include "admin/includes/preview_section.html" %}
         
         <form method="post" id="lotteryForm">
             {% csrf_token %}
+            {% if is_edit_mode %}<input type="hidden" name="result_id" value="{{ lottery_result.id }}">{% endif %}
             
             <!-- Lottery Draw Information Section -->
             <div class="form-section">
@@ -46,25 +50,31 @@
                             <select name="lottery" id="lottery" class="form-control" required>
                                 <option value="">Select Lottery Type</option>
                                 {% for lottery in lotteries %}
-                                <option value="{{ lottery.id }}">{{ lottery.name }}</option>
+                                <option value="{{ lottery.id }}" {% if lottery_result and lottery_result.lottery_id == lottery.id %}selected{% endif %}>{{ lottery.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="draw_number">Enter draw number</label>
-                            <input type="text" name="draw_number" id="draw_number" class="form-control" placeholder="Enter draw number" required>
+                            <input type="text" name="draw_number" id="draw_number" class="form-control" placeholder="Enter draw number" value="{% if lottery_result %}{{ lottery_result.draw_number }}{% endif %}" required>
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
                             <label for="date">Date</label>
-                            <input type="date" name="date" id="date" class="form-control" required>
+                            <input type="date" name="date" id="date" class="form-control" value="{% if lottery_result %}{{ lottery_result.date|date:'Y-m-d' }}{% endif %}" required>
                         </div>
                         <div class="form-group">
-                            <div class="checkbox-group">
-                                <input type="checkbox" name="is_published" id="published">
-                                <label for="published">Mark as declared</label>
+                            <div class="checkbox-container">
+                                <div class="checkbox-group">
+                                    <input type="checkbox" name="is_published" id="published" {% if lottery_result and lottery_result.is_published %}checked{% endif %}>
+                                    <label for="published">Mark as declared</label>
+                                </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" name="is_bumper" id="bumper">
+                                    <label for="bumper">Is bumper</label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -124,11 +134,20 @@
             
             <!-- Fixed Save Button -->
             <button type="submit" class="btn btn-primary fixed-save-btn">
-                💾 Save Lottery Results
+                💾 {% if is_edit_mode %}Update{% else %}Save{% endif %} Lottery Results
             </button>
         </form>
     </div>
 </div>
+
+{% if is_edit_mode %}
+{{ prize_entries_json|json_script:"prize-entries-data" }}
+<script>
+    // Parse the prize entries data from the script tag
+    const prizeEntriesData = JSON.parse(document.getElementById('prize-entries-data').textContent);
+    console.log('Prize entries data loaded:', prizeEntriesData);
+</script>
+{% endif %}
 
 <!-- Include the JavaScript file -->
 <script src="{% static 'results/js/lottery_admin.js' %}"></script>

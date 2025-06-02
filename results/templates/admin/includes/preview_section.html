@@ -1,0 +1,25 @@
+<!-- templates/admin/includes/preview_section.html -->
+{% load static %}
+
+<!-- Preview Toggle Button -->
+<div class="preview-toggle-container">
+    <button type="button" class="preview-toggle-btn" onclick="togglePreview()">
+        <span id="preview-btn-text">👁️ Show Preview</span>
+    </button>
+</div>
+
+<!-- Preview Section -->
+<div id="preview-section" class="preview-section">
+    <h4>📱 Mobile Preview</h4>
+    <div id="mobile-preview-container" class="mobile-preview">
+        <div class="no-data-message">
+            Fill in the form data to see the preview
+        </div>
+    </div>
+</div>
+
+<!-- Preview CSS -->
+<link rel="stylesheet" href="{% static 'results/css/preview.css' %}">
+
+<!-- Preview JavaScript -->
+<script src="{% static 'results/js/preview.js' %}"></script>
