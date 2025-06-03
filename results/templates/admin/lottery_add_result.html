@@ -11,6 +11,31 @@
 
 {% block extrahead %}
 {{ block.super }}
+{% if is_edit_mode and prize_entries_json %}
+<!-- Prize entries data -->
+<script id="prize-entries-data" type="application/json">{{ prize_entries_json|safe }}</script>
+<script>
+    // Define global variable for prize entries data with error handling
+    try {
+        const dataElement = document.getElementById('prize-entries-data');
+        if (dataElement && dataElement.textContent) {
+            window.prizeEntriesData = JSON.parse(dataElement.textContent);
+        } else {
+            window.prizeEntriesData = {};
+        }
+    } catch (e) {
+        console.error('Error parsing prize entries data:', e);
+        window.prizeEntriesData = {};
+    }
+    console.log('Prize entries data loaded:', window.prizeEntriesData);
+</script>
+{% else %}
+<script>
+    // No prize entries data available
+    window.prizeEntriesData = {};
+    console.log('No prize entries data - not in edit mode or no data available');
+</script>
+{% endif %}
 {% endblock %}
 
 {% block nav-sidebar %}
@@ -20,7 +45,7 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{% url 'admin:index' %}">Home</a>
-    &rsaquo; <a href="/admin/results/lotteryresult/">Lottery results</a>
+    &rsaquo; <a href="{% url 'admin:results_lotteryresult_changelist' %}">Lottery results</a>
     &rsaquo; {% if is_edit_mode %}Edit lottery result{% else %}Add lottery result{% endif %}
 </div>
 {% endblock %}
@@ -107,7 +132,8 @@
                                     <label for="{{ prize_type }}_ticket">Ticket Number</label>
                                     <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket" class="form-control">
                                 </div>
-                                {% if prize_type in '1st,2nd,3rd'|split:"," %}
+                                <!-- Place field only for 1st, 2nd, 3rd prizes -->
+                                {% if prize_type in "1st,2nd,3rd"|split:"," %}
                                 <div class="form-group">
                                     <label for="{{ prize_type }}_place">Place</label>
                                     <input type="text" name="{{ prize_type }}_place[]" id="{{ prize_type }}_place" class="form-control">
@@ -122,8 +148,24 @@
                     </div>
                     
                     <div id="{{ prize_type }}-bulk" class="bulk-entry-section" style="display: none;">
-                        <label for="{{ prize_type }}-bulk-textarea">Bulk Entry {% if prize_type in '1st,2nd,3rd'|split:"," %}(Format: amount,ticket_number,place per line){% else %}(Format: amount,ticket_number per line){% endif %}</label>
-                        <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="{% if prize_type in '1st,2nd,3rd'|split:"," %}1000,AB123456,Mumbai&#10;1000,CD789012,Delhi{% else %}1000,AB123456&#10;1000,CD789012{% endif %}"></textarea>
+                        <!-- Check if this is a special prize type that needs different bulk entry format -->
+                        {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                            <!-- Special bulk entry for consolation and 4th-10th prizes -->
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="{{ prize_type }}-bulk-amount">Prize Amount (₹)</label>
+                                    <input type="number" id="{{ prize_type }}-bulk-amount" class="form-control" step="0.01" placeholder="Enter prize amount">
+                                </div>
+                            </div>
+                            <label for="{{ prize_type }}-bulk-textarea">Ticket Numbers (Space separated, numbers only - any length)</label>
+                            <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="1234 56789 123456 7890"></textarea>
+                        {% else %}
+                            <!-- Original bulk entry for 1st, 2nd, 3rd prizes -->
+                            <label for="{{ prize_type }}-bulk-textarea">Bulk Entry 
+                                (Format: amount,ticket_number,place per line)
+                            </label>
+                            <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="1000,AB123456,Mumbai&#10;1000,CD789012,Delhi"></textarea>
+                        {% endif %}
                         <div class="form-row" style="justify-content: flex-end; margin-top: 10px;">
                             <button type="button" class="btn btn-primary btn-small" onclick="processBulkEntries('{{ prize_type }}')">Process Entries</button>
                         </div>
@@ -139,15 +181,6 @@
         </form>
     </div>
 </div>
-
-{% if is_edit_mode %}
-{{ prize_entries_json|json_script:"prize-entries-data" }}
-<script>
-    // Parse the prize entries data from the script tag
-    const prizeEntriesData = JSON.parse(document.getElementById('prize-entries-data').textContent);
-    console.log('Prize entries data loaded:', prizeEntriesData);
-</script>
-{% endif %}
 
 <!-- Include the JavaScript file -->
 <script src="{% static 'results/js/lottery_admin.js' %}"></script>

@@ -495,3 +495,75 @@ body.nav-sidebar #content-main .lottery-admin-container {
 .lottery-form-container form .form-row {
     display: flex; /* Ensure our flex layout works */
 }
+
+
+
+/* Additional CSS for the new bulk entry format */
+/* Add this to your existing lottery_admin.css file */
+
+/* Bulk entry section enhanced styling */
+.bulk-entry-section .form-row {
+    margin-bottom: 15px;
+}
+
+.bulk-entry-section .form-group {
+    margin-bottom: 0;
+}
+
+/* Special styling for bulk amount input */
+#consolation-bulk-amount,
+#4th-bulk-amount,
+#5th-bulk-amount,
+#6th-bulk-amount,
+#7th-bulk-amount,
+#8th-bulk-amount,
+#9th-bulk-amount,
+#10th-bulk-amount {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+}
+
+#consolation-bulk-amount:focus,
+#4th-bulk-amount:focus,
+#5th-bulk-amount:focus,
+#6th-bulk-amount:focus,
+#7th-bulk-amount:focus,
+#8th-bulk-amount:focus,
+#9th-bulk-amount:focus,
+#10th-bulk-amount:focus {
+    background-color: #fff;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+}
+
+/* Enhanced bulk textarea for special prizes */
+.bulk-entry-section .bulk-textarea {
+    background-color: #f8f9fa;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    letter-spacing: 1px;
+}
+
+/* Placeholder styling for different bulk entry types */
+.bulk-entry-section textarea::placeholder {
+    color: #6c757d;
+    font-style: italic;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    letter-spacing: normal;
+}
+
+/* Help text styling */
+.bulk-entry-section label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 8px;
+    display: block;
+}
+
+/* Process button positioning */
+.bulk-entry-section .form-row:last-child {
+    margin-bottom: 0;
+    padding-top: 10px;
+    border-top: 1px solid #dee2e6;
+}

@@ -1,13 +1,13 @@
 # this my admin_views.py
 
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_protect
 from django.contrib import messages
 from django.contrib.admin import site
 from django.contrib.admin.sites import AdminSite
 from .models import Lottery, LotteryResult, PrizeEntry
-
+import json
 
 @csrf_protect
 @staff_member_required
@@ -131,11 +131,7 @@ def handle_form_submission(request):
 @staff_member_required
 def edit_result_view(request, result_id):
     """Custom view for editing lottery results with a better UI."""
-    try:
-        lottery_result = LotteryResult.objects.get(id=result_id)
-    except LotteryResult.DoesNotExist:
-        messages.error(request, "Lottery result not found.")
-        return redirect('admin:results_lotteryresult_changelist')
+    lottery_result = get_object_or_404(LotteryResult, id=result_id)
     
     if request.method == 'POST':
         # Handle form submission for edit
@@ -154,6 +150,7 @@ def edit_result_view(request, result_id):
         ('8th', '8th Prize'),
         ('9th', '9th Prize'),
         ('10th', '10th Prize'),
+        
     ]
     
     # Get admin context for sidebar
@@ -161,16 +158,24 @@ def edit_result_view(request, result_id):
     
     # Convert prize entries to a format JavaScript can use
     prize_entries_json = {}
-    for prize_type, _ in prize_types:
-        entries = lottery_result.prizes.filter(prize_type=prize_type)
-        prize_entries_json[prize_type] = [
-            {
-                'prize_amount': str(entry.prize_amount),
-                'ticket_number': entry.ticket_number,
-                'place': entry.place or ''
-            }
-            for entry in entries
-        ]
+    try:
+        for prize_type, _ in prize_types:
+            entries = lottery_result.prizes.filter(prize_type=prize_type)
+            prize_entries_json[prize_type] = [
+                {
+                    'prize_amount': str(entry.prize_amount),
+                    'ticket_number': entry.ticket_number,
+                    'place': entry.place or ''
+                }
+                for entry in entries
+            ]
+        
+        # Convert to JSON string safely
+        prize_entries_json_str = json.dumps(prize_entries_json) if prize_entries_json else '{}'
+        
+    except Exception as e:
+        print(f"Error preparing prize entries JSON: {e}")
+        prize_entries_json_str = '{}'
     
     context = {
         'title': 'Edit Lottery Result',
@@ -192,7 +197,7 @@ def edit_result_view(request, result_id):
         'app_label': 'results',
         # Lottery result data
         'lottery_result': lottery_result,
-        'prize_entries_json': prize_entries_json,
+        'prize_entries_json': prize_entries_json_str,  # Safe JSON string
         'is_edit_mode': True,
     }
     return render(request, 'admin/lottery_add_result.html', context)
@@ -270,3 +275,4 @@ def handle_edit_form_submission(request, lottery_result):
             'is_edit_mode': True,
         }
         return render(request, 'admin/lottery_add_result.html', context)
+    
