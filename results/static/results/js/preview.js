@@ -1,22 +1,34 @@
 /**
- * Preview Functionality JavaScript
+ * Preview Section JavaScript
  * Path: results/static/results/js/preview.js
  * 
- * This file handles all preview-related functionality for the lottery admin panel.
- * Separated for better code organization and maintainability.
+ * Handles lottery result preview functionality with simple responsive design
  */
 
-// Preview state
+// Preview state management
 let previewVisible = false;
+let previewData = {};
 
 /**
- * Initialize preview functionality
+ * Initialize preview functionality when DOM is loaded
  */
-function initPreview() {
-    // Set up form change listeners for preview updates
-    setupPreviewListeners();
-    
+document.addEventListener('DOMContentLoaded', function() {
+    initializePreview();
     console.log('Preview functionality initialized');
+});
+
+/**
+ * Initialize all preview functionality
+ */
+function initializePreview() {
+    setupFormListeners();
+    loadExistingData();
+    
+    // Override existing button handlers to include preview updates
+    overrideFormHandlers();
+    
+    // Set up periodic preview updates for better UX
+    setInterval(updatePreviewIfVisible, 2000);
 }
 
 /**
@@ -26,123 +38,302 @@ function togglePreview() {
     const previewSection = document.getElementById('preview-section');
     const previewBtn = document.querySelector('.preview-toggle-btn');
     const btnText = document.getElementById('preview-btn-text');
+    const statusText = document.getElementById('preview-status');
+    
+    if (!previewSection) {
+        console.error('Preview section not found');
+        return;
+    }
     
     previewVisible = !previewVisible;
     
     if (previewVisible) {
-        previewSection.classList.add('visible');
+        previewSection.style.display = 'block';
         previewBtn.classList.add('active');
-        btnText.innerHTML = '🙈 Hide Preview';
+        btnText.textContent = 'Hide Preview';
+        statusText.textContent = 'Preview visible';
+        
+        // Initialize preview content if not already done
+        initializePreviewContent();
         updatePreview();
         
-        // Scroll to preview with smooth animation
-        setTimeout(() => {
-            previewSection.scrollIntoView({ 
-                behavior: 'smooth', 
-                block: 'center' 
-            });
-        }, 300);
+        // Simple scroll to preview without animation
+        previewSection.scrollIntoView({ block: 'start' });
     } else {
-        previewSection.classList.remove('visible');
+        previewSection.style.display = 'none';
         previewBtn.classList.remove('active');
-        btnText.innerHTML = '👁️ Show Preview';
+        btnText.textContent = 'Show Preview';
+        statusText.textContent = 'Preview hidden';
+    }
+    
+    console.log(`Preview ${previewVisible ? 'shown' : 'hidden'}`);
+}
+
+/**
+ * Initialize preview content structure
+ */
+function initializePreviewContent() {
+    const previewContent = document.getElementById('preview-content');
+    
+    if (!previewContent || previewContent.innerHTML.trim() !== '') {
+        return; // Already initialized or content exists
+    }
+    
+    previewContent.innerHTML = `
+        <div class="preview-wrapper">
+            <!-- Desktop Preview -->
+            <div class="preview-container" id="preview-container">
+                <div class="preview-placeholder">
+                    <div class="placeholder-icon">📋</div>
+                    <h3>Lottery Result Preview</h3>
+                    <p>Fill in the form data to see the live preview</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    console.log('Preview content structure initialized');
+}
+
+/**
+ * Update preview if currently visible
+ */
+function updatePreviewIfVisible() {
+    if (previewVisible) {
+        updatePreview();
     }
 }
 
 /**
- * Update the preview with current form data
+ * Main preview update function
  */
 function updatePreview() {
     if (!previewVisible) return;
     
-    const container = document.getElementById('mobile-preview-container');
-    if (!container) return;
-    
-    // Get form data
-    const formData = collectFormData();
-    
-    // Generate preview HTML
-    const previewHTML = generatePreviewHTML(formData);
-    
-    // Update container
-    container.innerHTML = previewHTML;
+    try {
+        // Collect current form data
+        const formData = collectFormData();
+        
+        // Check if data has changed significantly
+        if (!hasDataChanged(formData)) {
+            return;
+        }
+        
+        // Update preview data
+        previewData = formData;
+        
+        // Generate and update preview HTML
+        updatePreviewHTML(formData);
+        
+        console.log('Preview updated:', formData);
+    } catch (error) {
+        console.error('Error updating preview:', error);
+        showPreviewError('Error updating preview');
+    }
+}
+
+/**
+ * Check if form data has changed significantly
+ */
+function hasDataChanged(newData) {
+    // Simple comparison - you might want to make this more sophisticated
+    return JSON.stringify(newData) !== JSON.stringify(previewData);
 }
 
 /**
  * Collect all form data for preview
- * @returns {Object} Collected form data
  */
 function collectFormData() {
     const data = {
-        lottery: document.querySelector('#lottery option:checked')?.text || '',
-        date: document.getElementById('date')?.value || '',
-        drawNumber: document.getElementById('draw_number')?.value || '',
-        isPublished: document.getElementById('published')?.checked || false,
-        prizes: {}
+        lottery: getLotteryName(),
+        date: getFormValue('#date, input[name="date"]'),
+        drawNumber: getFormValue('#draw_number, input[name="draw_number"]'),
+        isPublished: getCheckboxValue('#published, input[name="is_published"]'),
+        prizes: collectPrizeData()
     };
     
-    // Format date
+    // Format date for display
     if (data.date) {
-        const dateObj = new Date(data.date);
-        data.formattedDate = dateObj.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
+        data.formattedDate = formatDateForDisplay(data.date);
     }
-    
-    // Collect prize data
-    const prizeTypes = ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-    
-    prizeTypes.forEach(prizeType => {
-        const entriesContainer = document.getElementById(prizeType + '-entries');
-        if (!entriesContainer) return;
-        
-        const entries = entriesContainer.querySelectorAll('.prize-entry');
-        const prizeData = [];
-        
-        entries.forEach(entry => {
-            const inputs = entry.querySelectorAll('input');
-            const amount = inputs[0]?.value?.trim();
-            const ticket = inputs[1]?.value?.trim();
-            const place = inputs[2]?.value?.trim();
-            
-            if (amount || ticket) {
-                prizeData.push({ amount, ticket, place });
-            }
-        });
-        
-        if (prizeData.length > 0) {
-            data.prizes[prizeType] = prizeData;
-        }
-    });
     
     return data;
 }
 
 /**
- * Generate preview HTML from form data
- * @param {Object} data - Form data
- * @returns {string} Generated HTML
+ * Get lottery name from select element
  */
-function generatePreviewHTML(data) {
-    let html = '';
+function getLotteryName() {
+    const lotterySelect = document.querySelector('#lottery, select[name="lottery"]');
+    if (lotterySelect && lotterySelect.selectedIndex > 0) {
+        return lotterySelect.options[lotterySelect.selectedIndex].text;
+    }
+    return '';
+}
+
+/**
+ * Get form field value safely
+ */
+function getFormValue(selector) {
+    const element = document.querySelector(selector);
+    return element ? element.value.trim() : '';
+}
+
+/**
+ * Get checkbox value safely
+ */
+function getCheckboxValue(selector) {
+    const element = document.querySelector(selector);
+    return element ? element.checked : false;
+}
+
+/**
+ * Format date for display
+ */
+function formatDateForDisplay(dateString) {
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    } catch (e) {
+        return dateString;
+    }
+}
+
+/**
+ * Collect prize data from all prize sections
+ */
+function collectPrizeData() {
+    const prizes = {};
+    const prizeTypes = ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     
-    // Generate header if we have basic data
-    if (data.date || data.drawNumber) {
-        html += `
-            <div class="mobile-header">
-                <div class="date">${data.formattedDate || 'No Date'}</div>
-                <div class="draw-number"># ${data.drawNumber || 'No Draw Number'}</div>
-            </div>
-        `;
+    prizeTypes.forEach(prizeType => {
+        const entries = collectPrizeEntriesForType(prizeType);
+        if (entries.length > 0) {
+            prizes[prizeType] = entries;
+        }
+    });
+    
+    return prizes;
+}
+
+/**
+ * Collect prize entries for a specific prize type
+ */
+function collectPrizeEntriesForType(prizeType) {
+    const entries = [];
+    const container = document.getElementById(`${prizeType}-entries`);
+    
+    if (!container) {
+        console.log(`Container not found: ${prizeType}-entries`);
+        return entries;
     }
     
-    // Generate prize cards
+    const prizeEntries = container.querySelectorAll('.prize-entry');
+    
+    prizeEntries.forEach(entry => {
+        const amountInput = entry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+        const ticketInput = entry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
+        const placeInput = entry.querySelector(`input[name="${prizeType}_place[]"]`);
+        
+        const amount = amountInput ? amountInput.value.trim() : '';
+        const ticket = ticketInput ? ticketInput.value.trim() : '';
+        const place = placeInput ? placeInput.value.trim() : '';
+        
+        if (amount || ticket) {
+            entries.push({ amount, ticket, place });
+        }
+    });
+    
+    return entries;
+}
+
+/**
+ * Update preview HTML with new data
+ */
+function updatePreviewHTML(data) {
+    const container = document.getElementById('preview-container');
+    
+    if (!container) {
+        console.error('Preview container not found');
+        return;
+    }
+    
+    const html = generatePreviewHTML(data);
+    container.innerHTML = html;
+}
+
+/**
+ * Generate desktop preview HTML
+ */
+function generatePreviewHTML(data) {
+    if (!hasValidData(data)) {
+        return getPlaceholderHTML();
+    }
+    
+    let html = `
+        <div class="preview-result">
+            ${generateResultHeader(data)}
+            ${generatePrizeCards(data.prizes)}
+            ${generateStatusBadge(data.isPublished)}
+        </div>
+    `;
+    
+    return html;
+}
+
+/**
+ * Check if data is valid for preview
+ */
+function hasValidData(data) {
+    return data.date || data.drawNumber || Object.keys(data.prizes).length > 0;
+}
+
+/**
+ * Get placeholder HTML
+ */
+function getPlaceholderHTML() {
+    return `
+        <div class="preview-placeholder">
+            <div class="placeholder-icon">📋</div>
+            <h3>Lottery Result Preview</h3>
+            <p>Fill in the form data to see the live preview</p>
+        </div>
+    `;
+}
+
+/**
+ * Generate result header HTML
+ */
+function generateResultHeader(data) {
+    const lotteryName = data.lottery || 'Lottery Name';
+    
+    return `
+        <div class="result-header">
+            <h2>${lotteryName}</h2>
+            <div class="result-meta">
+                <div class="result-date">Date: ${data.formattedDate || 'Not set'}</div>
+                <div class="result-draw">Draw #${data.drawNumber || 'N/A'}</div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate prize cards HTML
+ */
+function generatePrizeCards(prizes) {
+    if (!prizes || Object.keys(prizes).length === 0) {
+        return '<div class="no-data-message">No prize data entered</div>';
+    }
+    
     const prizeOrder = ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     const prizeNames = {
         '1st': '1st Prize',
-        '2nd': '2nd Prize', 
+        '2nd': '2nd Prize',
         '3rd': '3rd Prize',
         '4th': '4th Prize',
         '5th': '5th Prize',
@@ -154,139 +345,290 @@ function generatePreviewHTML(data) {
         'consolation': 'Consolation Prize'
     };
     
-    let hasAnyData = false;
+    let html = '';
     
     prizeOrder.forEach(prizeType => {
-        if (data.prizes[prizeType]) {
-            html += generatePrizeCard(prizeType, prizeNames[prizeType], data.prizes[prizeType]);
-            hasAnyData = true;
+        if (prizes[prizeType] && prizes[prizeType].length > 0) {
+            html += generateSinglePrizeCard(
+                prizeType, 
+                prizeNames[prizeType], 
+                prizes[prizeType]
+            );
         }
     });
-    
-    // Show no data message if needed
-    if (!hasAnyData) {
-        html = '<div class="no-data-message">Fill in the form data to see the preview</div>';
-    }
     
     return html;
 }
 
 /**
- * Generate HTML for a single prize card
- * @param {string} prizeType - Type of prize
- * @param {string} prizeName - Display name of prize
- * @param {Array} prizeData - Array of prize entries
- * @returns {string} Generated HTML
+ * Generate single prize card HTML
  */
-function generatePrizeCard(prizeType, prizeName, prizeData) {
-    const amount = prizeData[0]?.amount || '';
-    const formattedAmount = amount ? formatCurrency(parseInt(amount)) : '₹0/-';
+function generateSinglePrizeCard(prizeType, prizeName, prizeData) {
+    const firstEntry = prizeData[0];
+    const amount = firstEntry.amount || '0';
+    const formattedAmount = formatCurrency(amount);
     
-    let numbersHTML = '';
+    const cardClass = prizeType === '1st' ? 'prize-card first-prize' : 'prize-card';
     
+    let html = `
+        <div class="${cardClass}">
+            <div class="prize-header">${prizeName}</div>
+            <div class="prize-content">
+                <div class="prize-amount">${formattedAmount}</div>
+                ${generateWinningNumbers(prizeType, prizeData)}
+            </div>
+        </div>
+    `;
+    
+    return html;
+}
+
+/**
+ * Generate winning numbers HTML based on prize type
+ */
+function generateWinningNumbers(prizeType, prizeData) {
     if (prizeType === 'consolation') {
-        // Consolation prizes in grid format
-        numbersHTML = '<div class="consolation-grid">';
+        return generateConsolationNumbers(prizeData);
+    } else if (['1st', '2nd', '3rd'].includes(prizeType)) {
+        return generateTopPrizeNumbers(prizeData);
+    } else {
+        return generateRegularPrizeNumbers(prizeData);
+    }
+}
+
+/**
+ * Generate consolation prize numbers
+ */
+function generateConsolationNumbers(prizeData) {
+    let html = '<div class="consolation-grid">';
+    
+    prizeData.forEach(data => {
+        if (data.ticket) {
+            html += `<div class="consolation-number">${data.ticket}</div>`;
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Generate top prize numbers (1st, 2nd, 3rd)
+ */
+function generateTopPrizeNumbers(prizeData) {
+    let html = '<div class="winning-numbers">';
+    
+    prizeData.forEach(data => {
+        if (data.ticket) {
+            html += `
+                <div class="winning-number">
+                    <span class="ticket-number">${data.ticket}</span>
+                    ${data.place ? `<span class="place-name">${data.place}</span>` : ''}
+                </div>
+            `;
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Generate regular prize numbers (4th-10th)
+ */
+function generateRegularPrizeNumbers(prizeData) {
+    let html = '<div class="winning-numbers">';
+    
+    if (prizeData.length > 4) {
+        // Use grid layout for many numbers
+        html += '<div class="multiple-numbers-grid">';
         prizeData.forEach(data => {
             if (data.ticket) {
-                numbersHTML += `<div class="consolation-number">${data.ticket}</div>`;
+                html += `<div class="number-item">${data.ticket}</div>`;
             }
         });
-        numbersHTML += '</div>';
-    } else if (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd') {
-        // Top prizes with places
+        html += '</div>';
+    } else {
+        // Use regular layout for few numbers
         prizeData.forEach(data => {
             if (data.ticket) {
-                numbersHTML += `
-                    <div class="winning-number with-place">
+                html += `
+                    <div class="winning-number">
                         <span class="ticket-number">${data.ticket}</span>
-                        ${data.place ? `<span class="place-name">${data.place}</span>` : ''}
                     </div>
                 `;
             }
         });
-    } else {
-        // Other prizes - use grid if many numbers
-        if (prizeData.length > 4) {
-            numbersHTML = '<div class="multiple-numbers-grid">';
-            prizeData.forEach(data => {
-                if (data.ticket) {
-                    numbersHTML += `<div class="number-item">${data.ticket}</div>`;
-                }
-            });
-            numbersHTML += '</div>';
-        } else {
-            prizeData.forEach(data => {
-                if (data.ticket) {
-                    numbersHTML += `<div class="winning-number"><span class="ticket-number">${data.ticket}</span></div>`;
-                }
-            });
-        }
     }
     
-    return `
-        <div class="prize-card">
-            <div class="prize-header">${prizeName}</div>
-            <div class="prize-content">
-                <div class="prize-amount">${formattedAmount}</div>
-                <div class="winning-numbers">${numbersHTML}</div>
-            </div>
-        </div>
-    `;
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Generate status badge
+ */
+function generateStatusBadge(isPublished) {
+    const status = isPublished ? 'published' : 'unpublished';
+    const statusText = isPublished ? 'Published' : 'Draft';
+    const statusClass = isPublished ? 'status-badge' : 'status-badge unpublished';
+    
+    return `<div class="${statusClass}">${statusText}</div>`;
 }
 
 /**
  * Format currency in Indian format
- * @param {number} amount - Amount to format
- * @returns {string} Formatted currency string
  */
 function formatCurrency(amount) {
-    if (isNaN(amount)) return '₹0/-';
-    return `₹${amount.toLocaleString('en-IN')}/-`;
+    if (!amount || isNaN(amount)) return '₹0/-';
+    
+    const numAmount = parseFloat(amount);
+    return `₹${numAmount.toLocaleString('en-IN')}/-`;
 }
 
 /**
- * Set up event listeners for form elements to update preview
+ * Setup form field listeners
  */
-function setupPreviewListeners() {
+function setupFormListeners() {
     // Basic form fields
-    const basicFields = ['#lottery', '#date', '#draw_number', '#published'];
-    basicFields.forEach(selector => {
-        const element = document.querySelector(selector);
-        if (element) {
+    const basicSelectors = [
+        '#lottery, select[name="lottery"]',
+        '#date, input[name="date"]',
+        '#draw_number, input[name="draw_number"]',
+        '#published, input[name="is_published"]'
+    ];
+    
+    basicSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
             element.addEventListener('change', updatePreview);
-            element.addEventListener('input', updatePreview);
+            element.addEventListener('input', debounce(updatePreview, 300));
+        });
+    });
+    
+    // Prize entry fields
+    setupPrizeFieldListeners();
+    
+    console.log('Form listeners setup complete');
+}
+
+/**
+ * Setup listeners for prize entry fields
+ */
+function setupPrizeFieldListeners() {
+    const prizeInputs = document.querySelectorAll(
+        'input[name*="_prize_amount"], input[name*="_ticket_number"], input[name*="_place"]'
+    );
+    
+    prizeInputs.forEach(input => {
+        // Remove existing listeners to avoid duplicates
+        input.removeEventListener('change', updatePreview);
+        input.removeEventListener('input', updatePreview);
+        
+        // Add new listeners
+        input.addEventListener('change', updatePreview);
+        input.addEventListener('input', debounce(updatePreview, 500));
+    });
+    
+    console.log(`Setup listeners for ${prizeInputs.length} prize fields`);
+}
+
+/**
+ * Load existing data if in edit mode
+ */
+function loadExistingData() {
+    // Check if we're in edit mode and have existing data
+    if (window.prizeEntriesData && Object.keys(window.prizeEntriesData).length > 0) {
+        console.log('Loading existing prize data:', window.prizeEntriesData);
+        
+        // If preview is visible, update it
+        if (previewVisible) {
+            updatePreview();
+        }
+    }
+}
+
+/**
+ * Override existing form handlers to include preview updates
+ */
+function overrideFormHandlers() {
+    // Override add entry buttons
+    overrideAddEntryButtons();
+    
+    // Override bulk process buttons
+    overrideBulkProcessButtons();
+    
+    // Override toggle bulk entry
+    overrideToggleBulkEntry();
+}
+
+/**
+ * Override add entry button handlers
+ */
+function overrideAddEntryButtons() {
+    const addButtons = document.querySelectorAll('button[onclick*="addEntry"]');
+    
+    addButtons.forEach(button => {
+        const originalOnclick = button.getAttribute('onclick');
+        const prizeType = originalOnclick.match(/addEntry\('([^']+)'\)/)?.[1];
+        
+        if (prizeType) {
+            button.setAttribute('onclick', `addEntryWithPreview('${prizeType}')`);
         }
     });
     
-    // Prize entry fields (setup on existing entries)
-    setupPrizeFieldListeners();
+    console.log(`Override ${addButtons.length} add entry buttons`);
 }
 
 /**
- * Set up listeners on prize entry fields
+ * Override bulk process button handlers
  */
-function setupPrizeFieldListeners() {
-    const prizeInputs = document.querySelectorAll('[id*="_prize_amount"], [id*="_ticket_number"], [id*="_place"]');
-    prizeInputs.forEach(input => {
-        input.addEventListener('change', updatePreview);
-        input.addEventListener('input', debounce(updatePreview, 300)); // Debounced for typing
+function overrideBulkProcessButtons() {
+    const bulkButtons = document.querySelectorAll('button[onclick*="processBulkEntries"]');
+    
+    bulkButtons.forEach(button => {
+        const originalOnclick = button.getAttribute('onclick');
+        const prizeType = originalOnclick.match(/processBulkEntries\('([^']+)'\)/)?.[1];
+        
+        if (prizeType) {
+            button.setAttribute('onclick', `processBulkEntriesWithPreview('${prizeType}')`);
+        }
     });
+    
+    console.log(`Override ${bulkButtons.length} bulk process buttons`);
 }
 
 /**
- * Enhanced addEntry function that includes preview listeners
- * This extends the original addEntry function
+ * Override toggle bulk entry handlers
+ */
+function overrideToggleBulkEntry() {
+    const toggleInputs = document.querySelectorAll('input[onchange*="toggleBulkEntry"]');
+    
+    toggleInputs.forEach(input => {
+        const originalOnchange = input.getAttribute('onchange');
+        const prizeType = originalOnchange.match(/toggleBulkEntry\('([^']+)'\)/)?.[1];
+        
+        if (prizeType) {
+            input.setAttribute('onchange', `toggleBulkEntryWithPreview('${prizeType}')`);
+        }
+    });
+    
+    console.log(`Override ${toggleInputs.length} toggle bulk entry handlers`);
+}
+
+/**
+ * Enhanced addEntry function with preview update
  */
 function addEntryWithPreview(prizeType) {
-    // Call the original addEntry function if it exists
-    if (typeof window.originalAddEntry === 'function') {
-        window.originalAddEntry(prizeType);
-    } else if (typeof window.addEntry === 'function') {
+    // Call original addEntry function if it exists
+    if (typeof window.addEntry === 'function') {
         window.addEntry(prizeType);
+    } else {
+        console.error('Original addEntry function not found');
+        return;
     }
     
-    // Set up listeners on the new entry
+    // Setup listeners on new fields and update preview
     setTimeout(() => {
         setupPrizeFieldListeners();
         updatePreview();
@@ -297,12 +639,15 @@ function addEntryWithPreview(prizeType) {
  * Enhanced bulk processing with preview update
  */
 function processBulkEntriesWithPreview(prizeType) {
-    // Call the original processBulkEntries function
+    // Call original processBulkEntries function
     if (typeof window.processBulkEntries === 'function') {
         window.processBulkEntries(prizeType);
+    } else {
+        console.error('Original processBulkEntries function not found');
+        return;
     }
     
-    // Update preview after bulk processing
+    // Setup listeners and update preview after bulk processing
     setTimeout(() => {
         setupPrizeFieldListeners();
         updatePreview();
@@ -310,10 +655,40 @@ function processBulkEntriesWithPreview(prizeType) {
 }
 
 /**
- * Debounce function to limit frequent updates
- * @param {Function} func - Function to debounce
- * @param {number} wait - Wait time in milliseconds
- * @returns {Function} Debounced function
+ * Enhanced toggle bulk entry with preview update
+ */
+function toggleBulkEntryWithPreview(prizeType) {
+    // Call original toggleBulkEntry function
+    if (typeof window.toggleBulkEntry === 'function') {
+        window.toggleBulkEntry(prizeType);
+    } else {
+        console.error('Original toggleBulkEntry function not found');
+        return;
+    }
+    
+    // Update preview after toggle
+    setTimeout(updatePreview, 100);
+}
+
+/**
+ * Show preview error message
+ */
+function showPreviewError(message) {
+    const container = document.getElementById('preview-container');
+    
+    if (container) {
+        container.innerHTML = `
+            <div class="preview-error">
+                <div class="error-icon">⚠️</div>
+                <h4>Preview Error</h4>
+                <p>${message}</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Debounce function to limit frequent calls
  */
 function debounce(func, wait) {
     let timeout;
@@ -328,31 +703,30 @@ function debounce(func, wait) {
 }
 
 /**
- * Initialize preview when DOM is loaded
+ * Utility function to safely get element
  */
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize preview functionality
-    initPreview();
-    
-    // Override addEntry calls to include preview updates
-    const addEntryBtns = document.querySelectorAll('button[onclick*="addEntry"]');
-    addEntryBtns.forEach(btn => {
-        const onclick = btn.getAttribute('onclick');
-        const prizeType = onclick.match(/addEntry\('([^']+)'\)/)?.[1];
-        if (prizeType) {
-            btn.setAttribute('onclick', `addEntryWithPreview('${prizeType}')`);
-        }
-    });
-    
-    // Override bulk processing calls
-    const bulkBtns = document.querySelectorAll('button[onclick*="processBulkEntries"]');
-    bulkBtns.forEach(btn => {
-        const onclick = btn.getAttribute('onclick');
-        const prizeType = onclick.match(/processBulkEntries\('([^']+)'\)/)?.[1];
-        if (prizeType) {
-            btn.setAttribute('onclick', `processBulkEntriesWithPreview('${prizeType}')`);
-        }
-    });
-    
-    console.log('Preview event listeners setup complete');
-});
+function safeGetElement(selector) {
+    try {
+        return document.querySelector(selector);
+    } catch (e) {
+        console.error(`Error selecting element: ${selector}`, e);
+        return null;
+    }
+}
+
+/**
+ * Export functions for global access
+ */
+window.togglePreview = togglePreview;
+window.addEntryWithPreview = addEntryWithPreview;
+window.processBulkEntriesWithPreview = processBulkEntriesWithPreview;
+window.toggleBulkEntryWithPreview = toggleBulkEntryWithPreview;
+window.updatePreview = updatePreview;
+
+// Export for debugging
+window.previewDebug = {
+    collectFormData,
+    updatePreview,
+    previewVisible: () => previewVisible,
+    previewData: () => previewData
+};

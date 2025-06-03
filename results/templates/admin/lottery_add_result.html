@@ -7,6 +7,7 @@
 {% block extrastyle %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'results/css/lottery_admin.css' %}">
+<link rel="stylesheet" href="{% static 'results/css/preview.css' %}">  <!-- Add this line -->
 {% endblock %}
 
 {% block extrahead %}
@@ -184,4 +185,5 @@
 
 <!-- Include the JavaScript file -->
 <script src="{% static 'results/js/lottery_admin.js' %}"></script>
+<script src="{% static 'results/js/preview.js' %}"></script> 
 {% endblock %}
