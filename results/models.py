@@ -1,7 +1,6 @@
 from django.db import models
-from django.contrib import admin
-from django.forms import ModelForm, inlineformset_factory
-from django import forms
+import uuid
+
 
 class Lottery(models.Model):
     name = models.CharField(max_length=200)
@@ -19,7 +18,10 @@ class Lottery(models.Model):
 
 
 class LotteryResult(models.Model):
-    # First Section - Basic Information
+    # Unique UUID field
+    unique_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    
+    # Basic Information
     lottery = models.ForeignKey(Lottery, on_delete=models.CASCADE)
     date = models.DateField()
     draw_number = models.CharField(max_length=50)
@@ -35,6 +37,7 @@ class LotteryResult(models.Model):
         verbose_name = "Add Result"
         verbose_name_plural = "Add Results"
         unique_together = ['lottery', 'draw_number', 'date']
+
 
 class PrizeEntry(models.Model):
     PRIZE_CHOICES = [

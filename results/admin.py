@@ -68,4 +68,5 @@ class LotteryResultAdmin(admin.ModelAdmin):
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)
 admin.site.register(LotteryResult, LotteryResultAdmin)
+admin.site.register(PrizeEntry)
 admin.site.unregister(Group)

@@ -2,9 +2,11 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from datetime import date
+import uuid
 from .models import Lottery, LotteryResult, PrizeEntry
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 
@@ -35,6 +37,47 @@ class LotteryResultDetailView(generics.RetrieveAPIView):
     """
     queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
     serializer_class = LotteryResultDetailSerializer
+
+class LotteryResultByUniqueIdView(APIView):
+    """
+    API endpoint to retrieve lottery result by unique_id passed in request body
+    """
+    
+    def post(self, request):
+        unique_id = request.data.get('unique_id')
+        
+        if not unique_id:
+            return Response(
+                {'error': 'unique_id is required in request body'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate UUID format
+        try:
+            uuid.UUID(unique_id)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid unique ID format'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the lottery result with related data
+            lottery_result = LotteryResult.objects.select_related('lottery').prefetch_related('prizes').get(
+                unique_id=unique_id,
+                is_published=True
+            )
+            
+            # Serialize the data
+            serializer = LotteryResultDetailSerializer(lottery_result)
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except LotteryResult.DoesNotExist:
+            return Response(
+                {'error': 'Lottery result not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 @api_view(['GET'])
 def today_results(request):
