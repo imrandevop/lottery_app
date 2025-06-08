@@ -7,13 +7,13 @@
 {% block extrastyle %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'results/css/lottery_admin.css' %}">
-<link rel="stylesheet" href="{% static 'results/css/preview.css' %}">  <!-- Add this line -->
+<link rel="stylesheet" href="{% static 'results/css/preview.css' %}">
 {% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
 {% if is_edit_mode and prize_entries_json %}
-<!-- Prize entries data -->
+<!-- Prize entries data for edit mode -->
 <script id="prize-entries-data" type="application/json">{{ prize_entries_json|safe }}</script>
 <script>
     // Define global variable for prize entries data with error handling
@@ -52,21 +52,19 @@
 {% endblock %}
 
 {% block content %}
-<!-- Main content area -->
+<!-- ========== MAIN ADMIN CONTENT ========== -->
 <div class="lottery-admin-container">
     <div class="lottery-form-container">
         <div class="form-header">
             {% if is_edit_mode %}Lottery Result Edit System{% else %}Lottery Result Entry System{% endif %}
         </div>
-
-        <!-- Include Preview Section -->
-        {% include "admin/includes/preview_section.html" %}
         
+        <!-- ========== ADMIN FORM ========== -->
         <form method="post" id="lotteryForm">
             {% csrf_token %}
             {% if is_edit_mode %}<input type="hidden" name="result_id" value="{{ lottery_result.id }}">{% endif %}
             
-            <!-- Lottery Draw Information Section -->
+            <!-- ========== LOTTERY DRAW INFORMATION SECTION ========== -->
             <div class="form-section">
                 <h3 class="section-header">Lottery Draw Information</h3>
                 <div class="section-content">
@@ -98,7 +96,7 @@
                                     <label for="published">Mark as declared</label>
                                 </div>
                                 <div class="checkbox-group">
-                                    <input type="checkbox" name="is_bumper" id="bumper">
+                                    <input type="checkbox" name="is_bumper" id="bumper" {% if lottery_result and lottery_result.is_bumper %}checked{% endif %}>
                                     <label for="bumper">Is bumper</label>
                                 </div>
                             </div>
@@ -107,7 +105,7 @@
                 </div>
             </div>
             
-            <!-- Prize Sections -->
+            <!-- ========== PRIZE SECTIONS ========== -->
             {% for prize_type, prize_name in prize_types %}
             <div class="form-section" id="{{ prize_type }}-section">
                 <h3 class="section-header">
@@ -122,12 +120,13 @@
                     </div>
                 </h3>
                 <div class="section-content">
+                    <!-- Normal Entry Section -->
                     <div id="{{ prize_type }}-entries">
                         <div class="prize-entry">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="{{ prize_type }}_amount">Prize Amount (₹)</label>
-                                    <input type="number" name="{{ prize_type }}_prize_amount[]" id="{{ prize_type }}_amount" class="form-control" step="0.01">
+                                    <input type="number" onwheel="this.blur()" name="{{ prize_type }}_prize_amount[]" id="{{ prize_type }}_amount" class="form-control">
                                 </div>
                                 <div class="form-group">
                                     <label for="{{ prize_type }}_ticket">Ticket Number</label>
@@ -144,24 +143,25 @@
                         </div>
                     </div>
                     
+                    <!-- Add Entry Button -->
                     <div class="form-row">
                         <button type="button" class="btn btn-secondary btn-small add-entry-btn" onclick="addEntry('{{ prize_type }}')">+ Add Another Entry</button>
                     </div>
                     
+                    <!-- Bulk Entry Section -->
                     <div id="{{ prize_type }}-bulk" class="bulk-entry-section" style="display: none;">
-                        <!-- Check if this is a special prize type that needs different bulk entry format -->
                         {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
-                            <!-- Special bulk entry for consolation and 4th-10th prizes -->
+                            <!-- Special bulk entry format for consolation and 4th-10th prizes -->
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="{{ prize_type }}-bulk-amount">Prize Amount (₹)</label>
-                                    <input type="number" id="{{ prize_type }}-bulk-amount" class="form-control" step="0.01" placeholder="Enter prize amount">
+                                    <input type="number" onwheel="this.blur()" id="{{ prize_type }}-bulk-amount" class="form-control"  placeholder="Enter prize amount">
                                 </div>
                             </div>
                             <label for="{{ prize_type }}-bulk-textarea">Ticket Numbers (Space separated, numbers only - any length)</label>
                             <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="1234 56789 123456 7890"></textarea>
                         {% else %}
-                            <!-- Original bulk entry for 1st, 2nd, 3rd prizes -->
+                            <!-- Original bulk entry format for 1st, 2nd, 3rd prizes -->
                             <label for="{{ prize_type }}-bulk-textarea">Bulk Entry 
                                 (Format: amount,ticket_number,place per line)
                             </label>
@@ -175,15 +175,35 @@
             </div>
             {% endfor %}
             
-            <!-- Fixed Save Button -->
-            <button type="submit" class="btn btn-primary fixed-save-btn">
-                💾 {% if is_edit_mode %}Update{% else %}Save{% endif %} Lottery Results
-            </button>
         </form>
     </div>
 </div>
 
-<!-- Include the JavaScript file -->
+<!-- ========== PREVIEW SECTION INCLUDE ========== -->
+{% include "admin/includes/preview_section.html" %}
+
+<!-- ========== FIXED BOTTOM ACTION BUTTONS ========== -->
+<div class="bottom-action-buttons">
+    <!-- Preview Toggle Button with multiple event handlers -->
+    <button type="button" 
+            class="btn preview-toggle-btn" 
+            onclick="handlePreviewToggle()" 
+            id="preview-toggle-btn">
+        <span>👁️</span>
+        <span id="preview-btn-text">Show Preview</span>
+    </button>
+    
+    <!-- Save Button -->
+    <button type="submit" 
+            class="btn save-btn-bottom" 
+            form="lotteryForm"
+            id="save-btn-bottom">
+        <span>💾</span>
+        <span>{% if is_edit_mode %}Update{% else %}Save{% endif %} Lottery Results</span>
+    </button>
+</div>
+
+<!-- ========== JAVASCRIPT INCLUDES ========== -->
 <script src="{% static 'results/js/lottery_admin.js' %}"></script>
-<script src="{% static 'results/js/preview.js' %}"></script> 
+<script src="{% static 'results/js/preview.js' %}"></script>
 {% endblock %}

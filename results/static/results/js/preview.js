@@ -2,71 +2,43 @@
  * Preview Section JavaScript
  * Path: results/static/results/js/preview.js
  * 
- * Handles lottery result preview functionality with simple responsive design
+ * PREVIEW FUNCTIONALITY ONLY - Admin logic handled by lottery_admin.js
  */
 
 // Preview state management
 let previewVisible = false;
 let previewData = {};
+let lastDataHash = '';
 
 /**
  * Initialize preview functionality when DOM is loaded
  */
 document.addEventListener('DOMContentLoaded', function() {
-    initializePreview();
-    console.log('Preview functionality initialized');
+    // Wait for lottery_admin.js to load first
+    setTimeout(() => {
+        initializePreviewSystem();
+        console.log('Preview system initialized');
+    }, 200);
 });
 
 /**
- * Initialize all preview functionality
+ * Initialize the complete preview system
  */
-function initializePreview() {
-    setupFormListeners();
-    loadExistingData();
+function initializePreviewSystem() {
+    // Initialize preview content structure
+    initializePreviewContent();
     
-    // Override existing button handlers to include preview updates
-    overrideFormHandlers();
+    // Set up form field listeners for real-time updates
+    setupPreviewFormListeners();
     
-    // Set up periodic preview updates for better UX
+    // Load existing data if in edit mode
+    loadExistingPreviewData();
+    
+    // Set up periodic updates for smooth UX
     setInterval(updatePreviewIfVisible, 2000);
-}
-
-/**
- * Toggle preview visibility
- */
-function togglePreview() {
-    const previewSection = document.getElementById('preview-section');
-    const previewBtn = document.querySelector('.preview-toggle-btn');
-    const btnText = document.getElementById('preview-btn-text');
-    const statusText = document.getElementById('preview-status');
     
-    if (!previewSection) {
-        console.error('Preview section not found');
-        return;
-    }
-    
-    previewVisible = !previewVisible;
-    
-    if (previewVisible) {
-        previewSection.style.display = 'block';
-        previewBtn.classList.add('active');
-        btnText.textContent = 'Hide Preview';
-        statusText.textContent = 'Preview visible';
-        
-        // Initialize preview content if not already done
-        initializePreviewContent();
-        updatePreview();
-        
-        // Simple scroll to preview without animation
-        previewSection.scrollIntoView({ block: 'start' });
-    } else {
-        previewSection.style.display = 'none';
-        previewBtn.classList.remove('active');
-        btnText.textContent = 'Show Preview';
-        statusText.textContent = 'Preview hidden';
-    }
-    
-    console.log(`Preview ${previewVisible ? 'shown' : 'hidden'}`);
+    // Check initial preview state
+    checkInitialPreviewState();
 }
 
 /**
@@ -75,24 +47,146 @@ function togglePreview() {
 function initializePreviewContent() {
     const previewContent = document.getElementById('preview-content');
     
-    if (!previewContent || previewContent.innerHTML.trim() !== '') {
-        return; // Already initialized or content exists
+    if (!previewContent) {
+        console.log('Preview content container not found');
+        return;
     }
     
-    previewContent.innerHTML = `
-        <div class="preview-wrapper">
-            <!-- Desktop Preview -->
-            <div class="preview-container" id="preview-container">
-                <div class="preview-placeholder">
-                    <div class="placeholder-icon">📋</div>
-                    <h3>Lottery Result Preview</h3>
-                    <p>Fill in the form data to see the live preview</p>
+    // Only initialize if empty
+    if (previewContent.innerHTML.trim() === '') {
+        previewContent.innerHTML = `
+            <div class="preview-wrapper">
+                <div class="preview-container" id="preview-container">
+                    <div class="preview-placeholder">
+                        <div class="placeholder-icon">📋</div>
+                        <h3>Lottery Result Preview</h3>
+                        <p>Fill in the form data to see the live preview</p>
+                    </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
+        console.log('Preview content structure initialized');
+    }
+}
+
+/**
+ * Check initial preview state and update accordingly
+ */
+function checkInitialPreviewState() {
+    const previewSection = document.getElementById('preview-section');
+    if (previewSection) {
+        previewVisible = previewSection.style.display !== 'none' && previewSection.style.display !== '';
+        if (previewVisible) {
+            updatePreview();
+        }
+    }
+}
+
+/**
+ * Set up form field listeners for real-time preview updates
+ */
+function setupPreviewFormListeners() {
+    // Basic form fields
+    const basicSelectors = [
+        'select[name="lottery"]',
+        'input[name="date"]',
+        'input[name="draw_number"]',
+        'input[name="is_published"]',
+        'input[name="is_bumper"]'
+    ];
     
-    console.log('Preview content structure initialized');
+    basicSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+            element.addEventListener('change', debounce(updatePreview, 300));
+            if (element.type === 'text' || element.type === 'number' || element.type === 'date') {
+                element.addEventListener('input', debounce(updatePreview, 500));
+            }
+        });
+    });
+    
+    // Prize entry fields - set up with observer for dynamic content
+    setupPrizeFieldListeners();
+    observePrizeFieldChanges();
+    
+    console.log('Preview form listeners setup complete');
+}
+
+/**
+ * Setup listeners for existing prize entry fields
+ */
+function setupPrizeFieldListeners() {
+    const prizeInputs = document.querySelectorAll(
+        'input[name*="_prize_amount"], input[name*="_ticket_number"], input[name*="_place"]'
+    );
+    
+    prizeInputs.forEach(input => {
+        // Remove existing listeners to avoid duplicates
+        input.removeEventListener('change', updatePreview);
+        input.removeEventListener('input', updatePreview);
+        
+        // Add new listeners
+        input.addEventListener('change', debounce(updatePreview, 200));
+        input.addEventListener('input', debounce(updatePreview, 800));
+    });
+    
+    console.log(`Setup preview listeners for ${prizeInputs.length} prize fields`);
+}
+
+/**
+ * Observe for new prize fields being added
+ */
+function observePrizeFieldChanges() {
+    const observer = new MutationObserver(function(mutations) {
+        let needsUpdate = false;
+        
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                // Check if any new prize entry fields were added
+                const addedNodes = Array.from(mutation.addedNodes);
+                addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const prizeInputs = node.querySelectorAll(
+                            'input[name*="_prize_amount"], input[name*="_ticket_number"], input[name*="_place"]'
+                        );
+                        if (prizeInputs.length > 0) {
+                            needsUpdate = true;
+                            // Set up listeners on new fields
+                            prizeInputs.forEach(input => {
+                                input.addEventListener('change', debounce(updatePreview, 200));
+                                input.addEventListener('input', debounce(updatePreview, 800));
+                            });
+                        }
+                    }
+                });
+            }
+        });
+        
+        if (needsUpdate) {
+            setTimeout(updatePreview, 100);
+        }
+    });
+    
+    // Observe all prize entry containers
+    const prizeContainers = document.querySelectorAll('[id$="-entries"]');
+    prizeContainers.forEach(container => {
+        observer.observe(container, {
+            childList: true,
+            subtree: true
+        });
+    });
+    
+    console.log(`Observing ${prizeContainers.length} prize containers for changes`);
+}
+
+/**
+ * Load existing data if in edit mode
+ */
+function loadExistingPreviewData() {
+    if (window.prizeEntriesData && Object.keys(window.prizeEntriesData).length > 0) {
+        console.log('Loading existing prize data for preview:', window.prizeEntriesData);
+        setTimeout(updatePreview, 500);
+    }
 }
 
 /**
@@ -105,50 +199,52 @@ function updatePreviewIfVisible() {
 }
 
 /**
- * Main preview update function
+ * Main preview update function - called from admin system
  */
 function updatePreview() {
     if (!previewVisible) return;
     
     try {
-        // Collect current form data
         const formData = collectFormData();
+        const dataHash = generateDataHash(formData);
         
-        // Check if data has changed significantly
-        if (!hasDataChanged(formData)) {
+        // Only update if data has actually changed
+        if (dataHash === lastDataHash) {
             return;
         }
         
-        // Update preview data
+        lastDataHash = dataHash;
         previewData = formData;
-        
-        // Generate and update preview HTML
         updatePreviewHTML(formData);
         
-        console.log('Preview updated:', formData);
+        console.log('Preview updated with new data');
     } catch (error) {
         console.error('Error updating preview:', error);
-        showPreviewError('Error updating preview');
+        showPreviewError('Error updating preview: ' + error.message);
     }
 }
 
 /**
- * Check if form data has changed significantly
+ * Generate a simple hash of form data for change detection
  */
-function hasDataChanged(newData) {
-    // Simple comparison - you might want to make this more sophisticated
-    return JSON.stringify(newData) !== JSON.stringify(previewData);
+function generateDataHash(data) {
+    try {
+        return btoa(JSON.stringify(data)).substring(0, 20);
+    } catch (e) {
+        return Math.random().toString(36).substring(7);
+    }
 }
 
 /**
- * Collect all form data for preview
+ * Collect all form data for preview generation
  */
 function collectFormData() {
     const data = {
         lottery: getLotteryName(),
-        date: getFormValue('#date, input[name="date"]'),
-        drawNumber: getFormValue('#draw_number, input[name="draw_number"]'),
-        isPublished: getCheckboxValue('#published, input[name="is_published"]'),
+        date: getFormValue('input[name="date"]'),
+        drawNumber: getFormValue('input[name="draw_number"]'),
+        isPublished: getCheckboxValue('input[name="is_published"]'),
+        isBumper: getCheckboxValue('input[name="is_bumper"]'),
         prizes: collectPrizeData()
     };
     
@@ -164,7 +260,7 @@ function collectFormData() {
  * Get lottery name from select element
  */
 function getLotteryName() {
-    const lotterySelect = document.querySelector('#lottery, select[name="lottery"]');
+    const lotterySelect = document.querySelector('select[name="lottery"]');
     if (lotterySelect && lotterySelect.selectedIndex > 0) {
         return lotterySelect.options[lotterySelect.selectedIndex].text;
     }
@@ -228,7 +324,6 @@ function collectPrizeEntriesForType(prizeType) {
     const container = document.getElementById(`${prizeType}-entries`);
     
     if (!container) {
-        console.log(`Container not found: ${prizeType}-entries`);
         return entries;
     }
     
@@ -243,6 +338,7 @@ function collectPrizeEntriesForType(prizeType) {
         const ticket = ticketInput ? ticketInput.value.trim() : '';
         const place = placeInput ? placeInput.value.trim() : '';
         
+        // Only include entries with at least amount or ticket
         if (amount || ticket) {
             entries.push({ amount, ticket, place });
         }
@@ -267,33 +363,31 @@ function updatePreviewHTML(data) {
 }
 
 /**
- * Generate desktop preview HTML
+ * Generate complete preview HTML
  */
 function generatePreviewHTML(data) {
     if (!hasValidData(data)) {
         return getPlaceholderHTML();
     }
     
-    let html = `
+    return `
         <div class="preview-result">
             ${generateResultHeader(data)}
             ${generatePrizeCards(data.prizes)}
-            ${generateStatusBadge(data.isPublished)}
+            ${generateStatusBadge(data)}
         </div>
     `;
-    
-    return html;
 }
 
 /**
  * Check if data is valid for preview
  */
 function hasValidData(data) {
-    return data.date || data.drawNumber || Object.keys(data.prizes).length > 0;
+    return data.lottery || data.date || data.drawNumber || Object.keys(data.prizes).length > 0;
 }
 
 /**
- * Get placeholder HTML
+ * Get placeholder HTML when no data
  */
 function getPlaceholderHTML() {
     return `
@@ -310,13 +404,16 @@ function getPlaceholderHTML() {
  */
 function generateResultHeader(data) {
     const lotteryName = data.lottery || 'Lottery Name';
+    const drawNumber = data.drawNumber || 'N/A';
+    const formattedDate = data.formattedDate || 'Not set';
     
     return `
         <div class="result-header">
             <h2>${lotteryName}</h2>
             <div class="result-meta">
-                <div class="result-date">Date: ${data.formattedDate || 'Not set'}</div>
-                <div class="result-draw">Draw #${data.drawNumber || 'N/A'}</div>
+                <div class="result-date">Date: ${formattedDate}</div>
+                <div class="result-draw">Draw #${drawNumber}</div>
+                ${data.isBumper ? '<div class="result-bumper">🎉 Bumper Draw</div>' : ''}
             </div>
         </div>
     `;
@@ -327,22 +424,22 @@ function generateResultHeader(data) {
  */
 function generatePrizeCards(prizes) {
     if (!prizes || Object.keys(prizes).length === 0) {
-        return '<div class="no-data-message">No prize data entered</div>';
+        return '<div class="no-data-message">No prize data entered yet</div>';
     }
     
     const prizeOrder = ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     const prizeNames = {
-        '1st': '1st Prize',
-        '2nd': '2nd Prize',
-        '3rd': '3rd Prize',
-        '4th': '4th Prize',
-        '5th': '5th Prize',
-        '6th': '6th Prize',
-        '7th': '7th Prize',
-        '8th': '8th Prize',
-        '9th': '9th Prize',
-        '10th': '10th Prize',
-        'consolation': 'Consolation Prize'
+        '1st': '🥇 First Prize',
+        '2nd': '🥈 Second Prize',
+        '3rd': '🥉 Third Prize',
+        '4th': '4️⃣ Fourth Prize',
+        '5th': '5️⃣ Fifth Prize',
+        '6th': '6️⃣ Sixth Prize',
+        '7th': '7️⃣ Seventh Prize',
+        '8th': '8️⃣ Eighth Prize',
+        '9th': '9️⃣ Ninth Prize',
+        '10th': '🔟 Tenth Prize',
+        'consolation': '🎊 Consolation Prize'
     };
     
     let html = '';
@@ -350,8 +447,8 @@ function generatePrizeCards(prizes) {
     prizeOrder.forEach(prizeType => {
         if (prizes[prizeType] && prizes[prizeType].length > 0) {
             html += generateSinglePrizeCard(
-                prizeType, 
-                prizeNames[prizeType], 
+                prizeType,
+                prizeNames[prizeType],
                 prizes[prizeType]
             );
         }
@@ -370,7 +467,7 @@ function generateSinglePrizeCard(prizeType, prizeName, prizeData) {
     
     const cardClass = prizeType === '1st' ? 'prize-card first-prize' : 'prize-card';
     
-    let html = `
+    return `
         <div class="${cardClass}">
             <div class="prize-header">${prizeName}</div>
             <div class="prize-content">
@@ -379,8 +476,6 @@ function generateSinglePrizeCard(prizeType, prizeName, prizeData) {
             </div>
         </div>
     `;
-    
-    return html;
 }
 
 /**
@@ -397,7 +492,7 @@ function generateWinningNumbers(prizeType, prizeData) {
 }
 
 /**
- * Generate consolation prize numbers
+ * Generate consolation prize numbers in grid
  */
 function generateConsolationNumbers(prizeData) {
     let html = '<div class="consolation-grid">';
@@ -413,7 +508,7 @@ function generateConsolationNumbers(prizeData) {
 }
 
 /**
- * Generate top prize numbers (1st, 2nd, 3rd)
+ * Generate top prize numbers (1st, 2nd, 3rd) with places
  */
 function generateTopPrizeNumbers(prizeData) {
     let html = '<div class="winning-numbers">';
@@ -468,7 +563,8 @@ function generateRegularPrizeNumbers(prizeData) {
 /**
  * Generate status badge
  */
-function generateStatusBadge(isPublished) {
+function generateStatusBadge(data) {
+    const isPublished = data.isPublished;
     const status = isPublished ? 'published' : 'unpublished';
     const statusText = isPublished ? 'Published' : 'Draft';
     const statusClass = isPublished ? 'status-badge' : 'status-badge unpublished';
@@ -484,190 +580,6 @@ function formatCurrency(amount) {
     
     const numAmount = parseFloat(amount);
     return `₹${numAmount.toLocaleString('en-IN')}/-`;
-}
-
-/**
- * Setup form field listeners
- */
-function setupFormListeners() {
-    // Basic form fields
-    const basicSelectors = [
-        '#lottery, select[name="lottery"]',
-        '#date, input[name="date"]',
-        '#draw_number, input[name="draw_number"]',
-        '#published, input[name="is_published"]'
-    ];
-    
-    basicSelectors.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(element => {
-            element.addEventListener('change', updatePreview);
-            element.addEventListener('input', debounce(updatePreview, 300));
-        });
-    });
-    
-    // Prize entry fields
-    setupPrizeFieldListeners();
-    
-    console.log('Form listeners setup complete');
-}
-
-/**
- * Setup listeners for prize entry fields
- */
-function setupPrizeFieldListeners() {
-    const prizeInputs = document.querySelectorAll(
-        'input[name*="_prize_amount"], input[name*="_ticket_number"], input[name*="_place"]'
-    );
-    
-    prizeInputs.forEach(input => {
-        // Remove existing listeners to avoid duplicates
-        input.removeEventListener('change', updatePreview);
-        input.removeEventListener('input', updatePreview);
-        
-        // Add new listeners
-        input.addEventListener('change', updatePreview);
-        input.addEventListener('input', debounce(updatePreview, 500));
-    });
-    
-    console.log(`Setup listeners for ${prizeInputs.length} prize fields`);
-}
-
-/**
- * Load existing data if in edit mode
- */
-function loadExistingData() {
-    // Check if we're in edit mode and have existing data
-    if (window.prizeEntriesData && Object.keys(window.prizeEntriesData).length > 0) {
-        console.log('Loading existing prize data:', window.prizeEntriesData);
-        
-        // If preview is visible, update it
-        if (previewVisible) {
-            updatePreview();
-        }
-    }
-}
-
-/**
- * Override existing form handlers to include preview updates
- */
-function overrideFormHandlers() {
-    // Override add entry buttons
-    overrideAddEntryButtons();
-    
-    // Override bulk process buttons
-    overrideBulkProcessButtons();
-    
-    // Override toggle bulk entry
-    overrideToggleBulkEntry();
-}
-
-/**
- * Override add entry button handlers
- */
-function overrideAddEntryButtons() {
-    const addButtons = document.querySelectorAll('button[onclick*="addEntry"]');
-    
-    addButtons.forEach(button => {
-        const originalOnclick = button.getAttribute('onclick');
-        const prizeType = originalOnclick.match(/addEntry\('([^']+)'\)/)?.[1];
-        
-        if (prizeType) {
-            button.setAttribute('onclick', `addEntryWithPreview('${prizeType}')`);
-        }
-    });
-    
-    console.log(`Override ${addButtons.length} add entry buttons`);
-}
-
-/**
- * Override bulk process button handlers
- */
-function overrideBulkProcessButtons() {
-    const bulkButtons = document.querySelectorAll('button[onclick*="processBulkEntries"]');
-    
-    bulkButtons.forEach(button => {
-        const originalOnclick = button.getAttribute('onclick');
-        const prizeType = originalOnclick.match(/processBulkEntries\('([^']+)'\)/)?.[1];
-        
-        if (prizeType) {
-            button.setAttribute('onclick', `processBulkEntriesWithPreview('${prizeType}')`);
-        }
-    });
-    
-    console.log(`Override ${bulkButtons.length} bulk process buttons`);
-}
-
-/**
- * Override toggle bulk entry handlers
- */
-function overrideToggleBulkEntry() {
-    const toggleInputs = document.querySelectorAll('input[onchange*="toggleBulkEntry"]');
-    
-    toggleInputs.forEach(input => {
-        const originalOnchange = input.getAttribute('onchange');
-        const prizeType = originalOnchange.match(/toggleBulkEntry\('([^']+)'\)/)?.[1];
-        
-        if (prizeType) {
-            input.setAttribute('onchange', `toggleBulkEntryWithPreview('${prizeType}')`);
-        }
-    });
-    
-    console.log(`Override ${toggleInputs.length} toggle bulk entry handlers`);
-}
-
-/**
- * Enhanced addEntry function with preview update
- */
-function addEntryWithPreview(prizeType) {
-    // Call original addEntry function if it exists
-    if (typeof window.addEntry === 'function') {
-        window.addEntry(prizeType);
-    } else {
-        console.error('Original addEntry function not found');
-        return;
-    }
-    
-    // Setup listeners on new fields and update preview
-    setTimeout(() => {
-        setupPrizeFieldListeners();
-        updatePreview();
-    }, 100);
-}
-
-/**
- * Enhanced bulk processing with preview update
- */
-function processBulkEntriesWithPreview(prizeType) {
-    // Call original processBulkEntries function
-    if (typeof window.processBulkEntries === 'function') {
-        window.processBulkEntries(prizeType);
-    } else {
-        console.error('Original processBulkEntries function not found');
-        return;
-    }
-    
-    // Setup listeners and update preview after bulk processing
-    setTimeout(() => {
-        setupPrizeFieldListeners();
-        updatePreview();
-    }, 200);
-}
-
-/**
- * Enhanced toggle bulk entry with preview update
- */
-function toggleBulkEntryWithPreview(prizeType) {
-    // Call original toggleBulkEntry function
-    if (typeof window.toggleBulkEntry === 'function') {
-        window.toggleBulkEntry(prizeType);
-    } else {
-        console.error('Original toggleBulkEntry function not found');
-        return;
-    }
-    
-    // Update preview after toggle
-    setTimeout(updatePreview, 100);
 }
 
 /**
@@ -703,30 +615,57 @@ function debounce(func, wait) {
 }
 
 /**
- * Utility function to safely get element
+ * Set preview visibility state
  */
-function safeGetElement(selector) {
-    try {
-        return document.querySelector(selector);
-    } catch (e) {
-        console.error(`Error selecting element: ${selector}`, e);
-        return null;
+function setPreviewVisible(visible) {
+    previewVisible = visible;
+    if (visible) {
+        updatePreview();
     }
 }
 
 /**
- * Export functions for global access
+ * Get current preview state
  */
-window.togglePreview = togglePreview;
-window.addEntryWithPreview = addEntryWithPreview;
-window.processBulkEntriesWithPreview = processBulkEntriesWithPreview;
-window.toggleBulkEntryWithPreview = toggleBulkEntryWithPreview;
-window.updatePreview = updatePreview;
+function getPreviewState() {
+    return {
+        visible: previewVisible,
+        data: previewData,
+        lastHash: lastDataHash
+    };
+}
+
+// ========== INTEGRATION WITH LOTTERY ADMIN ==========
+
+/**
+ * Function called by lottery_admin.js to update preview
+ */
+function updatePreviewFromLotteryAdmin() {
+    updatePreview();
+}
+
+/**
+ * Function to handle preview toggle from lottery_admin.js
+ */
+function togglePreviewFromAdmin(visible) {
+    setPreviewVisible(visible);
+    return visible;
+}
+
+// ========== EXPORT FUNCTIONS ==========
+
+// Export main functions for lottery_admin.js integration
+window.updatePreviewFromLotteryAdmin = updatePreviewFromLotteryAdmin;
+window.togglePreviewFromAdmin = togglePreviewFromAdmin;
+window.setPreviewVisible = setPreviewVisible;
+window.getPreviewState = getPreviewState;
 
 // Export for debugging
 window.previewDebug = {
     collectFormData,
     updatePreview,
+    generatePreviewHTML,
     previewVisible: () => previewVisible,
-    previewData: () => previewData
+    previewData: () => previewData,
+    lastDataHash: () => lastDataHash
 };

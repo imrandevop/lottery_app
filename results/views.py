@@ -1,3 +1,166 @@
-from django.shortcuts import render
+# views.py
+from rest_framework import generics, status
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from datetime import date
+from .models import Lottery, LotteryResult, PrizeEntry
+from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 
-# Create your views here.
+class LotteryResultListView(generics.ListAPIView):
+    """
+    API endpoint to get all published lottery results
+    """
+    serializer_class = LotteryResultSerializer
+    
+    def get_queryset(self):
+        queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
+        
+        # Filter by lottery code if provided
+        lottery_code = self.request.query_params.get('lottery_code', None)
+        if lottery_code:
+            queryset = queryset.filter(lottery__code=lottery_code)
+        
+        # Filter by date if provided
+        result_date = self.request.query_params.get('date', None)
+        if result_date:
+            queryset = queryset.filter(date=result_date)
+            
+        return queryset.order_by('-date', '-created_at')
+
+class LotteryResultDetailView(generics.RetrieveAPIView):
+    """
+    API endpoint to get detailed lottery result by ID
+    """
+    queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
+    serializer_class = LotteryResultDetailSerializer
+
+@api_view(['GET'])
+def today_results(request):
+    """
+    API endpoint to get today's lottery results
+    """
+    today = date.today()
+    results = LotteryResult.objects.filter(
+        date=today, 
+        is_published=True
+    ).select_related('lottery').prefetch_related('prizes')
+    
+    serializer = LotteryResultSerializer(results, many=True)
+    return Response({
+        'date': today,
+        'day_label': 'Today Result',
+        'count': results.count(),
+        'results': serializer.data
+    })
+
+@api_view(['GET'])
+def results_by_date(request, date_str):
+    """
+    API endpoint to get lottery results for a specific date
+    Format: YYYY-MM-DD
+    """
+    try:
+        from datetime import datetime, timedelta
+        result_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        results = LotteryResult.objects.filter(
+            date=result_date, 
+            is_published=True
+        ).select_related('lottery').prefetch_related('prizes')
+        
+        # Determine day label
+        today = date.today()
+        if result_date == today:
+            day_label = 'Today Result'
+        else:
+            day_label = f'Result for {result_date.strftime("%B %d, %Y")}'
+        
+        serializer = LotteryResultSerializer(results, many=True)
+        return Response({
+            'date': result_date,
+            'day_label': day_label,
+            'count': results.count(),
+            'results': serializer.data
+        })
+        
+    except ValueError:
+        return Response(
+            {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+@api_view(['GET'])
+def latest_result(request, lottery_code):
+    """
+    API endpoint to get the latest result for a specific lottery
+    """
+    try:
+        lottery = Lottery.objects.get(code=lottery_code)
+        latest_result = LotteryResult.objects.filter(
+            lottery=lottery,
+            is_published=True
+        ).select_related('lottery').prefetch_related('prizes').order_by('-date', '-created_at').first()
+        
+        if not latest_result:
+            return Response(
+                {'error': f'No published results found for lottery {lottery_code}'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = LotteryResultSerializer(latest_result)
+        return Response(serializer.data)
+        
+    except Lottery.DoesNotExist:
+        return Response(
+            {'error': f'Lottery with code {lottery_code} not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+def lottery_results_by_code(request, lottery_code):
+    """
+    API endpoint to get all results for a specific lottery
+    """
+    try:
+        lottery = Lottery.objects.get(code=lottery_code)
+        results = LotteryResult.objects.filter(
+            lottery=lottery,
+            is_published=True
+        ).select_related('lottery').prefetch_related('prizes').order_by('-date', '-created_at')
+        
+        # Pagination
+        page = request.query_params.get('page', 1)
+        limit = min(int(request.query_params.get('limit', 10)), 100)  # Max 100 results per page
+        
+        try:
+            page = int(page)
+            start = (page - 1) * limit
+            end = start + limit
+            paginated_results = results[start:end]
+            
+            serializer = LotteryResultSerializer(paginated_results, many=True)
+            
+            return Response({
+                'lottery': {
+                    'name': lottery.name,
+                    'code': lottery.code
+                },
+                'page': page,
+                'limit': limit,
+                'total_count': results.count(),
+                'results': serializer.data
+            })
+            
+        except ValueError:
+            return Response(
+                {'error': 'Invalid page number'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+    except Lottery.DoesNotExist:
+        return Response(
+            {'error': f'Lottery with code {lottery_code} not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )

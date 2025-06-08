@@ -1,39 +1,39 @@
 /* 
- * Lottery Admin Styles - Custom Right Side Only
+ * Lottery Admin Styles - Admin Interface Only
  * Path: results/static/results/css/lottery_admin.css
  * 
- * This stylesheet only customizes the main content area,
- * leaving Django's default admin sidebar intact
+ * ADMIN FORM FUNCTIONALITY ONLY - Preview styles moved to preview.css
  */
 
-/* Ensure the main content works with sidebar */
+/* ========== ADMIN CONTAINER SETUP ========== */
+
+/* Ensure the main content works with Django admin sidebar */
 #content-main .lottery-admin-container {
     background: #f8f9fa;
     padding: 20px;
     min-height: calc(100vh - 120px);
 }
 
-/* Target only the main content area, not the entire admin */
 .lottery-admin-container {
     background: #f8f9fa;
     padding: 20px;
     min-height: calc(100vh - 120px);
 }
 
-/* Form container with standard styling */
+/* ========== FORM CONTAINER ========== */
+
 .lottery-form-container {
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     overflow: hidden;
-    margin-bottom: 80px;
+    margin-bottom: 100px; /* Space for fixed buttons */
     border: 1px solid #dee2e6;
     max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
 }
 
-/* Standard form header */
 .form-header {
     background: #007bff;
     color: white;
@@ -44,7 +44,8 @@
     border-bottom: 1px solid #0056b3;
 }
 
-/* Form sections with standard styling */
+/* ========== FORM SECTIONS ========== */
+
 .form-section {
     margin: 0;
     border-bottom: 1px solid #dee2e6;
@@ -54,7 +55,6 @@
     border-bottom: none;
 }
 
-/* Section headers with subtle styling */
 .section-header {
     background: #f8f9fa;
     color: #495057;
@@ -68,13 +68,13 @@
     border-bottom: 1px solid #dee2e6;
 }
 
-/* Section content */
 .section-content {
     padding: 25px 30px;
     background: white;
 }
 
-/* Form layout */
+/* ========== FORM LAYOUT ========== */
+
 .form-row {
     display: flex;
     gap: 20px;
@@ -94,10 +94,11 @@
     font-size: 14px;
 }
 
-/* Enhanced form control styling - UNIFIED VERSION */
+/* ========== FORM CONTROLS ========== */
+
 .lottery-form-container .form-control {
     width: 100%;
-    padding: 12px 12px;
+    padding: 12px;
     border: 1px solid #ced4da;
     border-radius: 4px;
     font-size: 14px;
@@ -117,7 +118,14 @@
     opacity: 1;
 }
 
-/* Checkbox styling */
+/* ========== CHECKBOX STYLING ========== */
+
+.checkbox-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
 .checkbox-group {
     display: flex;
     align-items: center;
@@ -137,7 +145,8 @@
     cursor: pointer;
 }
 
-/* Button styling - scope to lottery form to avoid conflicts */
+/* ========== BUTTON STYLING ========== */
+
 .lottery-form-container .btn {
     padding: 8px 16px;
     border: 1px solid transparent;
@@ -189,12 +198,25 @@
     color: #fff;
 }
 
+.lottery-form-container .btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+.lottery-form-container .btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+    color: #fff;
+}
+
 .lottery-form-container .btn-small {
     padding: 4px 8px;
     font-size: 12px;
 }
 
-/* Toggle switch styling */
+/* ========== TOGGLE SWITCH ========== */
+
 .toggle-switch {
     position: relative;
     display: inline-block;
@@ -248,36 +270,8 @@ input:checked + .slider:before {
     color: #6c757d;
 }
 
-/* Fixed save button */
-.fixed-save-btn {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1000;
-    padding: 12px 24px;
-    font-size: 16px;
-    border-radius: 50px;
-    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
-    font-weight: 500;
-    background-color: #007bff;
-    border-color: #007bff;
-    color: #fff;
-    border: 1px solid transparent;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-block;
-    text-align: center;
-    transition: all 0.15s ease-in-out;
-}
+/* ========== PRIZE ENTRY STYLING ========== */
 
-.fixed-save-btn:hover {
-    background-color: #0056b3;
-    border-color: #004085;
-    color: #fff;
-    transform: translateY(-2px);
-}
-
-/* Prize entry styling */
 .prize-entry {
     border: 1px solid #e9ecef;
     border-radius: 6px;
@@ -290,33 +284,6 @@ input:checked + .slider:before {
     margin-top: 10px;
 }
 
-/* Bulk entry section */
-.bulk-entry-section {
-    margin-top: 20px;
-    padding: 15px;
-    background: #e7f3ff;
-    border-radius: 6px;
-    border: 1px solid #b3d7ff;
-}
-
-.bulk-textarea {
-    width: 100%;
-    min-height: 100px;
-    padding: 10px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    resize: vertical;
-}
-
-.bulk-textarea:focus {
-    outline: none;
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-}
-
-/* Entry actions */
 .entry-actions {
     display: flex;
     justify-content: flex-end;
@@ -338,39 +305,460 @@ input:checked + .slider:before {
     background-color: #f8d7da;
 }
 
-/* Preview section */
-.preview-section {
+/* ========== BULK ENTRY SECTION ========== */
+
+.bulk-entry-section {
     margin-top: 20px;
-    background: #f0f8ff;
-    border-radius: 6px;
     padding: 15px;
+    background: #e7f3ff;
+    border-radius: 6px;
     border: 1px solid #b3d7ff;
 }
 
-.preview-table {
+.bulk-entry-section .form-row {
+    margin-bottom: 15px;
+}
+
+.bulk-entry-section .form-group {
+    margin-bottom: 0;
+}
+
+.bulk-textarea {
     width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
+    min-height: 100px;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    resize: vertical;
+    background-color: #f8f9fa;
+    line-height: 1.5;
+    letter-spacing: 1px;
 }
 
-.preview-table th, 
-.preview-table td {
-    padding: 8px 12px;
-    text-align: left;
-    border-bottom: 1px solid #dee2e6;
+.bulk-textarea:focus {
+    outline: none;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
-.preview-table th {
-    background-color: #e9ecef;
-    font-weight: 500;
-    color: #495057;
+.bulk-textarea::placeholder {
+    color: #6c757d;
+    font-style: italic;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    letter-spacing: normal;
 }
 
-.preview-table tbody tr:hover {
-    background-color: #f5f5f5;
+/* Special styling for bulk amount inputs */
+#consolation-bulk-amount,
+#4th-bulk-amount,
+#5th-bulk-amount,
+#6th-bulk-amount,
+#7th-bulk-amount,
+#8th-bulk-amount,
+#9th-bulk-amount,
+#10th-bulk-amount {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
 }
 
-/* Notification styles */
+#consolation-bulk-amount:focus,
+#4th-bulk-amount:focus,
+#5th-bulk-amount:focus,
+#6th-bulk-amount:focus,
+#7th-bulk-amount:focus,
+#8th-bulk-amount:focus,
+#9th-bulk-amount:focus,
+#10th-bulk-amount:focus {
+    background-color: #fff;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+}
+
+/* Process button positioning */
+.bulk-entry-section .form-row:last-child {
+    margin-bottom: 0;
+    padding-top: 10px;
+    border-top: 1px solid #dee2e6;
+}
+
+/* ========== COMPACT RIGHT-SIDE BOTTOM PANEL ========== */
+
+/* Fixed bottom action panel - matching main content width */
+.bottom-action-buttons {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 61% !important;;
+    transform: translateX(-50%) !important;
+    width: 65% !important;
+    max-width: 1200px !important; /* Match lottery-form-container max-width */
+    background: rgba(255, 255, 255, 0.98) !important;
+    backdrop-filter: blur(15px) !important;
+    border-top: 1px solid #e9ecef !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 12px 30px !important; /* Match section content padding */
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 15px !important;
+    z-index: 9999 !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12) !important;
+    transition: all 0.3s ease !important;
+    min-height: 60px !important;
+    margin: 0 auto !important;
+}
+
+/* Panel top indicator - smaller and centered */
+.bottom-action-buttons::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px !important; /* Reduced from 60px */
+    height: 2px !important; /* Reduced from 4px */
+    background: linear-gradient(90deg, transparent, #dee2e6, transparent);
+    border-radius: 2px;
+}
+
+/* When Django admin sidebar is present - adjust for sidebar */
+body.nav-sidebar .bottom-action-buttons {
+    left: calc(50% + 110px) !important; /* Offset by half sidebar width (220px/2) */
+    transform: translateX(-50%) !important;
+}
+
+/* Base button styling - more compact */
+.bottom-action-buttons .btn {
+    background: linear-gradient(135deg, #6c757d, #495057) !important;
+    border: none !important;
+    color: white !important;
+    padding: 10px 20px !important; /* Reduced padding */
+    border-radius: 25px !important; /* Slightly less rounded */
+    font-size: 14px !important; /* Smaller font */
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important; /* Reduced gap */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.15) !important; /* Smaller shadow */
+    min-width: 140px !important; /* Reduced from 180px */
+    justify-content: center !important;
+    text-decoration: none !important;
+    position: relative !important;
+    overflow: hidden !important;
+    outline: none !important;
+    height: 36px !important; /* Fixed compact height */
+}
+
+/* Hover effect for all buttons - subtle shimmer */
+.bottom-action-buttons .btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.bottom-action-buttons .btn:hover::before {
+    left: 100%;
+}
+
+.bottom-action-buttons .btn:hover {
+    transform: translateY(-2px) !important; /* Reduced from -3px */
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+    color: white !important;
+}
+
+/* Preview Toggle Button - Green Theme */
+.bottom-action-buttons .preview-toggle-btn {
+    background: linear-gradient(135deg, #28a745, #20c997) !important;
+    box-shadow: 0 3px 15px rgba(40, 167, 69, 0.3) !important;
+}
+
+.bottom-action-buttons .preview-toggle-btn:hover {
+    background: linear-gradient(135deg, #1e7e34, #1abc9c) !important;
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4) !important;
+}
+
+/* Active state when preview is shown */
+.bottom-action-buttons .preview-toggle-btn.active {
+    background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+    color: #212529 !important;
+    box-shadow: 0 3px 15px rgba(255, 193, 7, 0.3) !important;
+}
+
+.bottom-action-buttons .preview-toggle-btn.active:hover {
+    background: linear-gradient(135deg, #e0a800, #e8590c) !important;
+    color: #212529 !important;
+    box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4) !important;
+}
+
+/* Save Button - Blue Theme */
+.bottom-action-buttons .save-btn-bottom {
+    background: linear-gradient(135deg, #007bff, #0056b3) !important;
+    box-shadow: 0 3px 15px rgba(0, 123, 255, 0.3) !important;
+}
+
+.bottom-action-buttons .save-btn-bottom:hover {
+    background: linear-gradient(135deg, #0056b3, #004085) !important;
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4) !important;
+}
+
+/* Button icons styling - smaller */
+.bottom-action-buttons .btn span:first-child {
+    font-size: 16px !important; /* Reduced from 18px */
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2)) !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Button text styling */
+.bottom-action-buttons .btn span:last-child {
+    font-weight: 500 !important;
+    letter-spacing: 0.2px !important; /* Slightly reduced */
+}
+
+/* Panel slide-up animation */
+.bottom-action-buttons {
+    animation: slideUpFromBottom 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+@keyframes slideUpFromBottom {
+    from {
+        transform: translateX(-50%) translateY(100%) !important;
+        opacity: 0 !important;
+    }
+    to {
+        transform: translateX(-50%) translateY(0) !important;
+        opacity: 1 !important;
+    }
+}
+
+/* Loading state for save button */
+.bottom-action-buttons .save-btn-bottom.loading {
+    opacity: 0.8 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+}
+
+.bottom-action-buttons .save-btn-bottom.loading::after {
+    content: '' !important;
+    width: 14px !important; /* Smaller spinner */
+    height: 14px !important;
+    border: 2px solid transparent !important;
+    border-top: 2px solid white !important;
+    border-radius: 50% !important;
+    animation: spin 1s linear infinite !important;
+    margin-left: 6px !important;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Bottom accent line - smaller */
+.bottom-action-buttons::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px !important; /* Reduced from 2px */
+    background: linear-gradient(90deg, #007bff, #28a745, #ffc107, #28a745, #007bff);
+    opacity: 0.4;
+}
+
+/* Ensure main content has less bottom padding since panel is smaller */
+.lottery-form-container {
+    margin-bottom: 80px !important; /* Reduced from 140px */
+    padding-bottom: 20px !important;
+}
+
+/* ========== RESPONSIVE DESIGN ========== */
+
+/* Tablet styles */
+@media (max-width: 992px) {
+    .bottom-action-buttons {
+        padding: 10px 15px !important;
+        gap: 12px !important;
+        max-width: 350px !important;
+    }
+    
+    .bottom-action-buttons .btn {
+        min-width: 120px !important;
+        padding: 9px 18px !important;
+        font-size: 13px !important;
+        height: 34px !important;
+    }
+}
+
+/* Mobile styles - full width centered */
+@media (max-width: 768px) {
+    .bottom-action-buttons {
+        left: 50% !important;
+        right: auto !important;
+        width: calc(100% - 32px) !important; /* Account for mobile margins */
+        max-width: none !important;
+        transform: translateX(-50%) !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+        padding: 12px 16px !important;
+        min-height: 90px !important;
+        border-radius: 12px 12px 0 0 !important;
+        justify-content: center !important;
+        margin: 0 16px !important;
+    }
+    
+    body.nav-sidebar .bottom-action-buttons {
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+    }
+    
+    .bottom-action-buttons .btn {
+        width: 100% !important;
+        max-width: 280px !important;
+        padding: 12px 16px !important;
+        font-size: 14px !important;
+        min-width: unset !important;
+        height: 38px !important;
+    }
+    
+    .lottery-form-container {
+        margin-bottom: 110px !important;
+    }
+}
+
+/* Small mobile styles */
+@media (max-width: 480px) {
+    .bottom-action-buttons {
+        padding: 10px 12px !important;
+        min-height: 85px !important;
+    }
+    
+    .bottom-action-buttons .btn {
+        padding: 10px 14px !important;
+        font-size: 13px !important;
+        max-width: 260px !important;
+        height: 36px !important;
+    }
+    
+    .bottom-action-buttons .btn span:first-child {
+        font-size: 14px !important;
+    }
+}
+
+/* ========== ACCESSIBILITY & FOCUS STATES ========== */
+
+/* Enhanced focus states */
+.bottom-action-buttons .btn:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.8) !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.2) !important;
+}
+
+.bottom-action-buttons .preview-toggle-btn:focus {
+    box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.2) !important;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .bottom-action-buttons {
+        background: white !important;
+        border-top: 2px solid #000 !important;
+        border-left: 2px solid #000 !important;
+    }
+    
+    .bottom-action-buttons .btn {
+        border: 2px solid !important;
+        background: #000 !important;
+        color: #fff !important;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .bottom-action-buttons .btn,
+    .bottom-action-buttons {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    .bottom-action-buttons .btn::before {
+        display: none !important;
+    }
+}
+
+/* Enhanced backdrop blur for supported browsers */
+@supports (backdrop-filter: blur(15px)) {
+    .bottom-action-buttons {
+        background: rgba(255, 255, 255, 0.9) !important;
+        backdrop-filter: blur(15px) !important;
+    }
+}
+
+/* Fallback for non-supporting browsers */
+@supports not (backdrop-filter: blur(15px)) {
+    .bottom-action-buttons {
+        background: rgba(255, 255, 255, 0.98) !important;
+    }
+}
+
+/* ========== ADMIN COMPATIBILITY ========== */
+
+/* Ensure sidebar compatibility */
+body.nav-sidebar #content-main .lottery-admin-container {
+    margin-left: 0 !important;
+}
+
+/* Force visibility and positioning */
+.bottom-action-buttons {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: fixed !important;
+}
+
+/* Ensure buttons work in Django admin change form */
+body.change-form .bottom-action-buttons {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+}
+
+/* Active button pulse effect - subtler */
+.bottom-action-buttons .btn.active {
+    animation: activePulse 3s infinite !important;
+}
+
+@keyframes activePulse {
+    0%, 100% { 
+        box-shadow: 0 3px 15px rgba(255, 193, 7, 0.3) !important; 
+    }
+    50% { 
+        box-shadow: 0 3px 15px rgba(255, 193, 7, 0.5) !important; 
+    }
+}
+
+/* Subtle hover effect for the entire panel */
+.bottom-action-buttons:hover {
+    box-shadow: -6px -6px 25px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Ensure proper stacking and no overflow issues */
+.bottom-action-buttons {
+    overflow: visible !important;
+    white-space: nowrap !important;
+}    
+
+/* ========== NOTIFICATION SYSTEM ========== */
+
 #notification-container {
     position: fixed;
     top: 20px;
@@ -433,7 +821,8 @@ input:checked + .slider:before {
     opacity: 0.8;
 }
 
-/* Responsive adjustments */
+/* ========== RESPONSIVE DESIGN ========== */
+
 @media (max-width: 992px) {
     .lottery-admin-container {
         padding: 10px;
@@ -453,7 +842,30 @@ input:checked + .slider:before {
     }
 }
 
-@media (max-width: 576px) {
+@media (max-width: 768px) {
+    .bottom-action-buttons {
+        flex-direction: column;
+        gap: 12px;
+        padding: 15px;
+        left: 0; /* Reset left positioning on mobile */
+    }
+    
+    body.nav-sidebar .bottom-action-buttons {
+        left: 0; /* Reset sidebar adjustment on mobile */
+    }
+    
+    .bottom-action-buttons .preview-toggle-btn,
+    .save-btn-bottom {
+        width: 100%;
+        max-width: 300px;
+        padding: 14px 20px;
+        font-size: 15px;
+    }
+    
+    .lottery-form-container {
+        margin-bottom: 140px; /* More space for stacked buttons */
+    }
+    
     .section-header {
         flex-direction: column;
         gap: 10px;
@@ -466,104 +878,96 @@ input:checked + .slider:before {
         justify-content: center;
     }
     
-    .fixed-save-btn {
-        width: calc(100% - 40px);
-        bottom: 10px;
-        right: 20px;
-        border-radius: 6px;
-    }
-    
     .form-header {
         padding: 15px;
         font-size: 20px;
     }
 }
 
-/* Additional styles to ensure sidebar compatibility */
+@media (max-width: 576px) {
+    .bottom-action-buttons {
+        padding: 12px;
+    }
+    
+    .bottom-action-buttons .preview-toggle-btn,
+    .save-btn-bottom {
+        padding: 12px 16px;
+        font-size: 14px;
+        min-width: unset;
+    }
+    
+    .bottom-action-buttons .btn span:first-child {
+        font-size: 16px;
+    }
+}
+
+/* ========== ACCESSIBILITY & ENHANCEMENTS ========== */
+
+/* Focus states */
+.bottom-action-buttons .btn:focus {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .bottom-action-buttons {
+        background: white;
+        border-top: 2px solid #000;
+    }
+    
+    .bottom-action-buttons .btn {
+        border: 2px solid;
+    }
+}
+
+/* Enhanced backdrop blur for supported browsers */
+@supports (backdrop-filter: blur(10px)) {
+    .bottom-action-buttons {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+    }
+}
+
+/* Fallback for non-supporting browsers */
+@supports not (backdrop-filter: blur(10px)) {
+    .bottom-action-buttons {
+        background: rgba(255, 255, 255, 0.98);
+    }
+}
+
+/* Scroll-based enhancements */
+.bottom-action-buttons.near-bottom::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, #28a745, transparent);
+    border-radius: 2px;
+}
+
+body.scrolling .bottom-action-buttons {
+    transition: box-shadow 0.2s ease, backdrop-filter 0.2s ease;
+}
+
+/* ========== ADMIN COMPATIBILITY ========== */
+
+/* Ensure sidebar compatibility */
 body.nav-sidebar #content-main .lottery-admin-container {
     margin-left: 0; /* Let Django handle sidebar spacing */
 }
 
-/* Ensure the form doesn't conflict with admin styles */
-.lottery-form-container select,
-.lottery-form-container input,
-.lottery-form-container textarea {
-    box-sizing: border-box;
-}
-
-/* Override any admin form styles that might interfere */
+/* Override admin form styles that might interfere */
 .lottery-form-container form .form-row {
     display: flex; /* Ensure our flex layout works */
 }
 
-
-
-/* Additional CSS for the new bulk entry format */
-/* Add this to your existing lottery_admin.css file */
-
-/* Bulk entry section enhanced styling */
-.bulk-entry-section .form-row {
-    margin-bottom: 15px;
-}
-
-.bulk-entry-section .form-group {
-    margin-bottom: 0;
-}
-
-/* Special styling for bulk amount input */
-#consolation-bulk-amount,
-#4th-bulk-amount,
-#5th-bulk-amount,
-#6th-bulk-amount,
-#7th-bulk-amount,
-#8th-bulk-amount,
-#9th-bulk-amount,
-#10th-bulk-amount {
-    background-color: #fff3cd;
-    border-color: #ffeaa7;
-}
-
-#consolation-bulk-amount:focus,
-#4th-bulk-amount:focus,
-#5th-bulk-amount:focus,
-#6th-bulk-amount:focus,
-#7th-bulk-amount:focus,
-#8th-bulk-amount:focus,
-#9th-bulk-amount:focus,
-#10th-bulk-amount:focus {
-    background-color: #fff;
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
-}
-
-/* Enhanced bulk textarea for special prizes */
-.bulk-entry-section .bulk-textarea {
-    background-color: #f8f9fa;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.5;
-    letter-spacing: 1px;
-}
-
-/* Placeholder styling for different bulk entry types */
-.bulk-entry-section textarea::placeholder {
-    color: #6c757d;
-    font-style: italic;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    letter-spacing: normal;
-}
-
-/* Help text styling */
-.bulk-entry-section label {
-    font-weight: 500;
-    color: #495057;
-    margin-bottom: 8px;
-    display: block;
-}
-
-/* Process button positioning */
-.bulk-entry-section .form-row:last-child {
-    margin-bottom: 0;
-    padding-top: 10px;
-    border-top: 1px solid #dee2e6;
+/* Ensure form controls don't conflict with admin styles */
+.lottery-form-container select,
+.lottery-form-container input,
+.lottery-form-container textarea {
+    box-sizing: border-box;
 }

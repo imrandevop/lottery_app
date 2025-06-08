@@ -1,34 +1,17 @@
-<!-- Preview Section HTML Template -->
-<!-- Path: admin/includes/preview_section.html -->
-
-<!-- Always visible preview toggle button -->
-<div class="preview-toggle-section">
-    <div class="preview-toggle-container">
-        <button type="button" class="btn preview-toggle-btn" onclick="togglePreview()">
-            <span class="preview-icon">👁️</span>
-            <span id="preview-btn-text">Show Preview</span>
-        </button>
-        <div class="preview-info">
-            <span class="preview-status" id="preview-status">Preview hidden</span>
-        </div>
-    </div>
-</div>
-
-<!-- Preview Section Container -->
-<div class="preview-section" id="preview-section">
-    <div class="preview-header">
-        <div class="preview-header-content">
-            <h3>Live Preview</h3>
-            <button type="button" class="btn btn-secondary preview-close-btn" onclick="togglePreview()">
-                <span>✕</span>
-            </button>
-        </div>
-    </div>
+<!-- 
+    Preview Section Include Template
+    Path: admin/includes/preview_section.html
     
+    PREVIEW DISPLAY ONLY - Admin functionality in main template
+-->
+
+<!-- ========== PREVIEW SECTION CONTAINER ========== -->
+<div class="preview-section" id="preview-section">
     <div class="preview-content" id="preview-content">
         <div class="preview-wrapper">
-            <!-- Desktop Preview Container -->
+            <!-- ========== PREVIEW CONTAINER ========== -->
             <div class="preview-container" id="preview-container">
+                <!-- ========== DEFAULT PLACEHOLDER ========== -->
                 <div class="preview-placeholder">
                     <div class="placeholder-icon">📋</div>
                     <h3>Lottery Result Preview</h3>
@@ -38,3 +21,11 @@
         </div>
     </div>
 </div>
+
+<!-- 
+    Pure HTML template - No inline styles or scripts
+    All functionality handled by:
+    - preview.css (styles)
+    - preview.js (functionality)
+    - lottery_admin.css (admin integration styles)
+-->
