@@ -115,7 +115,6 @@ def today_results(request):
     return Response({
         'status': 'success',
         'date': today,
-        'day_label': 'Today Result',
         'count': results.count(),
         'results': serializer.data
     })
@@ -146,7 +145,6 @@ def results_by_date(request, date_str):
         return Response({
             'status': 'success',
             'date': result_date,
-            'day_label': day_label,
             'count': results.count(),
             'results': serializer.data
         })

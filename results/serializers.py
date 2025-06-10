@@ -72,11 +72,11 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = LotteryResult
         fields = [
+            'date',
             'id',
             'unique_id',  # Added unique_id field
             'lottery_name',
             'lottery_code', 
-            'date',
             'draw_number',
             'prizes',
             'is_published',
