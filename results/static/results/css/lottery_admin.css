@@ -971,3 +971,41 @@ body.nav-sidebar #content-main .lottery-admin-container {
 .lottery-form-container textarea {
     box-sizing: border-box;
 }
+
+
+/* ========== DARK MODE SUPPORT FOR BULK ENTRY SECTION ========== */
+
+/* Try Django admin's approach - using CSS custom properties */
+:root {
+    --bulk-entry-bg: #e7f3ff;
+    --bulk-entry-border: #b3d7ff;
+    --bulk-textarea-bg: #f8f9fa;
+    --bulk-textarea-border: #ced4da;
+    --bulk-textarea-color: #495057;
+    --bulk-placeholder-color: #6c757d;
+}
+
+[data-theme="dark"] {
+    --bulk-entry-bg: #2d3748;
+    --bulk-entry-border: #4a5568;
+    --bulk-textarea-bg: #000000;
+    --bulk-textarea-border: #4a5568;
+    --bulk-textarea-color: #e2e8f0;
+    --bulk-placeholder-color: #a0aec0;
+}
+
+/* Apply the CSS variables */
+.bulk-entry-section {
+    background: var(--bulk-entry-bg) !important;
+    border: 1px solid var(--bulk-entry-border) !important;
+}
+
+.bulk-textarea {
+    background-color: var(--bulk-textarea-bg) !important;
+    border: 1px solid var(--bulk-textarea-border) !important;
+    color: var(--bulk-textarea-color) !important;
+}
+
+.bulk-textarea::placeholder {
+    color: var(--bulk-placeholder-color) !important;
+}
