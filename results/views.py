@@ -15,6 +15,7 @@ class LotteryResultListView(generics.ListAPIView):
     API endpoint to get all published lottery results
     """
     serializer_class = LotteryResultSerializer
+    pagination_class = None  # Disable pagination for this view
     
     def get_queryset(self):
         queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
@@ -30,6 +31,15 @@ class LotteryResultListView(generics.ListAPIView):
             queryset = queryset.filter(date=result_date)
             
         return queryset.order_by('-date', '-created_at')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'status': 'success',
+            'count': queryset.count(),
+            'results': serializer.data
+        })
 
 class LotteryResultDetailView(generics.RetrieveAPIView):
     """
@@ -37,6 +47,14 @@ class LotteryResultDetailView(generics.RetrieveAPIView):
     """
     queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
     serializer_class = LotteryResultDetailSerializer
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({
+            'status': 'success',
+            'result': serializer.data
+        })
 
 class LotteryResultByUniqueIdView(APIView):
     """
@@ -71,7 +89,10 @@ class LotteryResultByUniqueIdView(APIView):
             # Serialize the data
             serializer = LotteryResultDetailSerializer(lottery_result)
             
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response({
+                'status': 'success',
+                'result': serializer.data
+            }, status=status.HTTP_200_OK)
             
         except LotteryResult.DoesNotExist:
             return Response(
@@ -92,6 +113,7 @@ def today_results(request):
     
     serializer = LotteryResultSerializer(results, many=True)
     return Response({
+        'status': 'success',
         'date': today,
         'day_label': 'Today Result',
         'count': results.count(),
@@ -122,6 +144,7 @@ def results_by_date(request, date_str):
         
         serializer = LotteryResultSerializer(results, many=True)
         return Response({
+            'status': 'success',
             'date': result_date,
             'day_label': day_label,
             'count': results.count(),
@@ -153,7 +176,10 @@ def latest_result(request, lottery_code):
             )
         
         serializer = LotteryResultSerializer(latest_result)
-        return Response(serializer.data)
+        return Response({
+            'status': 'success',
+            'result': serializer.data
+        })
         
     except Lottery.DoesNotExist:
         return Response(
@@ -173,7 +199,7 @@ def lottery_results_by_code(request, lottery_code):
             is_published=True
         ).select_related('lottery').prefetch_related('prizes').order_by('-date', '-created_at')
         
-        # Pagination
+        # Manual pagination (without DRF pagination wrapper)
         page = request.query_params.get('page', 1)
         limit = min(int(request.query_params.get('limit', 10)), 100)  # Max 100 results per page
         
@@ -186,6 +212,7 @@ def lottery_results_by_code(request, lottery_code):
             serializer = LotteryResultSerializer(paginated_results, many=True)
             
             return Response({
+                'status': 'success',
                 'lottery': {
                     'name': lottery.name,
                     'code': lottery.code
@@ -193,6 +220,7 @@ def lottery_results_by_code(request, lottery_code):
                 'page': page,
                 'limit': limit,
                 'total_count': results.count(),
+                'count': len(paginated_results),
                 'results': serializer.data
             })
             
