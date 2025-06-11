@@ -74,6 +74,9 @@ function addEntry(prizeType) {
             isDirty = true;
             notifyPreviewUpdate();
         });
+        
+        // Apply no-spaces functionality to new inputs
+        applyNoSpacesToInput(input);
     });
     
     // Add remove button if this is not the first entry
@@ -954,6 +957,99 @@ function notifyPreviewUpdate() {
         }
     }, 300);
 }
+
+
+function applyNoSpacesToInput(input) {
+    if (!input) return;
+    
+    // Check if this input should not have spaces
+    const noSpaceFields = ['ticket_number', 'place', 'draw_number'];
+    const shouldApplyNoSpaces = noSpaceFields.some(field => 
+        input.name && input.name.includes(field)
+    );
+    
+    if (shouldApplyNoSpaces) {
+        // Add visual indicator
+        input.style.borderLeft = '3px solid #28a745';
+        input.title = 'Spaces are not allowed in this field';
+        
+        // Remove spaces function
+        function removeSpaces() {
+            if (input.value) {
+                const cursorPosition = input.selectionStart;
+                const originalLength = input.value.length;
+                input.value = input.value.replace(/\s/g, '');
+                const newLength = input.value.length;
+                const spacesRemoved = originalLength - newLength;
+                
+                // Adjust cursor position if spaces were removed before cursor
+                if (spacesRemoved > 0) {
+                    const newCursorPosition = Math.max(0, cursorPosition - spacesRemoved);
+                    input.setSelectionRange(newCursorPosition, newCursorPosition);
+                }
+            }
+        }
+        
+        // Handle input event (real-time removal)
+        input.addEventListener('input', removeSpaces);
+        
+        // Handle paste event
+        input.addEventListener('paste', function() {
+            setTimeout(removeSpaces, 10);
+        });
+        
+        // Handle keydown to prevent space key
+        input.addEventListener('keydown', function(e) {
+            if (e.code === 'Space' || e.key === ' ') {
+                e.preventDefault();
+                showSpaceNotification();
+                return false;
+            }
+        });
+        
+        // Handle blur to clean up any remaining spaces
+        input.addEventListener('blur', removeSpaces);
+    }
+}
+
+/**
+ * Show notification when spaces are prevented
+ */
+function showSpaceNotification() {
+    let notification = document.getElementById('space-prevented-notification');
+    
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'space-prevented-notification';
+        notification.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #ffc107;
+            color: #856404;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 9999;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            font-weight: 500;
+        `;
+        notification.innerHTML = '⚠️ Spaces not allowed';
+        document.body.appendChild(notification);
+    }
+    
+    notification.style.opacity = '1';
+    
+    setTimeout(() => {
+        notification.style.opacity = '0';
+    }, 1500);
+}
+
+
+
+
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {

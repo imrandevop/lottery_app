@@ -1,5 +1,3 @@
-# this my admin_views.py
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_protect
@@ -8,6 +6,36 @@ from django.contrib.admin import site
 from django.contrib.admin.sites import AdminSite
 from .models import Lottery, LotteryResult, PrizeEntry
 import json
+import re
+
+
+def clean_spaces_from_data(data):
+    """
+    Helper function to remove spaces from specific fields
+    """
+    cleaned_data = data.copy()
+    
+    # Fields that should not have spaces
+    no_space_fields = [
+        'draw_number', 'ticket_number', 'place', 'code'
+    ]
+    
+    for key, value in cleaned_data.items():
+        if isinstance(value, str):
+            # Check if this field should not have spaces
+            should_clean = any(field in key.lower() for field in no_space_fields)
+            if should_clean:
+                cleaned_data[key] = re.sub(r'\s+', '', value)
+    
+    return cleaned_data
+
+
+def clean_list_data(data_list):
+    """
+    Clean spaces from list of data (for getlist)
+    """
+    return [re.sub(r'\s+', '', item) if isinstance(item, str) else item for item in data_list]
+
 
 @csrf_protect
 @staff_member_required
@@ -61,10 +89,13 @@ def add_result_view(request):
 def handle_form_submission(request):
     """Handle the form submission for adding lottery results."""
     try:
+        # Clean the POST data to remove spaces
+        cleaned_post = clean_spaces_from_data(request.POST)
+        
         # Validate required fields
-        lottery_id = request.POST.get('lottery')
-        date = request.POST.get('date')
-        draw_number = request.POST.get('draw_number')
+        lottery_id = cleaned_post.get('lottery')
+        date = cleaned_post.get('date')
+        draw_number = cleaned_post.get('draw_number')
         
         if not all([lottery_id, date, draw_number]):
             messages.error(request, 'Please fill in all required fields.')
@@ -74,17 +105,18 @@ def handle_form_submission(request):
         lottery_result = LotteryResult.objects.create(
             lottery_id=lottery_id,
             date=date,
-            draw_number=draw_number,
-            is_published=request.POST.get('is_published') == 'on'
+            draw_number=draw_number,  # Already cleaned of spaces
+            is_published=cleaned_post.get('is_published') == 'on'
         )
         
         # Process prize entries
         prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
         
         for prize_type in prize_types:
-            prize_amounts = request.POST.getlist(f'{prize_type}_prize_amount[]')
-            ticket_numbers = request.POST.getlist(f'{prize_type}_ticket_number[]')
-            places = request.POST.getlist(f'{prize_type}_place[]')
+            # Clean the list data to remove spaces
+            prize_amounts = clean_list_data(request.POST.getlist(f'{prize_type}_prize_amount[]'))
+            ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
+            places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
             
             for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
                 if amount and ticket:
@@ -93,8 +125,8 @@ def handle_form_submission(request):
                         lottery_result=lottery_result,
                         prize_type=prize_type,
                         prize_amount=amount,
-                        ticket_number=ticket,
-                        place=place
+                        ticket_number=ticket,  # Already cleaned of spaces
+                        place=place  # Already cleaned of spaces
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
@@ -207,10 +239,13 @@ def edit_result_view(request, result_id):
 def handle_edit_form_submission(request, lottery_result):
     """Handle the form submission for editing lottery results."""
     try:
+        # Clean the POST data to remove spaces
+        cleaned_post = clean_spaces_from_data(request.POST)
+        
         # Validate required fields
-        lottery_id = request.POST.get('lottery')
-        date = request.POST.get('date')
-        draw_number = request.POST.get('draw_number')
+        lottery_id = cleaned_post.get('lottery')
+        date = cleaned_post.get('date')
+        draw_number = cleaned_post.get('draw_number')
         
         if not all([lottery_id, date, draw_number]):
             messages.error(request, 'Please fill in all required fields.')
@@ -219,8 +254,8 @@ def handle_edit_form_submission(request, lottery_result):
         # Update lottery result
         lottery_result.lottery_id = lottery_id
         lottery_result.date = date
-        lottery_result.draw_number = draw_number
-        lottery_result.is_published = request.POST.get('is_published') == 'on'
+        lottery_result.draw_number = draw_number  # Already cleaned of spaces
+        lottery_result.is_published = cleaned_post.get('is_published') == 'on'
         lottery_result.save()
         
         # Delete existing prize entries
@@ -230,9 +265,10 @@ def handle_edit_form_submission(request, lottery_result):
         prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
         
         for prize_type in prize_types:
-            prize_amounts = request.POST.getlist(f'{prize_type}_prize_amount[]')
-            ticket_numbers = request.POST.getlist(f'{prize_type}_ticket_number[]')
-            places = request.POST.getlist(f'{prize_type}_place[]')
+            # Clean the list data to remove spaces
+            prize_amounts = clean_list_data(request.POST.getlist(f'{prize_type}_prize_amount[]'))
+            ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
+            places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
             
             for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
                 if amount and ticket:
@@ -241,8 +277,8 @@ def handle_edit_form_submission(request, lottery_result):
                         lottery_result=lottery_result,
                         prize_type=prize_type,
                         prize_amount=amount,
-                        ticket_number=ticket,
-                        place=place
+                        ticket_number=ticket,  # Already cleaned of spaces
+                        place=place  # Already cleaned of spaces
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
@@ -275,4 +311,3 @@ def handle_edit_form_submission(request, lottery_result):
             'is_edit_mode': True,
         }
         return render(request, 'admin/lottery_add_result.html', context)
-    
