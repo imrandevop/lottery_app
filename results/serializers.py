@@ -136,3 +136,23 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         
         result.sort(key=prize_sort_key)
         return result
+    
+
+# ---------------BAR CODE SCAN SECTION -------------
+
+class TicketCheckSerializer(serializers.Serializer):
+    """Serializer for ticket check request"""
+    ticket_number = serializers.CharField(max_length=50)
+    phone_number = serializers.CharField(max_length=15)
+    date = serializers.DateField()
+    
+    def validate_phone_number(self, value):
+        """Validate that user exists"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        try:
+            User.objects.get(phone_number=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User with this phone number does not exist")
+        return value

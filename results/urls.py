@@ -28,4 +28,10 @@ urlpatterns = [
     
     # Get all results for specific lottery (with pagination)
     path('lottery/<str:lottery_code>/results/', views.lottery_results_by_code, name='lottery-results-by-code'),
+
+
+
+    path('check-ticket/', views.TicketCheckView.as_view(), name='check-ticket'),
+
+
 ]

@@ -9,6 +9,11 @@ from datetime import date
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
+from django.contrib.auth import get_user_model
+from .serializers import TicketCheckSerializer
+
+
+
 
 class LotteryResultListView(generics.ListAPIView):
     """
@@ -233,3 +238,73 @@ def lottery_results_by_code(request, lottery_code):
             {'error': f'Lottery with code {lottery_code} not found'}, 
             status=status.HTTP_404_NOT_FOUND
         )
+    
+
+
+
+
+
+# ---------------BAR CODE SCAN SECTION -------------
+
+
+class TicketCheckView(APIView):
+    """
+    API endpoint to check if a ticket won any prize
+    """
+    
+    def post(self, request):
+        serializer = TicketCheckSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {'error': 'Invalid data', 'details': serializer.errors}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        ticket_number = serializer.validated_data['ticket_number']
+        phone_number = serializer.validated_data['phone_number']
+        check_date = serializer.validated_data['date']
+        
+        # Check for winning tickets on the specified date
+        winning_tickets = PrizeEntry.objects.filter(
+            ticket_number=ticket_number,
+            lottery_result__date=check_date,
+            lottery_result__is_published=True
+        ).select_related('lottery_result', 'lottery_result__lottery')
+        
+        if not winning_tickets.exists():
+            return Response({
+                'message': 'Better luck next time'
+            }, status=status.HTTP_200_OK)
+        
+        # If multiple matches found, return all of them
+        results = []
+        for prize in winning_tickets:
+            prize_display = prize.get_prize_type_display()
+            
+            result = {
+                'message': f'Congratulations! You won ₹{prize.prize_amount}',
+                'prize': str(prize.prize_amount),
+                'matched_with': prize_display,
+                'lottery_name': prize.lottery_result.lottery.name,
+                'lottery_code': prize.lottery_result.lottery.code,
+                'draw_number': prize.lottery_result.draw_number,
+                'date': prize.lottery_result.date
+            }
+            
+            # Add place information if available (for 1st, 2nd, 3rd prizes)
+            if prize.place:
+                result['place'] = prize.place
+            
+            results.append(result)
+        
+        # If only one match, return single result format
+        if len(results) == 1:
+            return Response(results[0], status=status.HTTP_200_OK)
+        
+        # If multiple matches, return array of results
+        return Response({
+            'message': f'Congratulations! You won multiple prizes!',
+            'total_matches': len(results),
+            'results': results
+        }, status=status.HTTP_200_OK)
