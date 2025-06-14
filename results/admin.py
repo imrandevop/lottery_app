@@ -127,8 +127,8 @@ class LotteryResultForm(ModelForm):
 
 class LotteryResultAdmin(admin.ModelAdmin):
     form = LotteryResultForm
-    list_display = ['lottery', 'draw_number', 'date', 'is_published', 'created_at']
-    list_filter = ['lottery', 'is_published', 'date']
+    list_display = ['lottery', 'draw_number', 'date','is_bumper', 'is_published', 'created_at']
+    list_filter = ['lottery','is_bumper', 'is_published', 'date']
     search_fields = ['draw_number', 'lottery__name']
     inlines = [PrizeEntryInline]
     

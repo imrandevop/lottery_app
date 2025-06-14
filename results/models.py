@@ -26,6 +26,7 @@ class LotteryResult(models.Model):
     date = models.DateField()
     draw_number = models.CharField(max_length=50)
     is_published = models.BooleanField(default=False, verbose_name="Published")
+    is_bumper = models.BooleanField(default=False, verbose_name="Bumper")
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -32,7 +32,8 @@ class LotteryResultSerializer(serializers.ModelSerializer):
             'draw_number',
             'first_prize',
             'consolation_prizes',
-            'is_published'
+            'is_published',
+            'is_bumper'
         ]
     
     def get_first_prize(self, obj):
@@ -80,6 +81,7 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
             'draw_number',
             'prizes',
             'is_published',
+            'is_bumper',
             'created_at',
             'updated_at'    
         ]
@@ -110,7 +112,8 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
             prize_data = {
                 'prize_type': prize_type,
                 'prize_amount': prize_amount,
-                'ticket_numbers': ticket_numbers
+                'ticket_numbers': ticket_numbers,
+                'place_used': bool(place and place.strip())
             }
             
             # Only include place if it's not empty/null

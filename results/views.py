@@ -5,7 +5,8 @@ from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from datetime import date
+from datetime import date,time
+from django.utils.timezone import now
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
@@ -264,6 +265,24 @@ class TicketCheckView(APIView):
         ticket_number = serializer.validated_data['ticket_number']
         phone_number = serializer.validated_data['phone_number']
         check_date = serializer.validated_data['date']
+
+
+         # Step 1: Check if result is not published yet
+        current_datetime = now()
+        current_date = current_datetime.date()
+        result_publish_time = time(15, 30)  # 3:30 PM
+
+        if check_date > current_date:
+            return Response(
+                {'message': 'Result is not published yet.'},
+                status=status.HTTP_200_OK
+            )
+        
+        if check_date == current_date and current_datetime.time() < result_publish_time:
+            return Response(
+                {'message': 'Result is not published yet.'},
+                status=status.HTTP_200_OK
+            )
         
         # Check for winning tickets on the specified date
         winning_tickets = PrizeEntry.objects.filter(

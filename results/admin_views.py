@@ -256,6 +256,7 @@ def handle_edit_form_submission(request, lottery_result):
         lottery_result.date = date
         lottery_result.draw_number = draw_number  # Already cleaned of spaces
         lottery_result.is_published = cleaned_post.get('is_published') == 'on'
+        lottery_result.is_bumper = cleaned_post.get('is_bumper') == 'on'
         lottery_result.save()
         
         # Delete existing prize entries
