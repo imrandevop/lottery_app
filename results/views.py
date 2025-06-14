@@ -6,12 +6,13 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from datetime import date,time
-from django.utils.timezone import now
+from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer
+
 
 
 
@@ -266,11 +267,14 @@ class TicketCheckView(APIView):
         phone_number = serializer.validated_data['phone_number']
         check_date = serializer.validated_data['date']
 
-        # Step 1: Check if result is published yet
-        current_datetime = now()
-        current_date = current_datetime.date()
-        result_publish_time = time(15, 30)  # 3:30 PM
+        # Get current datetime in Asia/Kolkata timezone
+        current_datetime = localtime(now())
+        print("DEBUG: Current datetime (IST):", current_datetime)
 
+        current_date = current_datetime.date()
+        result_publish_time = time(15, 30)  # 3:30 PM IST
+
+        # Step 1: Check if result is not published yet
         if check_date > current_date or (
             check_date == current_date and current_datetime.time() < result_publish_time
         ):
@@ -313,8 +317,7 @@ class TicketCheckView(APIView):
                 'results': results
             }, status=status.HTTP_200_OK)
 
-        # Step 3: Better luck next time with result context
-        # Try to get result info even if no prize was won
+        # Step 3: No prize — return contextual info
         lottery_result = LotteryResult.objects.filter(
             date=check_date,
             is_published=True
@@ -328,10 +331,14 @@ class TicketCheckView(APIView):
                 'date': lottery_result.date,
                 'unique_id': str(lottery_result.unique_id),
             }, status=status.HTTP_200_OK)
-        
-        # No result info found
+
+        # Step 4: No published result found
         return Response({
             'message': 'Better luck next time',
             'ticket_number': ticket_number,
             'date': check_date
         }, status=status.HTTP_200_OK)
+
+
+
+
