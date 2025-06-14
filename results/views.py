@@ -266,64 +266,72 @@ class TicketCheckView(APIView):
         phone_number = serializer.validated_data['phone_number']
         check_date = serializer.validated_data['date']
 
-
-         # Step 1: Check if result is not published yet
+        # Step 1: Check if result is published yet
         current_datetime = now()
         current_date = current_datetime.date()
         result_publish_time = time(15, 30)  # 3:30 PM
 
-        if check_date > current_date:
+        if check_date > current_date or (
+            check_date == current_date and current_datetime.time() < result_publish_time
+        ):
             return Response(
                 {'message': 'Result is not published yet.'},
                 status=status.HTTP_200_OK
             )
-        
-        if check_date == current_date and current_datetime.time() < result_publish_time:
-            return Response(
-                {'message': 'Result is not published yet.'},
-                status=status.HTTP_200_OK
-            )
-        
-        # Check for winning tickets on the specified date
+
+        # Step 2: Check for winning entries
         winning_tickets = PrizeEntry.objects.filter(
             ticket_number=ticket_number,
             lottery_result__date=check_date,
             lottery_result__is_published=True
-        ).select_related('lottery_result', 'lottery_result__lottery')
-        
-        if not winning_tickets.exists():
+        ).select_related('lottery_result__lottery')
+
+        if winning_tickets.exists():
+            results = []
+            for prize in winning_tickets:
+                result = {
+                    'message': f'Congratulations! You won ₹{prize.prize_amount}',
+                    'prize': str(prize.prize_amount),
+                    'matched_with': prize.get_prize_type_display(),
+                    'lottery_name': prize.lottery_result.lottery.name,
+                    'lottery_code': prize.lottery_result.lottery.code,
+                    'draw_number': prize.lottery_result.draw_number,
+                    'date': prize.lottery_result.date,
+                    'unique_id': str(prize.lottery_result.unique_id),
+                    'ticket_number': prize.ticket_number,
+                }
+                if prize.place:
+                    result['place'] = prize.place
+                results.append(result)
+
+            if len(results) == 1:
+                return Response(results[0], status=status.HTTP_200_OK)
+
             return Response({
-                'message': 'Better luck next time'
+                'message': 'Congratulations! You won multiple prizes!',
+                'total_matches': len(results),
+                'results': results
+            }, status=status.HTTP_200_OK)
+
+        # Step 3: Better luck next time with result context
+        # Try to get result info even if no prize was won
+        lottery_result = LotteryResult.objects.filter(
+            date=check_date,
+            is_published=True
+        ).select_related('lottery').first()
+
+        if lottery_result:
+            return Response({
+                'message': 'Better luck next time',
+                'ticket_number': ticket_number,
+                'lottery_name': lottery_result.lottery.name,
+                'date': lottery_result.date,
+                'unique_id': str(lottery_result.unique_id),
             }, status=status.HTTP_200_OK)
         
-        # If multiple matches found, return all of them
-        results = []
-        for prize in winning_tickets:
-            prize_display = prize.get_prize_type_display()
-            
-            result = {
-                'message': f'Congratulations! You won ₹{prize.prize_amount}',
-                'prize': str(prize.prize_amount),
-                'matched_with': prize_display,
-                'lottery_name': prize.lottery_result.lottery.name,
-                'lottery_code': prize.lottery_result.lottery.code,
-                'draw_number': prize.lottery_result.draw_number,
-                'date': prize.lottery_result.date
-            }
-            
-            # Add place information if available (for 1st, 2nd, 3rd prizes)
-            if prize.place:
-                result['place'] = prize.place
-            
-            results.append(result)
-        
-        # If only one match, return single result format
-        if len(results) == 1:
-            return Response(results[0], status=status.HTTP_200_OK)
-        
-        # If multiple matches, return array of results
+        # No result info found
         return Response({
-            'message': f'Congratulations! You won multiple prizes!',
-            'total_matches': len(results),
-            'results': results
+            'message': 'Better luck next time',
+            'ticket_number': ticket_number,
+            'date': check_date
         }, status=status.HTTP_200_OK)
