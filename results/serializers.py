@@ -107,13 +107,17 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         result = []
         for (prize_type, prize_amount, place), data in grouped_prizes.items():
             # Join all ticket numbers with spaces
+
+            ticket_numbers_list = data['ticket_numbers']
             ticket_numbers = ' '.join(data['ticket_numbers'])
+            is_grid = all(num.isdigit() and len(num) == 4 for num in ticket_numbers_list)
             
             prize_data = {
                 'prize_type': prize_type,
                 'prize_amount': prize_amount,
                 'ticket_numbers': ticket_numbers,
-                'place_used': bool(place and place.strip())
+                'place_used': bool(place and place.strip()),
+                'is_grid': is_grid
             }
             
             # Only include place if it's not empty/null

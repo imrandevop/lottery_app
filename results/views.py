@@ -67,43 +67,54 @@ class LotteryResultByUniqueIdView(APIView):
     """
     API endpoint to retrieve lottery result by unique_id passed in request body
     """
-    
+
     def post(self, request):
         unique_id = request.data.get('unique_id')
-        
+
         if not unique_id:
             return Response(
-                {'error': 'unique_id is required in request body'}, 
+                {'error': 'unique_id is required in request body'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Validate UUID format
         try:
             uuid.UUID(unique_id)
         except (ValueError, TypeError):
             return Response(
-                {'error': 'Invalid unique ID format'}, 
+                {'error': 'Invalid unique ID format'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             # Get the lottery result with related data
             lottery_result = LotteryResult.objects.select_related('lottery').prefetch_related('prizes').get(
                 unique_id=unique_id,
                 is_published=True
             )
-            
+
+            # Check if all ticket_numbers are 4-digit numbers only
+            def is_grid_format(prizes):
+                for prize in prizes:
+                    num = prize.ticket_number.strip()
+                    if len(num) != 4 or not num.isdigit():
+                        return False
+                return True
+
+            is_grid = is_grid_format(lottery_result.prizes.all())
+
             # Serialize the data
             serializer = LotteryResultDetailSerializer(lottery_result)
-            
+
             return Response({
                 'status': 'success',
-                'result': serializer.data
+                'result': serializer.data,
+                'is_grid': is_grid,
             }, status=status.HTTP_200_OK)
-            
+
         except LotteryResult.DoesNotExist:
             return Response(
-                {'error': 'Lottery result not found'}, 
+                {'error': 'Lottery result not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -269,8 +280,6 @@ class TicketCheckView(APIView):
 
         # Get current datetime in Asia/Kolkata timezone
         current_datetime = localtime(now())
-        print("DEBUG: Current datetime (IST):", current_datetime)
-
         current_date = current_datetime.date()
         result_publish_time = time(15, 30)  # 3:30 PM IST
 
@@ -278,10 +287,10 @@ class TicketCheckView(APIView):
         if check_date > current_date or (
             check_date == current_date and current_datetime.time() < result_publish_time
         ):
-            return Response(
-                {'message': 'Result is not published yet.'},
-                status=status.HTTP_200_OK
-            )
+            return Response({
+                'message': 'Result is not published yet.',
+                'result_published': False
+            }, status=status.HTTP_200_OK)
 
         # Step 2: Check for winning entries
         winning_tickets = PrizeEntry.objects.filter(
@@ -303,6 +312,7 @@ class TicketCheckView(APIView):
                     'date': prize.lottery_result.date,
                     'unique_id': str(prize.lottery_result.unique_id),
                     'ticket_number': prize.ticket_number,
+                    'result_published': True
                 }
                 if prize.place:
                     result['place'] = prize.place
@@ -314,7 +324,8 @@ class TicketCheckView(APIView):
             return Response({
                 'message': 'Congratulations! You won multiple prizes!',
                 'total_matches': len(results),
-                'results': results
+                'results': results,
+                'result_published': True
             }, status=status.HTTP_200_OK)
 
         # Step 3: No prize — return contextual info
@@ -330,14 +341,17 @@ class TicketCheckView(APIView):
                 'lottery_name': lottery_result.lottery.name,
                 'date': lottery_result.date,
                 'unique_id': str(lottery_result.unique_id),
+                'result_published': True
             }, status=status.HTTP_200_OK)
 
         # Step 4: No published result found
         return Response({
             'message': 'Better luck next time',
             'ticket_number': ticket_number,
-            'date': check_date
+            'date': check_date,
+            'result_published': False
         }, status=status.HTTP_200_OK)
+
 
 
 

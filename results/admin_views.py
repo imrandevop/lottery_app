@@ -130,7 +130,8 @@ def handle_form_submission(request):
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
-        return redirect('admin:results_lotteryresult_changelist')
+        return redirect(request.path)
+
     
     except Exception as e:
         messages.error(request, f'Error creating lottery result: {str(e)}')
@@ -283,7 +284,8 @@ def handle_edit_form_submission(request, lottery_result):
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
-        return redirect('admin:results_lotteryresult_changelist')
+        return redirect(request.path)
+
     
     except Exception as e:
         messages.error(request, f'Error updating lottery result: {str(e)}')
