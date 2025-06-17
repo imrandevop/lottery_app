@@ -267,4 +267,34 @@ FEATURE_FLAGS = {
     'ENABLE_ADMIN_HONEYPOT': not DEBUG,  # Consider adding django-admin-honeypot
 }
 
-
+# Temporary superuser creation - REMOVE after first successful deploy
+if os.environ.get('CREATE_SUPERUSER') == 'true':
+    import django
+    from django.core.wsgi import get_wsgi_application
+    
+    # This ensures Django is properly set up
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project_name.settings')
+    django.setup()
+    
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
+    username = os.environ.get('DJANGO_SUPERUSER_USERNAME')
+    email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
+    password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+    
+    if username and email and password:
+        if not User.objects.filter(username=username).exists():
+            try:
+                User.objects.create_superuser(
+                    username=username,
+                    email=email,
+                    password=password
+                )
+                print(f"Superuser '{username}' created successfully!")
+            except Exception as e:
+                print(f"Error creating superuser: {e}")
+        else:
+            print(f"Superuser '{username}' already exists")
+    else:
+        print("Missing superuser environment variables")
