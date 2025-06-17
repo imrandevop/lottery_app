@@ -273,7 +273,7 @@ if os.environ.get('CREATE_SUPERUSER') == 'true':
     from django.core.wsgi import get_wsgi_application
     
     # This ensures Django is properly set up
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project_name.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'kerala_lottery_project.settings')
     django.setup()
     
     from django.contrib.auth import get_user_model
