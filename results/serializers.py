@@ -87,52 +87,64 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         ]
     
     def get_prizes(self, obj):
-        """Group prizes by prize_type and prize_amount, combining ticket numbers"""
+        """Group prizes by prize_type and prize_amount, with detailed ticket info for certain prizes"""
         # Get all prizes for this lottery result
         all_prizes = obj.prizes.all()
         
         if not all_prizes:
             return []
         
-        # Group prizes by (prize_type, prize_amount, place)
-        grouped_prizes = defaultdict(lambda: {'ticket_numbers': [], 'place': None})
+        # Group prizes by (prize_type, prize_amount)
+        grouped_prizes = defaultdict(lambda: {'tickets': [], 'places': set()})
         
         for prize in all_prizes:
-            # Create a key based on prize_type, prize_amount, and place
-            key = (prize.prize_type, str(prize.prize_amount), prize.place or '')
-            grouped_prizes[key]['ticket_numbers'].append(prize.ticket_number)
-            grouped_prizes[key]['place'] = prize.place
+            # Create a key based on prize_type and prize_amount only
+            key = (prize.prize_type, str(prize.prize_amount))
+            
+            # Store ticket with its location
+            ticket_info = {
+                'ticket_number': prize.ticket_number,
+                'location': prize.place if prize.place else None
+            }
+            grouped_prizes[key]['tickets'].append(ticket_info)
+            
+            if prize.place:
+                grouped_prizes[key]['places'].add(prize.place)
         
         # Convert grouped data to the desired format
         result = []
-        for (prize_type, prize_amount, place), data in grouped_prizes.items():
-            # Join all ticket numbers with spaces
-
-            ticket_numbers_list = data['ticket_numbers']
-            ticket_numbers = ' '.join(data['ticket_numbers'])
-            is_grid = all(num.isdigit() and len(num) == 4 for num in ticket_numbers_list)
+        for (prize_type, prize_amount), data in grouped_prizes.items():
+            tickets = data['tickets']
+            
+            # Check if all tickets are 4-digit numbers (grid format)
+            is_grid = all(
+                ticket['ticket_number'].isdigit() and len(ticket['ticket_number']) == 4 
+                for ticket in tickets
+            )
             
             prize_data = {
                 'prize_type': prize_type,
                 'prize_amount': prize_amount,
-                'ticket_numbers': ticket_numbers,
-                'place_used': bool(place and place.strip()),
+                'place_used': len(data['places']) > 0,
                 'is_grid': is_grid
             }
             
-            # Only include place if it's not empty/null
-            if place:
-                prize_data['place'] = place
+            # For prizes like 3rd that should show detailed ticket info with locations
+            if prize_type in ['1st', '2nd', '3rd']:
+                prize_data['tickets'] = tickets
+            else:
+                # For all other prizes including consolation, 4th, 5th, 6th, etc.
+                ticket_numbers = ' '.join([ticket['ticket_number'] for ticket in tickets])
+                prize_data['ticket_numbers'] = ticket_numbers
             
             result.append(prize_data)
-        
-        # Sort results by prize type order (1st, 2nd, 3rd, etc., then consolation)
+
+        # Sort results by prize type order
         def prize_sort_key(prize):
             prize_type = prize['prize_type']
             if prize_type == 'consolation':
-                return (999, prize_type)  # Put consolation at the end
+                return (999, prize_type)
             elif prize_type.endswith('st') or prize_type.endswith('nd') or prize_type.endswith('rd') or prize_type.endswith('th'):
-                # Extract number from prize types like '1st', '2nd', '3rd', '10th'
                 try:
                     num = int(prize_type.replace('st', '').replace('nd', '').replace('rd', '').replace('th', ''))
                     return (num, prize_type)
@@ -143,6 +155,7 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         
         result.sort(key=prize_sort_key)
         return result
+
     
 
 # ---------------BAR CODE SCAN SECTION -------------
