@@ -282,14 +282,18 @@ if os.environ.get('CREATE_SUPERUSER') == 'true':
     username = os.environ.get('DJANGO_SUPERUSER_USERNAME')
     email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
     password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+    name = os.environ.get('DJANGO_SUPERUSER_NAME')  # Added
+    phone_number = os.environ.get('DJANGO_SUPERUSER_PHONE')  # Added
     
-    if username and email and password:
+    if username and email and password and name and phone_number:
         if not User.objects.filter(username=username).exists():
             try:
                 User.objects.create_superuser(
                     username=username,
                     email=email,
-                    password=password
+                    password=password,
+                    name=name,  # Added
+                    phone_number=phone_number  # Added
                 )
                 print(f"Superuser '{username}' created successfully!")
             except Exception as e:
@@ -298,3 +302,5 @@ if os.environ.get('CREATE_SUPERUSER') == 'true':
             print(f"Superuser '{username}' already exists")
     else:
         print("Missing superuser environment variables")
+
+
