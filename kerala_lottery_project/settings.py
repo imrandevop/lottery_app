@@ -282,18 +282,19 @@ if os.environ.get('CREATE_SUPERUSER') == 'true':
     username = os.environ.get('DJANGO_SUPERUSER_USERNAME')
     email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
     password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
-    name = os.environ.get('DJANGO_SUPERUSER_NAME')  # Added
-    phone_number = os.environ.get('DJANGO_SUPERUSER_PHONE')  # Added
+    name = os.environ.get('DJANGO_SUPERUSER_NAME')
+    phone_number = os.environ.get('DJANGO_SUPERUSER_PHONE')
     
     if username and email and password and name and phone_number:
         if not User.objects.filter(username=username).exists():
             try:
+                # Call create_superuser with positional arguments in the correct order
                 User.objects.create_superuser(
-                    username=username,
-                    email=email,
-                    password=password,
-                    name=name,  # Added
-                    phone_number=phone_number  # Added
+                    phone_number,  # First positional argument
+                    name,          # Second positional argument
+                    password,      # Third positional argument
+                    username=username,  # Keyword argument
+                    email=email         # Keyword argument
                 )
                 print(f"Superuser '{username}' created successfully!")
             except Exception as e:
