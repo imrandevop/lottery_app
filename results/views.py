@@ -109,7 +109,6 @@ class LotteryResultByUniqueIdView(APIView):
             return Response({
                 'status': 'success',
                 'result': serializer.data,
-                'is_grid': is_grid,
             }, status=status.HTTP_200_OK)
 
         except LotteryResult.DoesNotExist:
