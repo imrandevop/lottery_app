@@ -278,6 +278,15 @@ function processBulkEntries(prizeType) {
 /**
  * Validate form and submit if valid - MODIFIED to remove confirmation
  */
+/**
+ * Validate form and submit via AJAX
+ */
+/**
+ * Validate form and submit via AJAX - Customized for Django lottery admin
+ */
+/**
+ * Validate form and submit via AJAX without confirmation popup
+ */
 function validateAndSubmit(e) {
     e.preventDefault();
     
@@ -319,9 +328,113 @@ function validateAndSubmit(e) {
         return;
     }
     
-    // Submit without confirmation
-    isDirty = false;
-    e.target.submit();
+    // Show saving notification
+    showNotification('Saving lottery results...', 'info');
+    
+    // Get the form and create FormData object
+    const form = document.getElementById('lotteryForm');
+    const formData = new FormData(form);
+    
+    // Get UI elements for status updates - declare these variables here so they're in scope for the promises
+    const saveBtn = document.querySelector('.save-btn-bottom');
+    let iconSpan = null;
+    let textSpan = null;
+    
+    // Update UI to show loading state
+    if (saveBtn) {
+        iconSpan = saveBtn.querySelector('span:first-child');
+        textSpan = saveBtn.querySelector('span:last-child');
+        
+        saveBtn.classList.add('loading');
+        saveBtn.disabled = true;
+        
+        if (iconSpan) iconSpan.textContent = '⏳';
+        if (textSpan) {
+            const isEditMode = form.querySelector('input[name="result_id"]');
+            textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
+        }
+    }
+    
+    // Perform AJAX submission
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Server returned an error response: ' + response.status);
+        }
+        return response.text();
+    })
+    .then(html => {
+        // Success handling
+        isDirty = false;
+        
+        // Look for success messages in the response
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const successMsg = doc.querySelector('.messagelist .success');
+        const errorMsg = doc.querySelector('.messagelist .error');
+        
+        if (errorMsg) {
+            // Show error message
+            showNotification(errorMsg.textContent.trim(), 'error');
+        } else if (successMsg) {
+            // Show success message
+            showNotification(successMsg.textContent.trim(), 'success');
+            
+            // Update any necessary parts of the page without reloading
+            const resultId = doc.querySelector('input[name="result_id"]');
+            if (resultId && !form.querySelector('input[name="result_id"]')) {
+                // If this was a new entry that now has an ID, update the form
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'result_id';
+                hiddenInput.value = resultId.value;
+                form.appendChild(hiddenInput);
+                
+                // Update page title to show we're in edit mode
+                const title = document.querySelector('.form-header');
+                if (title) {
+                    title.textContent = 'Lottery Result Edit System';
+                }
+            }
+        } else {
+            // Default success message
+            showNotification('Lottery results saved successfully!', 'success');
+        }
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting form:', error);
+        showNotification('Error saving lottery results. Please try again.', 'error');
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    });
 }
 
 /**

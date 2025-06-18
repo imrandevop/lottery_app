@@ -99,6 +99,45 @@ def handle_form_submission(request):
         
         if not all([lottery_id, date, draw_number]):
             messages.error(request, 'Please fill in all required fields.')
+            
+            # For AJAX requests, return the form with errors
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                prize_types = [
+                    ('1st', '1st Prize'),
+                    ('consolation', 'Consolation Prize'),
+                    ('2nd', '2nd Prize'),
+                    ('3rd', '3rd Prize'),
+                    ('4th', '4th Prize'),
+                    ('5th', '5th Prize'),
+                    ('6th', '6th Prize'),
+                    ('7th', '7th Prize'),
+                    ('8th', '8th Prize'),
+                    ('9th', '9th Prize'),
+                    ('10th', '10th Prize'),
+                ]
+                
+                admin_site = site
+                context = {
+                    'title': 'Add Lottery Result',
+                    'lotteries': Lottery.objects.all(),
+                    'prize_types': prize_types,
+                    'opts': LotteryResult._meta,
+                    'has_view_permission': True,
+                    'has_add_permission': True,
+                    'has_change_permission': True,
+                    'has_delete_permission': True,
+                    'site_header': admin_site.site_header,
+                    'site_title': admin_site.site_title,
+                    'site_url': admin_site.site_url,
+                    'has_permission': admin_site.has_permission(request),
+                    'available_apps': admin_site.get_app_list(request),
+                    'is_popup': False,
+                    'is_nav_sidebar_enabled': True,
+                    'app_label': 'results',
+                }
+                return render(request, 'admin/lottery_add_result.html', context)
+            
+            # For non-AJAX requests, redirect
             return redirect('results:add_result')
         
         # Create lottery result
@@ -106,7 +145,8 @@ def handle_form_submission(request):
             lottery_id=lottery_id,
             date=date,
             draw_number=draw_number,  # Already cleaned of spaces
-            is_published=cleaned_post.get('is_published') == 'on'
+            is_published=cleaned_post.get('is_published') == 'on',
+            is_bumper=cleaned_post.get('is_bumper') == 'on'
         )
         
         # Process prize entries
@@ -130,6 +170,71 @@ def handle_form_submission(request):
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
+        
+        # For AJAX requests, return the template with updated context
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            # Convert prize entries to a format JavaScript can use
+            prize_entries_json = {}
+            try:
+                for prize_type in prize_types:
+                    entries = lottery_result.prizes.filter(prize_type=prize_type)
+                    prize_entries_json[prize_type] = [
+                        {
+                            'prize_amount': str(entry.prize_amount),
+                            'ticket_number': entry.ticket_number,
+                            'place': entry.place or ''
+                        }
+                        for entry in entries
+                    ]
+                
+                # Convert to JSON string safely
+                prize_entries_json_str = json.dumps(prize_entries_json) if prize_entries_json else '{}'
+                
+            except Exception as e:
+                print(f"Error preparing prize entries JSON: {e}")
+                prize_entries_json_str = '{}'
+            
+            # Get admin context for sidebar
+            admin_site = site
+            
+            context = {
+                'title': 'Edit Lottery Result',
+                'lotteries': Lottery.objects.all(),
+                'prize_types': [
+                    ('1st', '1st Prize'),
+                    ('consolation', 'Consolation Prize'),
+                    ('2nd', '2nd Prize'),
+                    ('3rd', '3rd Prize'),
+                    ('4th', '4th Prize'),
+                    ('5th', '5th Prize'),
+                    ('6th', '6th Prize'),
+                    ('7th', '7th Prize'),
+                    ('8th', '8th Prize'),
+                    ('9th', '9th Prize'),
+                    ('10th', '10th Prize'),
+                ],
+                'opts': LotteryResult._meta,
+                'has_view_permission': True,
+                'has_add_permission': True,
+                'has_change_permission': True,
+                'has_delete_permission': True,
+                # Admin context for sidebar
+                'site_header': admin_site.site_header,
+                'site_title': admin_site.site_title,
+                'site_url': admin_site.site_url,
+                'has_permission': admin_site.has_permission(request),
+                'available_apps': admin_site.get_app_list(request),
+                'is_popup': False,
+                'is_nav_sidebar_enabled': True,
+                'app_label': 'results',
+                # Lottery result data
+                'lottery_result': lottery_result,
+                'prize_entries_json': prize_entries_json_str,  # Safe JSON string
+                'is_edit_mode': True,
+            }
+            return render(request, 'admin/lottery_add_result.html', context)
+        
+        # For non-AJAX requests, redirect
         return redirect(request.path)
 
     
@@ -250,6 +355,47 @@ def handle_edit_form_submission(request, lottery_result):
         
         if not all([lottery_id, date, draw_number]):
             messages.error(request, 'Please fill in all required fields.')
+            
+            # For AJAX requests, return the form with errors
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                prize_types = [
+                    ('1st', '1st Prize'),
+                    ('consolation', 'Consolation Prize'),
+                    ('2nd', '2nd Prize'),
+                    ('3rd', '3rd Prize'),
+                    ('4th', '4th Prize'),
+                    ('5th', '5th Prize'),
+                    ('6th', '6th Prize'),
+                    ('7th', '7th Prize'),
+                    ('8th', '8th Prize'),
+                    ('9th', '9th Prize'),
+                    ('10th', '10th Prize'),
+                ]
+                
+                admin_site = site
+                context = {
+                    'title': 'Edit Lottery Result',
+                    'lotteries': Lottery.objects.all(),
+                    'prize_types': prize_types,
+                    'opts': LotteryResult._meta,
+                    'has_view_permission': True,
+                    'has_add_permission': True,
+                    'has_change_permission': True,
+                    'has_delete_permission': True,
+                    'site_header': admin_site.site_header,
+                    'site_title': admin_site.site_title,
+                    'site_url': admin_site.site_url,
+                    'has_permission': admin_site.has_permission(request),
+                    'available_apps': admin_site.get_app_list(request),
+                    'is_popup': False,
+                    'is_nav_sidebar_enabled': True,
+                    'app_label': 'results',
+                    'lottery_result': lottery_result,
+                    'is_edit_mode': True,
+                }
+                return render(request, 'admin/lottery_add_result.html', context)
+            
+            # For non-AJAX requests, redirect
             return redirect('results:edit_result', result_id=lottery_result.id)
         
         # Update lottery result
@@ -284,6 +430,71 @@ def handle_edit_form_submission(request, lottery_result):
                     )
         
         messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
+        
+        # For AJAX requests, return the template with updated context
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            # Convert prize entries to a format JavaScript can use
+            prize_entries_json = {}
+            try:
+                for prize_type in prize_types:
+                    entries = lottery_result.prizes.filter(prize_type=prize_type)
+                    prize_entries_json[prize_type] = [
+                        {
+                            'prize_amount': str(entry.prize_amount),
+                            'ticket_number': entry.ticket_number,
+                            'place': entry.place or ''
+                        }
+                        for entry in entries
+                    ]
+                
+                # Convert to JSON string safely
+                prize_entries_json_str = json.dumps(prize_entries_json) if prize_entries_json else '{}'
+                
+            except Exception as e:
+                print(f"Error preparing prize entries JSON: {e}")
+                prize_entries_json_str = '{}'
+            
+            # Get admin context for sidebar
+            admin_site = site
+            
+            context = {
+                'title': 'Edit Lottery Result',
+                'lotteries': Lottery.objects.all(),
+                'prize_types': [
+                    ('1st', '1st Prize'),
+                    ('consolation', 'Consolation Prize'),
+                    ('2nd', '2nd Prize'),
+                    ('3rd', '3rd Prize'),
+                    ('4th', '4th Prize'),
+                    ('5th', '5th Prize'),
+                    ('6th', '6th Prize'),
+                    ('7th', '7th Prize'),
+                    ('8th', '8th Prize'),
+                    ('9th', '9th Prize'),
+                    ('10th', '10th Prize'),
+                ],
+                'opts': LotteryResult._meta,
+                'has_view_permission': True,
+                'has_add_permission': True,
+                'has_change_permission': True,
+                'has_delete_permission': True,
+                # Admin context for sidebar
+                'site_header': admin_site.site_header,
+                'site_title': admin_site.site_title,
+                'site_url': admin_site.site_url,
+                'has_permission': admin_site.has_permission(request),
+                'available_apps': admin_site.get_app_list(request),
+                'is_popup': False,
+                'is_nav_sidebar_enabled': True,
+                'app_label': 'results',
+                # Lottery result data
+                'lottery_result': lottery_result,
+                'prize_entries_json': prize_entries_json_str,  # Safe JSON string
+                'is_edit_mode': True,
+            }
+            return render(request, 'admin/lottery_add_result.html', context)
+        
+        # For non-AJAX requests, redirect
         return redirect(request.path)
 
     
