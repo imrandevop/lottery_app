@@ -142,12 +142,21 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         # Sort results by prize type order
         def prize_sort_key(prize):
             prize_type = prize['prize_type']
-            if prize_type == 'consolation':
-                return (999, prize_type)
+            
+            # Define custom order: 1st, consolation, 2nd, 3rd, 4th, 5th, etc.
+            if prize_type == '1st':
+                return (1, prize_type)
+            elif prize_type == 'consolation':
+                return (2, prize_type)  # Put consolation as 2nd position
+            elif prize_type == '2nd':
+                return (3, prize_type)
+            elif prize_type == '3rd':
+                return (4, prize_type)
             elif prize_type.endswith('st') or prize_type.endswith('nd') or prize_type.endswith('rd') or prize_type.endswith('th'):
+                # Extract number from prize types like '4th', '5th', '10th'
                 try:
                     num = int(prize_type.replace('st', '').replace('nd', '').replace('rd', '').replace('th', ''))
-                    return (num, prize_type)
+                    return (num + 1, prize_type)  # Add 1 to account for consolation taking position 2
                 except ValueError:
                     return (1000, prize_type)
             else:

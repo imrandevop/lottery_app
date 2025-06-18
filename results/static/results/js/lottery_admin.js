@@ -276,7 +276,7 @@ function processBulkEntries(prizeType) {
 }
 
 /**
- * Validate form and submit if valid
+ * Validate form and submit if valid - MODIFIED to remove confirmation
  */
 function validateAndSubmit(e) {
     e.preventDefault();
@@ -319,11 +319,9 @@ function validateAndSubmit(e) {
         return;
     }
     
-    // Confirm submission
-    if (confirm('Are you sure you want to save these lottery results?')) {
-        isDirty = false;
-        e.target.submit();
-    }
+    // Submit without confirmation
+    isDirty = false;
+    e.target.submit();
 }
 
 /**
