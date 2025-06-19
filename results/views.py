@@ -540,29 +540,43 @@ class TicketCheckView(APIView):
                         'winning_ticket_number': prize.ticket_number
                     })
                 
+                # Check if the latest result date is same as requested date
+                is_previous_result = latest_result.date != check_date
+                
                 # Simplified response for wins
                 return Response({
                     'message': f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest {lottery.name} draw!',
                     'won_prize': True,
                     'result_published': False,
                     'ticket_number': ticket_number,
+                    'requested_date': check_date,
+                    'lottery_name': lottery.name,
+                    'isPrevious_result': is_previous_result,
                     'latest_result': {
                         'date': latest_result.date,
                         'draw_number': latest_result.draw_number,
+                        'unique_id': str(latest_result.unique_id),
                         'total_prize_amount': total_latest_prize,
                         'prize_details': latest_wins[0] if len(latest_wins) == 1 else latest_wins
                     }
                 }, status=status.HTTP_200_OK)
             else:
+                # Check if the latest result date is same as requested date
+                is_previous_result = latest_result.date != check_date
+                
                 # Simplified response for no wins
                 return Response({
                     'message': f'No result published for {check_date}. Your ticket did not win in the latest available result.',
                     'won_prize': False,
                     'result_published': False,
                     'ticket_number': ticket_number,
+                    'requested_date': check_date,
+                    'lottery_name': lottery.name,
+                    'isPrevious_result': is_previous_result,
                     'latest_result': {
                         'date': latest_result.date,
-                        'draw_number': latest_result.draw_number
+                        'draw_number': latest_result.draw_number,
+                        'unique_id': str(latest_result.unique_id)
                     }
                 }, status=status.HTTP_200_OK)
             
