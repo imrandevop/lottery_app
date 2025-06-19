@@ -1,3 +1,4 @@
+# admin_views.py
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_protect
@@ -16,6 +17,7 @@ def clean_spaces_from_data(data):
     cleaned_data = data.copy()
     
     # Fields that should not have spaces
+    # Removed 'name' and 'description' from this list
     no_space_fields = [
         'draw_number', 'ticket_number', 'place', 'code'
     ]

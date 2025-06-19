@@ -1,3 +1,4 @@
+# admin.py
 from django.contrib import admin
 from .models import Lottery, LotteryResult, PrizeEntry
 from django.contrib.auth.models import Group
@@ -39,10 +40,11 @@ class NoSpaceDecimalField(DecimalField):
 
 
 class LotteryForm(ModelForm):
-    # Override fields to use no-space versions
-    name = NoSpaceCharField(widget=NoSpaceTextInput())
-    code = NoSpaceCharField(widget=NoSpaceTextInput())
-    description = NoSpaceCharField(widget=NoSpaceTextInput())
+    # Only apply no-space restriction to code field
+    # name and description will use regular CharField (allows spaces)
+    name = CharField()  # Regular CharField - allows spaces
+    code = NoSpaceCharField(widget=NoSpaceTextInput())  # No spaces allowed
+    description = CharField(widget=TextInput())  # Regular CharField - allows spaces
     
     class Meta:
         model = Lottery
@@ -50,10 +52,10 @@ class LotteryForm(ModelForm):
         
     def clean(self):
         cleaned_data = super().clean()
-        # Additional cleaning for all text fields
-        for field_name, value in cleaned_data.items():
-            if isinstance(value, str):
-                cleaned_data[field_name] = re.sub(r'\s+', '', value)
+        # Only remove spaces from code field, leave name and description as is
+        if 'code' in cleaned_data and cleaned_data['code']:
+            cleaned_data['code'] = re.sub(r'\s+', '', cleaned_data['code'])
+        # name and description are left unchanged (spaces allowed)
         return cleaned_data
 
 
