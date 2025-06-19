@@ -169,14 +169,53 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
 
 # ---------------BAR CODE SCAN SECTION -------------
 
+# Updated Serializer
 class TicketCheckSerializer(serializers.Serializer):
-    """Serializer for ticket check request"""
-    ticket_number = serializers.CharField(max_length=50)
-    phone_number = serializers.CharField(max_length=15)
-    date = serializers.DateField()
+    """Enhanced serializer for ticket check request with comprehensive validation"""
+    ticket_number = serializers.CharField(
+        max_length=50,
+        help_text="Ticket number (e.g., W123456)"
+    )
+    phone_number = serializers.CharField(
+        max_length=15,
+        help_text="Phone number of the user"
+    )
+    date = serializers.DateField(
+        help_text="Date of the lottery draw (YYYY-MM-DD format)"
+    )
+    
+    def validate_ticket_number(self, value):
+        """Validate ticket number format"""
+        if not value:
+            raise serializers.ValidationError("Ticket number is required")
+        
+        # Remove any whitespace and convert to uppercase
+        value = value.strip().upper()
+        
+        # Check minimum length (at least 2 characters - 1 for lottery code + 1 for number)
+        if len(value) < 2:
+            raise serializers.ValidationError("Ticket number must be at least 2 characters long")
+        
+        # Check that first character is a letter (lottery code)
+        if not value[0].isalpha():
+            raise serializers.ValidationError("First character must be a letter (lottery code)")
+        
+        return value
     
     def validate_phone_number(self, value):
-        """Validate that user exists"""
+        """Validate phone number format and user existence"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required")
+        
+        # Remove any whitespace
+        value = value.strip()
+        
+        # Basic phone number format validation
+        clean_phone = value.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+        if not clean_phone.isdigit():
+            raise serializers.ValidationError("Phone number must contain only digits and allowed characters (+, -, spaces, parentheses)")
+        
+        # Check if user exists with this phone number
         from django.contrib.auth import get_user_model
         User = get_user_model()
         
@@ -184,4 +223,120 @@ class TicketCheckSerializer(serializers.Serializer):
             User.objects.get(phone_number=value)
         except User.DoesNotExist:
             raise serializers.ValidationError("User with this phone number does not exist")
+        
         return value
+    
+    def validate_date(self, value):
+        """Validate date is not in the future beyond reasonable limits"""
+        if not value:
+            raise serializers.ValidationError("Date is required")
+        
+        from datetime import date, timedelta
+        today = date.today()
+        
+        # Allow checking results up to 1 year in the future (for scheduled draws)
+        max_future_date = today + timedelta(days=365)
+        
+        if value > max_future_date:
+            raise serializers.ValidationError("Date cannot be more than 1 year in the future")
+        
+        # Allow checking results up to 5 years in the past
+        min_past_date = today - timedelta(days=1825)  # 5 years
+        if value < min_past_date:
+            raise serializers.ValidationError("Date cannot be more than 5 years in the past")
+        
+        return value
+    
+    def validate(self, attrs):
+        """Cross-field validation"""
+        return attrs
+
+
+# Fixed view logic for previous results checking
+# Replace the previous results section in your view with this:
+
+        # No prize won - check previous results and return lottery info
+        
+        # Check previous results for this ticket number in this lottery
+        previous_results = PrizeEntry.objects.filter(
+            ticket_number=ticket_number,
+            lottery_result__lottery=lottery,
+            lottery_result__date__lt=check_date,
+            lottery_result__is_published=True
+        ).select_related('lottery_result').order_by('-lottery_result__date')[:5]  # Last 5 results
+        
+        # Also check previous results for last 4 digits
+        previous_small_prizes = PrizeEntry.objects.filter(
+            ticket_number=last_4_digits,
+            lottery_result__lottery=lottery,
+            lottery_result__date__lt=check_date,
+            lottery_result__is_published=True
+        ).select_related('lottery_result').exclude(
+            ticket_number=ticket_number  # Exclude full matches to avoid duplicates
+        ).order_by('-lottery_result__date')[:5]
+        
+        response_data = {
+            'message': 'Better luck next time! Your ticket did not win any prize.',
+            'won_prize': False,
+            'result_published': True,
+            'ticket_number': ticket_number,
+            'last_4_digits': last_4_digits,
+            'lottery_info': {
+                'name': lottery_result.lottery.name,
+                'code': lottery_result.lottery.code,
+                'date': lottery_result.date,
+                'draw_number': lottery_result.draw_number,
+                'unique_id': str(lottery_result.unique_id)
+            }
+        }
+        
+        # Convert QuerySets to lists to check if they have data
+        previous_results_list = list(previous_results)
+        previous_small_prizes_list = list(previous_small_prizes)
+        
+        # Add previous winning history if exists
+        if previous_results_list or previous_small_prizes_list:
+            previous_wins = []
+            
+            # Add full ticket wins
+            for prize in previous_results_list:
+                previous_wins.append({
+                    'date': prize.lottery_result.date.strftime('%Y-%m-%d'),
+                    'prize_type': prize.get_prize_type_display(),
+                    'prize_amount': float(prize.prize_amount),
+                    'draw_number': prize.lottery_result.draw_number,
+                    'match_type': 'Full ticket match',
+                    'winning_ticket_number': prize.ticket_number,
+                    'unique_id': str(prize.lottery_result.unique_id)
+                })
+            
+            # Add small prize wins (last 4 digits)
+            for prize in previous_small_prizes_list:
+                previous_wins.append({
+                    'date': prize.lottery_result.date.strftime('%Y-%m-%d'),
+                    'prize_type': prize.get_prize_type_display(),
+                    'prize_amount': float(prize.prize_amount),
+                    'draw_number': prize.lottery_result.draw_number,
+                    'match_type': 'Last 4 digits match',
+                    'winning_ticket_number': prize.ticket_number,
+                    'unique_id': str(prize.lottery_result.unique_id)
+                })
+            
+            # Sort by date (most recent first) - convert string dates back to date objects for sorting
+            from datetime import datetime
+            previous_wins.sort(key=lambda x: datetime.strptime(x['date'], '%Y-%m-%d').date(), reverse=True)
+            
+            response_data['previous_wins'] = {
+                'message': 'Here are your previous wins with this ticket/number:',
+                'total_previous_wins': len(previous_wins),
+                'wins': previous_wins[:5]  # Show only last 5 wins
+            }
+        else:
+            # Add info about no previous wins
+            response_data['previous_wins'] = {
+                'message': 'No previous wins found for this ticket number in this lottery.',
+                'total_previous_wins': 0,
+                'wins': []
+            }
+        
+        return Response(response_data, status=status.HTTP_200_OK)

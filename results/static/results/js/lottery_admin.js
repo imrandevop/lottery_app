@@ -964,7 +964,7 @@ function enhanceFixedSaveButton(saveBtn) {
             textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
         }
         
-        showNotification('Saving lottery results...', 'info');
+        // showNotification('Saving lottery results...', 'info');
         
         setTimeout(() => {
             if (saveBtn.classList.contains('loading')) {
