@@ -431,14 +431,131 @@ class TicketCheckView(APIView):
                 is_published=True
             )
         except LotteryResult.DoesNotExist:
-            return Response({
-                'message': 'No published result found for this lottery on the specified date',
+            # No result for this specific date - check the latest available result
+            latest_result = LotteryResult.objects.filter(
+                lottery=lottery,
+                date__lte=check_date,  # On or before the requested date
+                is_published=True
+            ).select_related('lottery').order_by('-date').first()
+            
+            if not latest_result:
+                return Response({
+                    'message': 'No published result found for this lottery',
+                    'ticket_number': ticket_number,
+                    'lottery_name': lottery.name,
+                    'lottery_code': lottery.code,
+                    'date': check_date,
+                    'result_published': False
+                }, status=status.HTTP_200_OK)
+            
+            # Get last 4 digits for checking
+            last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
+            
+            # Check if this ticket won in the latest available result
+            latest_winning_tickets = PrizeEntry.objects.filter(
+                ticket_number=ticket_number,
+                lottery_result=latest_result
+            ).select_related('lottery_result__lottery')
+            
+            # Check for small prizes with last 4 digits in latest result
+            latest_small_prizes = PrizeEntry.objects.filter(
+                ticket_number=last_4_digits,
+                lottery_result=latest_result
+            ).select_related('lottery_result__lottery').exclude(
+                ticket_number=ticket_number
+            )
+            
+            all_latest_wins = list(latest_winning_tickets) + list(latest_small_prizes)
+            
+            response_data = {
+                'message': f'No result published for {check_date}. Showing latest available result.',
                 'ticket_number': ticket_number,
+                'last_4_digits': last_4_digits,
                 'lottery_name': lottery.name,
                 'lottery_code': lottery.code,
-                'date': check_date,
-                'result_published': False
-            }, status=status.HTTP_200_OK)
+                'requested_date': check_date,
+                'result_published': False,
+                'latest_result_info': {
+                    'date': latest_result.date,
+                    'draw_number': latest_result.draw_number,
+                    'unique_id': str(latest_result.unique_id)
+                }
+            }
+            
+            if all_latest_wins:
+                # User won in the latest result!
+                latest_wins = []
+                total_latest_prize = 0
+                
+                for prize in all_latest_wins:
+                    prize_amount = float(prize.prize_amount)
+                    total_latest_prize += prize_amount
+                    is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
+                    
+                    latest_wins.append({
+                        'prize_type': prize.get_prize_type_display(),
+                        'prize_amount': prize_amount,
+                        'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
+                        'winning_ticket_number': prize.ticket_number,
+                        'your_ticket_number': ticket_number,
+                        'place': prize.place if prize.place else None
+                    })
+                
+                response_data['latest_result_win'] = {
+                    'message': f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest draw!',
+                    'date': latest_result.date,
+                    'draw_number': latest_result.draw_number,
+                    'unique_id': str(latest_result.unique_id),
+                    'total_prize_amount': total_latest_prize,
+                    'total_prizes': len(latest_wins),
+                    'prize_details': latest_wins
+                }
+                response_data['message'] = f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest {lottery.name} draw!'
+            
+            # Also show all previous wins for context
+            all_previous_wins = PrizeEntry.objects.filter(
+                ticket_number=ticket_number,
+                lottery_result__lottery=lottery,
+                lottery_result__date__lt=check_date,
+                lottery_result__is_published=True
+            ).select_related('lottery_result').order_by('-lottery_result__date')[:5]
+            
+            all_previous_small_prizes = PrizeEntry.objects.filter(
+                ticket_number=last_4_digits,
+                lottery_result__lottery=lottery,
+                lottery_result__date__lt=check_date,
+                lottery_result__is_published=True
+            ).select_related('lottery_result').exclude(
+                ticket_number=ticket_number
+            ).order_by('-lottery_result__date')[:5]
+            
+            all_previous_list = list(all_previous_wins) + list(all_previous_small_prizes)
+            
+            if all_previous_list:
+                previous_wins_data = []
+                for prize in all_previous_list:
+                    is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
+                    previous_wins_data.append({
+                        'date': prize.lottery_result.date.strftime('%Y-%m-%d'),
+                        'prize_type': prize.get_prize_type_display(),
+                        'prize_amount': float(prize.prize_amount),
+                        'draw_number': prize.lottery_result.draw_number,
+                        'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
+                        'winning_ticket_number': prize.ticket_number,
+                        'unique_id': str(prize.lottery_result.unique_id)
+                    })
+                
+                # Sort by date
+                from datetime import datetime
+                previous_wins_data.sort(key=lambda x: datetime.strptime(x['date'], '%Y-%m-%d').date(), reverse=True)
+                
+                response_data['all_previous_wins'] = {
+                    'message': 'Your complete win history with this ticket:',
+                    'total_previous_wins': len(previous_wins_data),
+                    'wins': previous_wins_data[:5]
+                }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
 
         # Get last 4 digits of ticket number for small prize checking
         last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
