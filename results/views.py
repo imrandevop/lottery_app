@@ -377,7 +377,6 @@ class TicketCheckView(APIView):
                         'draw_number': previous_result.draw_number,
                         'unique_id': str(previous_result.unique_id)
                     }
-            
             return Response(response_data, status=status.HTTP_200_OK)
 
         # Look for the specific lottery result for this date and lottery
@@ -538,29 +537,33 @@ class TicketCheckView(APIView):
                         'prize_type': prize.get_prize_type_display(),
                         'prize_amount': prize_amount,
                         'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
-                        'winning_ticket_number': prize.ticket_number,
-                        'your_ticket_number': ticket_number,
-                        'place': prize.place if prize.place else None
+                        'winning_ticket_number': prize.ticket_number
                     })
                 
-                response_data['latest_result_win'] = {
-                    'message': f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest draw!',
-                    'date': latest_result.date,
-                    'draw_number': latest_result.draw_number,
-                    'unique_id': str(latest_result.unique_id),
-                    'total_prize_amount': total_latest_prize,
-                    'total_prizes': len(latest_wins),
-                    'prize_details': latest_wins
-                }
-                response_data['message'] = f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest {lottery.name} draw!'
-                response_data['won_prize'] = True
+                # Simplified response for wins
+                return Response({
+                    'message': f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest {lottery.name} draw!',
+                    'won_prize': True,
+                    'result_published': False,
+                    'ticket_number': ticket_number,
+                    'latest_result': {
+                        'date': latest_result.date,
+                        'draw_number': latest_result.draw_number,
+                        'total_prize_amount': total_latest_prize,
+                        'prize_details': latest_wins[0] if len(latest_wins) == 1 else latest_wins
+                    }
+                }, status=status.HTTP_200_OK)
             else:
-                response_data['message'] = f'No result published for {check_date}. Your ticket did not win in the latest available result.'
-                response_data['won_prize'] = False
+                # Simplified response for no wins
+                return Response({
+                    'message': f'No result published for {check_date}. Your ticket did not win in the latest available result.',
+                    'won_prize': False,
+                    'result_published': False,
+                    'ticket_number': ticket_number,
+                    'latest_result': {
+                        'date': latest_result.date,
+                        'draw_number': latest_result.draw_number
+                    }
+                }, status=status.HTTP_200_OK)
             
             return Response(response_data, status=status.HTTP_200_OK)
-
-
-
-
-
