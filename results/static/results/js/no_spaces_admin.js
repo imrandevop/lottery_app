@@ -2,11 +2,20 @@
  * No Spaces Admin Script
  * Path: results/static/results/js/no_spaces_admin.js
  * 
- * Prevents spaces in admin form fields
+ * Prevents spaces in admin form fields (excluding lottery add/edit forms)
  */
 
 (function() {
     'use strict';
+    
+    /**
+     * Check if current page is lottery add/edit form
+     */
+    function isLotteryForm() {
+        const url = window.location.href;
+        return url.includes('/admin/results/lottery/add/') || 
+               url.includes('/admin/results/lottery/') && (url.includes('/change/') || url.includes('/add/'));
+    }
     
     /**
      * Remove spaces from input value
@@ -65,15 +74,22 @@
     
     /**
      * Initialize no-spaces functionality for all relevant fields
+     * (excluding lottery add/edit forms)
      */
     function initializeNoSpaces() {
+        // Skip if this is a lottery add/edit form
+        if (isLotteryForm()) {
+            console.log('Lottery form detected - skipping no-spaces functionality');
+            return;
+        }
+        
         // Target fields that should not have spaces
         const noSpaceSelectors = [
             // General admin fields
             'input[data-no-spaces="true"]',
             'input.no-spaces',
             
-            // Specific field names that should never have spaces
+            // Specific field names that should never have spaces (but not in lottery forms)
             'input[name*="code"]',
             'input[name*="ticket_number"]',
             'input[name*="draw_number"]',
@@ -122,48 +138,6 @@
     }
     
     /**
-     * Add no-spaces functionality to lottery admin custom views
-     */
-    function initializeLotteryAdminNoSpaces() {
-        // Handle custom lottery admin form
-        const lotteryForm = document.getElementById('lotteryForm');
-        if (lotteryForm) {
-            const fieldsToRestrict = [
-                'input[name="draw_number"]',
-                'input[name$="_ticket_number[]"]',
-                'input[name$="_place[]"]'
-            ];
-            
-            fieldsToRestrict.forEach(selector => {
-                lotteryForm.querySelectorAll(selector).forEach(input => {
-                    makeInputNoSpaces(input);
-                });
-            });
-            
-            // Monitor for dynamically added entries
-            const observer = new MutationObserver(function(mutations) {
-                mutations.forEach(function(mutation) {
-                    mutation.addedNodes.forEach(function(node) {
-                        if (node.nodeType === 1) {
-                            fieldsToRestrict.forEach(selector => {
-                                const inputs = node.querySelectorAll ? node.querySelectorAll(selector) : [];
-                                inputs.forEach(input => {
-                                    makeInputNoSpaces(input);
-                                });
-                            });
-                        }
-                    });
-                });
-            });
-            
-            observer.observe(lotteryForm, {
-                childList: true,
-                subtree: true
-            });
-        }
-    }
-    
-    /**
      * Show notification when spaces are prevented
      */
     function showSpacePreventedNotification() {
@@ -202,15 +176,17 @@
      */
     function initialize() {
         initializeNoSpaces();
-        initializeLotteryAdminNoSpaces();
         
         // Add global event listener for space key prevention feedback
-        document.addEventListener('keydown', function(e) {
-            if ((e.code === 'Space' || e.key === ' ') && 
-                e.target.matches('input[data-no-spaces="true"], input.no-spaces, input[name*="ticket_number"], input[name*="place"], input[name*="code"], input[name*="draw_number"]')) {
-                showSpacePreventedNotification();
-            }
-        });
+        // (but not on lottery forms)
+        if (!isLotteryForm()) {
+            document.addEventListener('keydown', function(e) {
+                if ((e.code === 'Space' || e.key === ' ') && 
+                    e.target.matches('input[data-no-spaces="true"], input.no-spaces, input[name*="ticket_number"], input[name*="place"], input[name*="code"], input[name*="draw_number"]')) {
+                    showSpacePreventedNotification();
+                }
+            });
+        }
         
         console.log('No-spaces admin functionality initialized');
     }
