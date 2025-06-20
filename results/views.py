@@ -42,11 +42,45 @@ class LotteryResultListView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
+        
         return Response({
             'status': 'success',
             'count': queryset.count(),
-            'results': serializer.data
+            'total_points': self.get_total_points(request),
+            'updates': {
+                "image1": "https://example.com/updates/image1.jpg",
+                "image2": "https://example.com/updates/image2.jpg",
+                "image3": "https://example.com/updates/image3.jpg"
+            },
+            'results': serializer.data,
         })
+    
+    def get_total_points(self, request):
+        """
+        Calculate or retrieve total points for the user
+        Replace this method with your actual business logic
+        """
+        # Example implementations (choose one based on your needs):
+        
+        # Option 1: If you have a user profile with points
+        # if request.user.is_authenticated:
+        #     return getattr(request.user.profile, 'total_points', 0)
+        # return 0
+        
+        # Option 2: If you have a separate Points model
+        # if request.user.is_authenticated:
+        #     from django.db.models import Sum
+        #     total = Points.objects.filter(user=request.user).aggregate(
+        #         total=Sum('points')
+        #     )['total']
+        #     return total or 0
+        # return 0
+        
+        # Option 3: Static value or calculation based on lottery data
+        # return queryset.count() * 10  # Example: 10 points per lottery result
+        
+        # Placeholder - replace with your actual logic
+        return 1250
 
 class LotteryResultDetailView(generics.RetrieveAPIView):
     """
