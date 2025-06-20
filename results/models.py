@@ -69,3 +69,59 @@ class PrizeEntry(models.Model):
     class Meta:
         verbose_name = "Prize Entry"
         verbose_name_plural = "Prize Entries"
+
+
+class ImageUpdate(models.Model):
+    """
+    Model to manage update images for home screen
+    """
+    # Update Images
+    update_image1 = models.URLField(
+        max_length=500, 
+        verbose_name="Update Image 1 URL",
+        help_text="URL for the first update image"
+    )
+    update_image2 = models.URLField(
+        max_length=500, 
+        verbose_name="Update Image 2 URL",
+        help_text="URL for the second update image"
+    )
+    update_image3 = models.URLField(
+        max_length=500, 
+        verbose_name="Update Image 3 URL",
+        help_text="URL for the third update image"
+    )
+    
+    # Meta fields
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Image Updates (Updated: {self.updated_at.strftime('%Y-%m-%d %H:%M')})"
+    
+    class Meta:
+        verbose_name = "Image Update"
+        verbose_name_plural = "Image Updates"
+        ordering = ['-updated_at']  # Show newest first
+    
+    # Remove the singleton save() method override
+    # def save(self, *args, **kwargs):
+    #     if not self.pk and ImageUpdate.objects.exists():
+    #         raise ValueError("Only one ImageUpdate instance is allowed.")
+    #     super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_images(cls):
+        """Get the latest image settings instance, create default if none exists"""
+        # Get the most recent instance (ordering = ['-updated_at'] makes first() return the newest)
+        latest_instance = cls.objects.first()
+        
+        if not latest_instance:
+            # Create a new default instance (let Django auto-assign the ID)
+            latest_instance = cls.objects.create(
+                update_image1='https://example.com/default-image1.jpg',
+                update_image2='https://example.com/default-image2.jpg',
+                update_image3='https://example.com/default-image3.jpg',
+            )
+        
+        return latest_instance

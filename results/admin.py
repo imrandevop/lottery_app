@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin
-from .models import Lottery, LotteryResult, PrizeEntry
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -167,6 +167,18 @@ class PrizeEntryAdmin(admin.ModelAdmin):
     class Media:
         js = ('results/js/no_spaces_admin.js',)
 
+@admin.register(ImageUpdate)
+class ImageUpdateAdmin(admin.ModelAdmin):
+    list_display = ['__str__', 'updated_at']
+    fields = ('update_image1', 'update_image2', 'update_image3')
+    
+    # Remove the has_add_permission override to allow adding multiple instances
+    # def has_add_permission(self, request):
+    #     return not ImageUpdate.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        # Allow deletion so users can manage multiple instances
+        return True
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)

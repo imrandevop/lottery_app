@@ -8,7 +8,7 @@ from django.utils import timezone
 from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
-from .models import Lottery, LotteryResult, PrizeEntry
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer
@@ -43,16 +43,20 @@ class LotteryResultListView(generics.ListAPIView):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         
+        # Get image settings from database
+        image_settings = ImageUpdate.get_images()
+        
         return Response({
             'status': 'success',
             'count': queryset.count(),
-            'total_points': self.get_total_points(request),
+            'total_points': 1250,
             'updates': {
-                "image1": "https://example.com/updates/image1.jpg",
-                "image2": "https://example.com/updates/image2.jpg",
-                "image3": "https://example.com/updates/image3.jpg"
+                "image1": image_settings.update_image1,
+                "image2": image_settings.update_image2,
+                "image3": image_settings.update_image3
             },
-            'results': serializer.data,
+             # Keep this hardcoded or add your custom logic
+            'results': serializer.data
         })
     
     def get_total_points(self, request):
