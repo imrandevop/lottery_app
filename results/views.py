@@ -358,7 +358,6 @@ class TicketCheckView(APIView):
                 'publish_time': '3:00 PM',
                 'ticket_number': ticket_number,
                 'last_4_digits': last_4_digits,
-                'isPrevious_result': False
             }
 
             if previous_result:
@@ -398,17 +397,12 @@ class TicketCheckView(APIView):
                         'unique_id': str(previous_result.unique_id),
                         'total_prize_amount': total_recent_prize,
                         'total_prizes': len(recent_wins),
-                        'prize_details': recent_wins,
-                        'isPrevious_result': self.is_previous_result(check_date, previous_result.date)
+                        'prize_details': recent_wins
                     }
-                else:
-                    response_data['previous_result_suggestion'] = {
-                        'message': 'Here is the most recent result for this lottery:',
-                        'date': previous_result.date,
-                        'draw_number': previous_result.draw_number,
-                        'unique_id': str(previous_result.unique_id),
-                        'isPrevious_result': self.is_previous_result(check_date, previous_result.date)
-                    }
+
+                response_data['isPrevious_result'] = self.is_previous_result(check_date, previous_result.date)
+            else:
+                response_data['isPrevious_result'] = False
 
             return Response(response_data, status=status.HTTP_200_OK)
 
@@ -460,24 +454,15 @@ class TicketCheckView(APIView):
 
                     results.append(result)
 
-                if len(results) == 1:
-                    return Response({
-                        'message': f'Congratulations! You won ₹{total_prize_amount:,.0f}',
-                        'won_prize': True,
-                        'result_published': True,
-                        'isPrevious_result': False,
-                        'prize_details': results[0]
-                    }, status=status.HTTP_200_OK)
-                else:
-                    return Response({
-                        'message': f'Congratulations! You won multiple prizes totaling ₹{total_prize_amount:,.0f}',
-                        'won_prize': True,
-                        'result_published': True,
-                        'isPrevious_result': False,
-                        'total_prize_amount': total_prize_amount,
-                        'total_prizes': len(results),
-                        'prize_details': results
-                    }, status=status.HTTP_200_OK)
+                return Response({
+                    'message': f'Congratulations! You won ₹{total_prize_amount:,.0f}',
+                    'won_prize': True,
+                    'result_published': True,
+                    'isPrevious_result': False,
+                    'prize_details': results[0] if len(results) == 1 else results,
+                    'total_prizes': len(results) if len(results) > 1 else 1,
+                    'total_prize_amount': total_prize_amount
+                }, status=status.HTTP_200_OK)
 
             return Response({
                 'message': 'Better luck next time! Your ticket did not win any prize.',
