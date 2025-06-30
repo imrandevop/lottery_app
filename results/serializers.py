@@ -253,3 +253,11 @@ class TicketCheckSerializer(serializers.Serializer):
 
 
         
+# <--------NEWS SECTION --------->
+from rest_framework import serializers
+from .models import News
+
+class NewsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = News
+        fields = ['id', 'headline', 'content', 'image_url', 'news_url', 'source', 'published_at']

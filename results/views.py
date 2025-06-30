@@ -8,10 +8,10 @@ from django.utils import timezone
 from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
-from .serializers import TicketCheckSerializer
+from .serializers import TicketCheckSerializer, NewsSerializer
 
 
 
@@ -560,3 +560,55 @@ class TicketCheckView(APIView):
                         'unique_id': str(latest_result.unique_id)
                     }
                 }, status=status.HTTP_200_OK)
+            
+
+# <--------------NEWS SECTION---------------->
+class NewsListAPIView(generics.ListAPIView):
+    """
+    API endpoint to list latest 20 active news articles
+    """
+    queryset = News.objects.filter(is_active=True)[:20]  # Limit to 20 latest
+    serializer_class = NewsSerializer
+    pagination_class = None  # Disable pagination since we want exactly 20
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            "status": "success",
+            "code": 200,
+            "message": f"Latest {len(serializer.data)} news fetched successfully",
+            "data": serializer.data
+        })
+    
+    
+@api_view(['GET'])
+def latest_news(request):
+    """
+    API endpoint to get the latest news article
+    """
+    try:
+        news = News.objects.filter(is_active=True).first()
+        if not news:
+            return Response({
+                "status": "error",
+                "code": 404,
+                "message": "No news found",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = NewsSerializer(news)
+        return Response({
+            "status": "success",
+            "code": 200,
+            "message": "Latest news fetched successfully",
+            "data": serializer.data
+        })
+    except Exception as e:
+        return Response({
+            "status": "error",
+            "code": 500,
+            "message": "Internal server error",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

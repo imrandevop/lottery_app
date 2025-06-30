@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from django.utils import timezone
 
 
 class Lottery(models.Model):
@@ -125,3 +126,24 @@ class ImageUpdate(models.Model):
             )
         
         return latest_instance
+    
+
+# <---------------NEWS SECTION---------------->
+class News(models.Model):
+    headline = models.CharField(max_length=255, help_text="News headline")
+    content = models.TextField(help_text="News content/description")
+    image_url = models.URLField(max_length=500, help_text="Image URL for the news")
+    news_url = models.URLField(max_length=500, help_text="Original news URL")
+    source = models.CharField(max_length=100, default="News Source", help_text="News source name")
+    published_at = models.DateTimeField(default=timezone.now, help_text="Publication date and time")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True, help_text="Is this news active?")
+
+    class Meta:
+        verbose_name = "News Article"
+        verbose_name_plural = "News Articles"
+        ordering = ['-published_at']
+
+    def __str__(self):
+        return self.headline

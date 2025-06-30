@@ -19,6 +19,8 @@ urlpatterns = [
     
     path('check-ticket/', views.TicketCheckView.as_view(), name='check-ticket'),
 
+    path('news/', views.NewsListAPIView.as_view(), name='news-list'),
+
 
 
     # Get detailed result by ID

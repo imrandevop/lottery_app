@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -179,6 +179,33 @@ class ImageUpdateAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Allow deletion so users can manage multiple instances
         return True
+    
+
+#<---------------NEWS SECTION---------------->
+@admin.register(News)
+class NewsAdmin(admin.ModelAdmin):
+    list_display = ['headline', 'source', 'published_at', 'is_active', 'created_at']
+    list_filter = ['source', 'is_active', 'published_at', 'created_at']
+    search_fields = ['headline', 'content', 'source']
+    list_editable = ['is_active']
+    readonly_fields = ['created_at', 'updated_at']
+    date_hierarchy = 'published_at'
+    
+    fieldsets = (
+        ('News Information', {
+            'fields': ('headline', 'content', 'source')
+        }),
+        ('URLs', {
+            'fields': ('image_url', 'news_url')
+        }),
+        ('Publication Details', {
+            'fields': ('published_at', 'is_active')
+        }),
+        ('System Information', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)
