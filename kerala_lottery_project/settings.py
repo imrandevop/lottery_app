@@ -17,14 +17,30 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 # Environment-specific configuration
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
-# ALLOWED_HOSTS configuration
-if ENVIRONMENT == 'production':
-    ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',')
-    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS if host.strip()]  # Remove empty strings and whitespace
-else:
-    # Development environment - include both local and production hosts
-    allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost')
-    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
+# ALLOWED_HOSTS configuration - IMPROVED
+def get_allowed_hosts():
+    """Parse ALLOWED_HOSTS from environment variable with better error handling"""
+    hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '')
+    if not hosts_env:
+        # Default hosts for development
+        return ['127.0.0.1', 'localhost']
+    
+    # Split by comma and clean up each host
+    hosts = []
+    for host in hosts_env.split(','):
+        host = host.strip()
+        if host:  # Only add non-empty hosts
+            hosts.append(host)
+    
+    return hosts if hosts else ['127.0.0.1', 'localhost']
+
+ALLOWED_HOSTS = get_allowed_hosts()
+
+# Debug: Print allowed hosts in development
+if DEBUG:
+    print(f"DEBUG MODE: {DEBUG}")
+    print(f"ENVIRONMENT: {ENVIRONMENT}")
+    print(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
 # Application definition
 INSTALLED_APPS = [
@@ -54,17 +70,29 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# CORS settings for API
+# CORS settings for API - IMPROVED
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development
-CORS_ALLOWED_ORIGINS = [
+
+# Production CORS origins
+PRODUCTION_CORS_ORIGINS = [
+    "https://sea-lion-app-begbw.ondigitalocean.app",
+    "https://lottokeralalotteries.com",
+    "https://www.lottokeralalotteries.com",
+]
+
+# Development CORS origins
+DEVELOPMENT_CORS_ORIGINS = [
     "http://localhost:8000",
     "http://localhost:3000",  # React dev server
     "http://127.0.0.1:8000",
     "http://127.0.0.1:3000",
-    "https://sea-lion-app-begbw.ondigitalocean.app",  # Added your production domain
-    "https://lottokeralalotteries.com",
-    "https://www.lottokeralalotteries.com",
 ]
+
+# Set CORS origins based on environment
+if DEBUG:
+    CORS_ALLOWED_ORIGINS = DEVELOPMENT_CORS_ORIGINS + PRODUCTION_CORS_ORIGINS
+else:
+    CORS_ALLOWED_ORIGINS = PRODUCTION_CORS_ORIGINS
 
 # CORS settings for API headers
 CORS_ALLOW_HEADERS = [
@@ -79,13 +107,13 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# REST Framework settings - FIXED pagination warning
+# REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # Changed for public lottery API
+        'rest_framework.permissions.AllowAny',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
@@ -95,7 +123,7 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '1000/hour'
     },
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',  # FIXED: Added this line
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -129,11 +157,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "kerala_lottery_project.wsgi.application"
 
-# Database configuration - IMPROVED
+# Database configuration - COMPLETELY FIXED
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
-    # Parse the DATABASE_URL (for production/DigitalOcean)
+    # Use DATABASE_URL when provided (production or when explicitly set)
+    print(f"Using DATABASE_URL connection")
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
@@ -141,19 +170,26 @@ if DATABASE_URL:
             conn_health_checks=True,
         )
     }
+    # Override SSL mode for DigitalOcean managed databases
+    if 'ondigitalocean.com' in DATABASE_URL:
+        DATABASES['default']['OPTIONS'] = {
+            'sslmode': 'require',
+        }
+        print("Applied DigitalOcean SSL configuration")
 else:
-    # Fallback to manual configuration (for local development)
+    # Use local database configuration
+    print("Using local database configuration")
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'kerala_lottery'),
+            'NAME': os.getenv('DB_NAME', 'lottery_db'),
             'USER': os.getenv('DB_USER', 'postgres'),
             'PASSWORD': os.getenv('DB_PASSWORD', ''),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
             'CONN_MAX_AGE': 600,
             'OPTIONS': {
-                'sslmode': 'prefer',  # CHANGED: 'prefer' instead of 'require' for local dev
+                'sslmode': 'disable',  # Local development only
             },
         }
     }
@@ -187,13 +223,22 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images) - FIXED paths
+# Static files (CSS, JavaScript, Images) - IMPROVED
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "static",  # FIXED: Use Path objects consistently
-    BASE_DIR / "results" / "static",  # FIXED: Use Path objects consistently
+
+# Create static directories if they don't exist
+static_dirs = [
+    BASE_DIR / "static",
+    BASE_DIR / "results" / "static",
 ]
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # FIXED: Use Path object
+
+# Only add existing directories to STATICFILES_DIRS
+STATICFILES_DIRS = []
+for static_dir in static_dirs:
+    if static_dir.exists():
+        STATICFILES_DIRS.append(static_dir)
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Static files storage
 if DEBUG:
@@ -238,7 +283,14 @@ LOTTERY_SETTINGS = {
 if ENVIRONMENT == 'production':
     # Production-specific settings
     CORS_ALLOW_ALL_ORIGINS = False
-    # Additional production settings can go here
+    # Security settings for production
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_REDIRECT_EXEMPT = []
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
 elif ENVIRONMENT == 'staging':
     # Staging-specific settings
@@ -252,4 +304,57 @@ FEATURE_FLAGS = {
     'ENABLE_CACHING': True,
     'ENABLE_EMAIL_NOTIFICATIONS': not DEBUG,
     'ENABLE_ADMIN_HONEYPOT': not DEBUG,
+}
+
+# Enhanced logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose' if DEBUG else 'simple',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'django.log',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'kerala_lottery_project': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+    },
 }
