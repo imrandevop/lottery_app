@@ -14,7 +14,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Environment-specific configuration
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
+# ALLOWED_HOSTS configuration
+if ENVIRONMENT == 'production':
+    ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',')
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS if host.strip()]  # Remove empty strings and whitespace
+else:
+    # Development environment - include both local and production hosts
+    allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost')
+    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -27,11 +37,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     
-    
     # Local apps
     'users',
     'results',
-    
 ]
 
 MIDDLEWARE = [
@@ -53,9 +61,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React dev server
     "http://127.0.0.1:8000",
     "http://127.0.0.1:3000",
+    "https://sea-lion-app-begbw.ondigitalocean.app",  # Added your production domain
     "https://lottokeralalotteries.com",
     "https://www.lottokeralalotteries.com",
-    # Add frontend domains when available
 ]
 
 # CORS settings for API headers
@@ -71,7 +79,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# REST Framework settings - UPDATED for lottery project
+# REST Framework settings - FIXED pagination warning
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
@@ -87,7 +95,7 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '1000/hour'
     },
-    # 'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',  # FIXED: Added this line
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -105,7 +113,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
-            BASE_DIR / 'templates',  # Use Path object for consistency
+            BASE_DIR / 'templates',
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -121,14 +129,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "kerala_lottery_project.wsgi.application"
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-# First, try to use DATABASE_URL if available (provided by Render)
+# Database configuration - IMPROVED
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
-    # Parse the DATABASE_URL
+    # Parse the DATABASE_URL (for production/DigitalOcean)
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
@@ -146,27 +151,21 @@ else:
             'PASSWORD': os.getenv('DB_PASSWORD', ''),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
-            'CONN_MAX_AGE': 600,  # Connection pooling
+            'CONN_MAX_AGE': 600,
             'OPTIONS': {
-                'sslmode': 'require',
+                'sslmode': 'prefer',  # CHANGED: 'prefer' instead of 'require' for local dev
             },
         }
     }
-
-
-
-
 
 # Session configuration
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_CACHE_ALIAS = 'default'
 SESSION_COOKIE_AGE = 3600  # 1 hour
-SESSION_SAVE_EVERY_REQUEST = False  # Change this to False
+SESSION_SAVE_EVERY_REQUEST = False
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 # Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -183,22 +182,18 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "Asia/Kolkata"  # Changed to Indian timezone for Kerala lottery
+TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
+# Static files (CSS, JavaScript, Images) - FIXED paths
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "static"), 
-    os.path.join(BASE_DIR, "results", "static"), # Use Path object for consistency
+    BASE_DIR / "static",  # FIXED: Use Path objects consistently
+    BASE_DIR / "results" / "static",  # FIXED: Use Path objects consistently
 ]
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # FIXED: Use Path object
 
 # Static files storage
 if DEBUG:
@@ -206,13 +201,11 @@ if DEBUG:
 else:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media files (for future file uploads)
+# Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom user model
@@ -222,11 +215,7 @@ AUTH_USER_MODEL = 'users.User'
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10MB
 
-
-
-
-
-
+# Admin URL
 ADMIN_URL = os.getenv('ADMIN_URL', 'admin/')
 
 # API versioning
@@ -245,18 +234,11 @@ LOTTERY_SETTINGS = {
     'DEFAULT_PAGINATION_SIZE': 20,
 }
 
-# Performance settings
-
-
-
-
 # Environment-specific overrides
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-
 if ENVIRONMENT == 'production':
     # Production-specific settings
-    ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',')
     CORS_ALLOW_ALL_ORIGINS = False
+    # Additional production settings can go here
     
 elif ENVIRONMENT == 'staging':
     # Staging-specific settings
@@ -269,9 +251,5 @@ FEATURE_FLAGS = {
     'ENABLE_DETAILED_LOGGING': True,
     'ENABLE_CACHING': True,
     'ENABLE_EMAIL_NOTIFICATIONS': not DEBUG,
-    'ENABLE_ADMIN_HONEYPOT': not DEBUG,  # Consider adding django-admin-honeypot
+    'ENABLE_ADMIN_HONEYPOT': not DEBUG,
 }
-
-
-
-
