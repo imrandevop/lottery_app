@@ -92,7 +92,7 @@ class LotteryPredictionEngine:
         predictions = []
         
         if prize_type in ['1st', '2nd', '3rd', 'consolation']:
-            # For major prizes - single prediction with lottery code
+            # For major prizes - single prediction with lottery code + second alphabet
             alpha_freq = Counter([c['alpha_prefix'] for c in components_list if c['alpha_prefix']])
             digit_freq = Counter([c['digits'] for c in components_list if c['digits']])
             
@@ -100,9 +100,25 @@ class LotteryPredictionEngine:
             common_alpha = alpha_freq.most_common(5)
             common_digits = digit_freq.most_common(10)
             
-            # Generate prediction with lottery code
+            # Generate prediction with lottery code as first letter + second letter
             if common_digits and lottery_code:
-                # Use lottery code as first letter
+                # Analyze second alphabet from historical data
+                second_alphabets = []
+                for c in components_list:
+                    if c['alpha_prefix'] and len(c['alpha_prefix']) >= 2:
+                        second_alphabets.append(c['alpha_prefix'][1])
+                
+                # Get most frequent second alphabet
+                if second_alphabets:
+                    second_alpha_freq = Counter(second_alphabets)
+                    common_second = second_alpha_freq.most_common(5)
+                    weights = [freq for _, freq in common_second]
+                    selected_second_alpha = random.choices([alpha for alpha, _ in common_second], weights=weights)[0]
+                else:
+                    # Random second alphabet if no historical data
+                    selected_second_alpha = random.choice(self.alphabet_patterns)
+                
+                # Use lottery code as first letter + selected second letter
                 digit_weights = [freq for _, freq in common_digits]
                 selected_digits = random.choices([digits for digits, _ in common_digits], weights=digit_weights)[0]
                 
@@ -110,9 +126,11 @@ class LotteryPredictionEngine:
                 if len(selected_digits) >= 4:
                     # Modify last 2 digits slightly
                     modified_digits = selected_digits[:-2] + str(random.randint(10, 99))
-                    prediction = lottery_code + modified_digits
+                    prediction = lottery_code + selected_second_alpha + modified_digits
                 else:
-                    prediction = lottery_code + selected_digits
+                    # Pad digits to 6 if needed
+                    padded_digits = selected_digits.zfill(6)
+                    prediction = lottery_code + selected_second_alpha + padded_digits
             else:
                 prediction = self.generate_random_numbers(prize_type, 1, lottery_code)[0]
             
@@ -150,7 +168,7 @@ class LotteryPredictionEngine:
             predictions.extend(prediction_batch)
         
         return predictions[:count]  # Ensure we return exactly the requested count
-    
+
     def pattern_recognition_prediction(self, historical_data, prize_type, count=1, lottery_code=None):
         """Advanced pattern recognition based on sequences and trends"""
         components_list = []
@@ -174,15 +192,29 @@ class LotteryPredictionEngine:
             recent_digits = [c['digits'] for c in components_list[:10] if c['digits']]
             
             if recent_digits and lottery_code:
-                # Pattern prediction with lottery code
+                # Analyze pattern for second alphabet
+                second_alphabets = []
+                for c in components_list[:10]:
+                    if c['alpha_prefix'] and len(c['alpha_prefix']) >= 2:
+                        second_alphabets.append(c['alpha_prefix'][1])
+                
+                if second_alphabets:
+                    # Find pattern in second alphabet sequence
+                    recent_second = second_alphabets[0] if second_alphabets else 'A'
+                    # Simple pattern: increment alphabet
+                    next_second = chr((ord(recent_second) - ord('A') + 1) % 26 + ord('A'))
+                else:
+                    next_second = random.choice(self.alphabet_patterns)
+                
+                # Pattern prediction with lottery code + pattern-based second alphabet
                 digit_pattern = self.analyze_digit_trends(recent_digits)
-                prediction = lottery_code + digit_pattern
+                prediction = lottery_code + next_second + digit_pattern
             else:
                 prediction = self.generate_random_numbers(prize_type, 1, lottery_code)[0]
             
             predictions.append(prediction)
         else:
-            # For 4th+ prizes - generate 12 numbers
+            # For 4th+ prizes - generate 12 numbers (same as before)
             recent_numbers = [c['last_4'] for c in components_list[:30] if c['last_4'] and c['last_4'].isdigit()]
             
             if len(recent_numbers) >= 3:
@@ -242,7 +274,7 @@ class LotteryPredictionEngine:
         return recent
     
     def analyze_digit_trends(self, digit_sequence):
-        """Analyze trends in digit sequences"""
+        """Analyze trends in digit sequences - ensure 6 digits"""
         if not digit_sequence:
             return str(random.randint(100000, 999999))
         
@@ -252,11 +284,12 @@ class LotteryPredictionEngine:
         if recent.isdigit():
             base_num = int(recent)
             # Add trend-based variation
-            variation = random.randint(-1000, 1000)
+            variation = random.randint(-10000, 10000)
             new_num = max(100000, min(999999, base_num + variation))
-            return str(new_num)
+            return str(new_num).zfill(6)  # Ensure 6 digits
         
-        return recent
+        return str(random.randint(100000, 999999))
+
     
     def predict_next_sequence(self, number_sequence):
         """Predict next number in sequence using statistical analysis"""
@@ -284,7 +317,7 @@ class LotteryPredictionEngine:
         
         # Combine predictions with weighted approach
         if prize_type in ['1st', '2nd', '3rd', 'consolation']:
-            # For major prizes - single number
+            # For major prizes - single number (lottery_code + second_alphabet + 6_digits)
             if random.random() < 0.6:  # 60% weight to frequency analysis
                 prediction = freq_predictions[0] if freq_predictions else self.generate_random_numbers(prize_type, 1, lottery_code)[0]
             else:  # 40% weight to pattern recognition
@@ -292,7 +325,7 @@ class LotteryPredictionEngine:
             
             return [prediction]
         else:
-            # For 4th+ prizes - combine and mix 12 numbers
+            # For 4th+ prizes - combine and mix 12 numbers (same as before)
             ensemble_predictions = []
             
             # Take 60% from frequency, 40% from pattern
@@ -319,19 +352,20 @@ class LotteryPredictionEngine:
                     unique_predictions.append(new_num)
             
             return unique_predictions[:count]
-    
+
     def generate_random_numbers(self, prize_type, count=1, lottery_code=None):
         """Generate random numbers as fallback"""
         predictions = []
         
         if prize_type in ['1st', '2nd', '3rd', 'consolation']:
-            # Major prizes: Full format - lottery code + 6 digits (single number)
+            # Major prizes: lottery_code + second_alphabet + 6_digits (single number)
             if lottery_code:
+                second_alphabet = random.choice(self.alphabet_patterns)  # Random second alphabet
                 digits = ''.join(random.choices(self.digit_patterns, k=6))
-                prediction = lottery_code + digits
+                prediction = lottery_code + second_alphabet + digits
             else:
                 # Fallback if no lottery code
-                alpha = ''.join(random.choices(self.alphabet_patterns, k=1))
+                alpha = ''.join(random.choices(self.alphabet_patterns, k=2))
                 digits = ''.join(random.choices(self.digit_patterns, k=6))
                 prediction = alpha + digits
             predictions.append(prediction)
