@@ -21,20 +21,24 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 def get_allowed_hosts():
     """Parse ALLOWED_HOSTS from environment variable with better error handling"""
     hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '')
+    
+    # Always include localhost for development
+    default_hosts = ['127.0.0.1', 'localhost']
+    
     if not hosts_env:
-        # Default hosts for development
-        return ['127.0.0.1', 'localhost']
+        return default_hosts
     
     # Split by comma and clean up each host
-    hosts = []
+    hosts = list(default_hosts)  # Start with localhost
     for host in hosts_env.split(','):
-        host = host.strip()
-        if host:  # Only add non-empty hosts
+        host = host.strip().rstrip('/')  # Remove trailing slash
+        if host and host not in hosts:  # Only add non-empty, unique hosts
             hosts.append(host)
     
-    return hosts if hosts else ['127.0.0.1', 'localhost']
+    return hosts
 
 ALLOWED_HOSTS = get_allowed_hosts()
+print(f"DEBUG: ALLOWED_HOSTS = {ALLOWED_HOSTS}")
 
 # Debug: Print allowed hosts in development
 if DEBUG:

@@ -151,9 +151,6 @@ class News(models.Model):
 #<---------------PREDICTION SECTION ---------------->
 
 # lottery_prediction/models.py
-from django.db import models
-from django.utils import timezone
-import json
 
 class PredictionModel(models.Model):
     """Store different prediction models and their configurations"""

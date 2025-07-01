@@ -284,12 +284,21 @@ class LotteryPredictionRequestSerializer(serializers.Serializer):
         ('10th', '10th Prize'),
         ('consolation', 'Consolation Prize'),
     ])
+    
+    def validate_lottery_name(self, value):
+        """Validate that lottery exists"""
+        try:
+            lottery = Lottery.objects.get(name__iexact=value)
+            return value
+        except Lottery.DoesNotExist:
+            # Get all available lottery names for better error message
+            available_lotteries = list(Lottery.objects.values_list('name', flat=True))
+            raise serializers.ValidationError(
+                f"Lottery '{value}' does not exist. Available lotteries: {', '.join(available_lotteries)}"
+            )
 
 class LotteryPredictionResponseSerializer(serializers.Serializer):
     lottery_name = serializers.CharField()
     prize_type = serializers.CharField()
     predicted_numbers = serializers.ListField(child=serializers.CharField())
-    confidence_score = serializers.FloatField()
-    prediction_method = serializers.CharField()
-    prediction_id = serializers.IntegerField()
-    generated_at = serializers.DateTimeField()
+    note = serializers.CharField()
