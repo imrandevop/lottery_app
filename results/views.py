@@ -612,3 +612,124 @@ def latest_news(request):
             "message": "Internal server error",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+
+#<---------------PREDICTION SECTION ---------------->
+# lottery_prediction/views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
+from .serializers import LotteryPredictionRequestSerializer, LotteryPredictionResponseSerializer
+from .prediction_engine import LotteryPredictionEngine
+from .models import PredictionHistory
+
+class LotteryPredictionAPIView(APIView):
+    """
+    API View for lottery number prediction
+    """
+    
+    def post(self, request):
+        """
+        Generate lottery predictions
+        """
+        # Validate input
+        serializer = LotteryPredictionRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'status': 'error',
+                'message': 'Invalid input data',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        lottery_name = serializer.validated_data['lottery_name']
+        prize_type = serializer.validated_data['prize_type']
+        
+        try:
+            # Initialize prediction engine
+            engine = LotteryPredictionEngine()
+            
+            # Generate prediction
+            result = engine.predict(lottery_name, prize_type, method='ensemble')
+            
+            # Store prediction history
+            prediction_history = PredictionHistory.objects.create(
+                lottery_name=lottery_name,
+                prize_type=prize_type,
+                predicted_numbers=result['predictions'],
+                prediction_date=timezone.now()
+            )
+            
+            # Prepare response
+            response_data = {
+                'status': 'success',
+                'lottery_name': lottery_name,
+                'prize_type': prize_type,
+                'predicted_numbers': result['predictions'],
+                'confidence_score': result['confidence'],
+                'prediction_method': result['method'],
+                'prediction_id': prediction_history.id,
+                'generated_at': timezone.now(),
+                'historical_data_used': result['historical_data_count'],
+                'note': 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Prediction generation failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PredictionHistoryAPIView(APIView):
+    """
+    API View for prediction history
+    """
+    
+    def get(self, request):
+        """
+        Get prediction history
+        """
+        try:
+            limit = int(request.GET.get('limit', 50))
+            lottery_name = request.GET.get('lottery_name')
+            prize_type = request.GET.get('prize_type')
+            
+            # Build query
+            queryset = PredictionHistory.objects.all().order_by('-prediction_date')
+            
+            if lottery_name:
+                queryset = queryset.filter(lottery_name__icontains=lottery_name)
+            if prize_type:
+                queryset = queryset.filter(prize_type=prize_type)
+            
+            # Limit results
+            history = queryset[:limit]
+            
+            # Prepare response
+            history_data = []
+            for item in history:
+                history_data.append({
+                    'id': item.id,
+                    'lottery_name': item.lottery_name,
+                    'prize_type': item.prize_type,
+                    'predicted_numbers': item.predicted_numbers,
+                    'actual_numbers': item.actual_numbers,
+                    'prediction_date': item.prediction_date,
+                    'draw_date': item.draw_date,
+                    'accuracy_score': item.accuracy_score
+                })
+            
+            return Response({
+                'status': 'success',
+                'count': len(history_data),
+                'history': history_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to fetch history: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -147,3 +147,47 @@ class News(models.Model):
 
     def __str__(self):
         return self.headline
+
+#<---------------PREDICTION SECTION ---------------->
+
+# lottery_prediction/models.py
+from django.db import models
+from django.utils import timezone
+import json
+
+class PredictionModel(models.Model):
+    """Store different prediction models and their configurations"""
+    ALGORITHM_CHOICES = [
+        ('frequency', 'Frequency Analysis'),
+        ('lstm', 'LSTM Neural Network'),
+        ('pattern', 'Pattern Recognition'),
+        ('ensemble', 'Ensemble Method'),
+    ]
+    
+    name = models.CharField(max_length=100)
+    algorithm = models.CharField(max_length=20, choices=ALGORITHM_CHOICES)
+    lottery_type = models.CharField(max_length=100, blank=True)  # Empty for all lotteries
+    prize_type = models.CharField(max_length=20, blank=True)  # Empty for all prize types
+    accuracy_score = models.FloatField(default=0.0)
+    parameters = models.JSONField(default=dict)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.name} - {self.get_algorithm_display()}"
+
+class PredictionHistory(models.Model):
+    """Store prediction history for performance tracking"""
+    lottery_name = models.CharField(max_length=200)
+    prize_type = models.CharField(max_length=20)
+    predicted_numbers = models.JSONField()
+    actual_numbers = models.JSONField(null=True, blank=True)
+    prediction_date = models.DateTimeField(auto_now_add=True)
+    draw_date = models.DateField(null=True, blank=True)
+    accuracy_score = models.FloatField(null=True, blank=True)
+    model_used = models.ForeignKey(PredictionModel, on_delete=models.SET_NULL, null=True)
+    
+    def __str__(self):
+        return f"{self.lottery_name} - {self.prize_type} - {self.prediction_date.date()}"
+

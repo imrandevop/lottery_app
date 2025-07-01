@@ -261,3 +261,35 @@ class NewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = News
         fields = ['id', 'headline', 'content', 'image_url', 'news_url', 'source', 'published_at']
+
+
+
+#<---------------PREDICTION SECTION ---------------->
+
+# lottery_prediction/serializers.py
+
+
+class LotteryPredictionRequestSerializer(serializers.Serializer):
+    lottery_name = serializers.CharField(max_length=200)
+    prize_type = serializers.ChoiceField(choices=[
+        ('1st', '1st Prize'),
+        ('2nd', '2nd Prize'),
+        ('3rd', '3rd Prize'),
+        ('4th', '4th Prize'),
+        ('5th', '5th Prize'),
+        ('6th', '6th Prize'),
+        ('7th', '7th Prize'),
+        ('8th', '8th Prize'),
+        ('9th', '9th Prize'),
+        ('10th', '10th Prize'),
+        ('consolation', 'Consolation Prize'),
+    ])
+
+class LotteryPredictionResponseSerializer(serializers.Serializer):
+    lottery_name = serializers.CharField()
+    prize_type = serializers.CharField()
+    predicted_numbers = serializers.ListField(child=serializers.CharField())
+    confidence_score = serializers.FloatField()
+    prediction_method = serializers.CharField()
+    prediction_id = serializers.IntegerField()
+    generated_at = serializers.DateTimeField()
