@@ -82,6 +82,8 @@ PRODUCTION_CORS_ORIGINS = [
     "https://sea-lion-app-begbw.ondigitalocean.app",
     "https://lottokeralalotteries.com",
     "https://www.lottokeralalotteries.com",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
 ]
 
 # Development CORS origins
