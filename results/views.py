@@ -15,8 +15,8 @@ from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer, NewsSerializer
 from .prediction_engine import LotteryPredictionEngine
 from .serializers import LotteryPredictionRequestSerializer, LotteryPredictionResponseSerializer
-
-
+from datetime import timedelta
+import pytz
 
 
 
@@ -300,269 +300,341 @@ def lottery_results_by_code(request, lottery_code):
 # ---------------BAR CODE SCAN SECTION -------------
 
 
+
+
+
+
 class TicketCheckView(APIView):
     """
-    API endpoint to check if a ticket won any prize with enhanced functionality
+    Enhanced API endpoint to check Kerala lottery tickets with standardized response format
     """
+    
+    # Kerala Lottery day mapping
+    LOTTERY_DAYS = {
+        'M': 'sunday',     # Samrudhi
+        'B': 'monday',     # Bhagyathara  
+        'S': 'tuesday',    # Sthree Sakthi
+        'D': 'wednesday',  # Dhanalekshmi
+        'P': 'thursday',   # Karunya Plus
+        'R': 'friday',     # Suvarna Keralam
+        'K': 'saturday',   # Karunya
+    }
 
-    def is_previous_result(self, requested_date, result_date):
-        return requested_date != result_date
+    def get_expected_lottery_day(self, lottery_code):
+        """Get expected day for lottery code"""
+        return self.LOTTERY_DAYS.get(lottery_code.upper())
+
+
+
+    def create_standard_response(self, status_code, status, result_status, message, data):
+        """Create standardized response format"""
+        return {
+            "statusCode": status_code,
+            "status": status,
+            "resultStatus": result_status,
+            "message": message,
+            "data": data
+        }
+
+    def create_prize_details(self, prize_entry=None):
+        """Create prize details structure"""
+        if not prize_entry:
+            return {
+                "prizeType": "",
+                "prizeAmount": 0,
+                "matchType": "no match",
+                "winningTicketNumber": ""
+            }
+        
+        return {
+            "prizeType": prize_entry.get('prize_type', ''),
+            "prizeAmount": prize_entry.get('prize_amount', 0),
+            "matchType": prize_entry.get('match_type', ''),
+            "winningTicketNumber": prize_entry.get('winning_ticket_number', '')
+        }
+
+    def create_previous_result(self, lottery_result=None, prize_data=None):
+        """Create previous result structure"""
+        if not lottery_result:
+            return {
+                "date": "",
+                "drawNumber": "",
+                "uniqueId": "",
+                "totalPrizeAmount": 0,
+                "prizeDetails": {}
+            }
+        
+        total_amount = 0
+        prize_details = {}
+        
+        if prize_data and prize_data.get('prize_details'):
+            # Get the first/main prize for the response
+            main_prize = prize_data['prize_details'][0]
+            prize_details = self.create_prize_details(main_prize)
+            total_amount = prize_data.get('total_amount', 0)
+        else:
+            prize_details = self.create_prize_details()
+        
+        return {
+            "date": str(lottery_result.date) if lottery_result.date else "",
+            "drawNumber": lottery_result.draw_number if lottery_result.draw_number else "",
+            "uniqueId": str(lottery_result.unique_id) if lottery_result.unique_id else "",
+            "totalPrizeAmount": total_amount,
+            "prizeDetails": prize_details
+        }
+
+    def create_data_structure(self, ticket_number, lottery_name, requested_date, 
+                            won_prize, result_published, is_previous_result, 
+                            lottery_result=None, prize_data=None):
+        """Create the data structure for response"""
+        return {
+            "ticketNumber": ticket_number,
+            "lotteryName": lottery_name,
+            "requestedDate": str(requested_date),
+            "wonPrize": won_prize,
+            "resultPublished": result_published,
+            "isPreviousResult": is_previous_result,
+            "previousResult": self.create_previous_result(lottery_result, prize_data)
+        }
+
+    def check_ticket_prizes(self, ticket_number, lottery_result):
+        """Check if ticket won any prizes in the given result"""
+        last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
+
+        # Get full ticket matches
+        winning_tickets = PrizeEntry.objects.filter(
+            ticket_number=ticket_number,
+            lottery_result=lottery_result
+        )
+
+        # Get last 4 digits matches (excluding full matches)
+        small_prize_tickets = PrizeEntry.objects.filter(
+            ticket_number=last_4_digits,
+            lottery_result=lottery_result
+        ).exclude(ticket_number=ticket_number)
+
+        all_wins = list(winning_tickets) + list(small_prize_tickets)
+        
+        if not all_wins:
+            return None
+        
+        # Process prize data
+        prize_details = []
+        total_amount = 0
+        
+        for prize in all_wins:
+            prize_amount = float(prize.prize_amount)
+            total_amount += prize_amount
+            is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
+            
+            prize_details.append({
+                'prize_type': prize.get_prize_type_display(),
+                'prize_amount': prize_amount,
+                'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
+                'winning_ticket_number': prize.ticket_number,
+                'place': prize.place if prize.place else None
+            })
+        
+        return {
+            'total_amount': total_amount,
+            'total_prizes': len(prize_details),
+            'prize_details': prize_details
+        }
 
     def post(self, request):
         serializer = TicketCheckSerializer(data=request.data)
 
         if not serializer.is_valid():
-            return Response(
-                {'error': 'Invalid data', 'details': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
+            error_data = self.create_data_structure(
+                "", "", "", False, False, False
             )
+            response = self.create_standard_response(
+                400, "fail", "Validation Error", 
+                "Invalid data provided", error_data
+            )
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
         ticket_number = serializer.validated_data['ticket_number']
         phone_number = serializer.validated_data['phone_number']
         check_date = serializer.validated_data['date']
 
         if len(ticket_number) < 1:
-            return Response(
-                {'error': 'Invalid ticket number format'},
-                status=status.HTTP_400_BAD_REQUEST
+            error_data = self.create_data_structure(
+                ticket_number, "", str(check_date), False, False, False
             )
+            response = self.create_standard_response(
+                400, "fail", "Invalid Ticket", 
+                "Invalid ticket number format", error_data
+            )
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
         lottery_code = ticket_number[0].upper()
+
+        # Validate lottery code exists
+        if not self.get_expected_lottery_day(lottery_code):
+            error_data = self.create_data_structure(
+                ticket_number, "", str(check_date), False, False, False
+            )
+            response = self.create_standard_response(
+                400, "fail", "Invalid Lottery Code", 
+                f"Invalid lottery code: {lottery_code}", error_data
+            )
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             lottery = Lottery.objects.get(code=lottery_code)
         except Lottery.DoesNotExist:
-            return Response(
-                {'error': f'Lottery with code "{lottery_code}" not found'},
-                status=status.HTTP_400_BAD_REQUEST
+            error_data = self.create_data_structure(
+                ticket_number, "", str(check_date), False, False, False
             )
+            response = self.create_standard_response(
+                400, "fail", "Lottery Not Found", 
+                f'Lottery with code "{lottery_code}" not found', error_data
+            )
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
-        current_datetime = localtime(now())
+        # Time and date logic (India timezone - IST)
+        india_tz = pytz.timezone('Asia/Kolkata')
+        current_datetime = now().astimezone(india_tz)
         current_date = current_datetime.date()
+        current_time = current_datetime.time()
         result_publish_time = time(15, 0)  # 3:00 PM IST
 
-        if check_date > current_date or (
-            check_date == current_date and current_datetime.time() < result_publish_time
-        ):
-            last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
-
-            previous_result = LotteryResult.objects.filter(
-                lottery=lottery,
-                date__lt=check_date,
-                is_published=True
-            ).select_related('lottery').order_by('-date').first()
-
-            response_data = {
-                'message': 'Result not published yet. Please check after 3:00 PM.',
-                'result_published': False,
-                'lottery_name': lottery.name,
-                'lottery_code': lottery.code,
-                'requested_date': check_date,
-                'publish_time': '3:00 PM',
-                'ticket_number': ticket_number,
-                'last_4_digits': last_4_digits,
-            }
-
-            if previous_result:
-                recent_winning_tickets = PrizeEntry.objects.filter(
-                    ticket_number=ticket_number,
-                    lottery_result=previous_result
-                )
-
-                recent_small_prizes = PrizeEntry.objects.filter(
-                    ticket_number=last_4_digits,
-                    lottery_result=previous_result
-                ).exclude(ticket_number=ticket_number)
-
-                all_recent_wins = list(recent_winning_tickets) + list(recent_small_prizes)
-
-                if all_recent_wins:
-                    recent_wins = []
-                    total_recent_prize = 0
-
-                    for prize in all_recent_wins:
-                        prize_amount = float(prize.prize_amount)
-                        total_recent_prize += prize_amount
-                        is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
-
-                        recent_wins.append({
-                            'prize_type': prize.get_prize_type_display(),
-                            'prize_amount': prize_amount,
-                            'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
-                            'winning_ticket_number': prize.ticket_number,
-                            'place': prize.place if prize.place else None
-                        })
-
-                    response_data['recent_win'] = {
-                        'message': f'Great news! You won ₹{total_recent_prize:,.0f} in the most recent draw!',
-                        'date': previous_result.date,
-                        'draw_number': previous_result.draw_number,
-                        'unique_id': str(previous_result.unique_id),
-                        'total_prize_amount': total_recent_prize,
-                        'total_prizes': len(recent_wins),
-                        'prize_details': recent_wins
-                    }
-
-                response_data['isPrevious_result'] = self.is_previous_result(check_date, previous_result.date)
+        # Check if the requested date matches the lottery's scheduled day
+        requested_day = check_date.strftime('%A').lower()
+        lottery_day = self.get_expected_lottery_day(lottery_code)
+        is_lottery_day_match = (requested_day == lottery_day)
+        
+        # Check if requested date is today's date in India
+        is_today = (check_date == current_date)
+        
+        if is_lottery_day_match and is_today:
+            # Scenario 1: Same day lottery check (requested date = real India date = lottery day)
+            if current_time < result_publish_time:
+                # Case 1A: Before 3 PM IST on same day
+                return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
             else:
-                response_data['isPrevious_result'] = False
+                # Case 1B: After 3 PM IST on same day
+                return self.handle_same_day_result_check(lottery, ticket_number, check_date)
+        else:
+            # All other cases - show most recent result of this lottery type
+            return self.handle_different_day_result(lottery, ticket_number, check_date)
 
-            return Response(response_data, status=status.HTTP_200_OK)
+    def handle_result_not_published_same_day(self, lottery, ticket_number, check_date):
+        """Handle case when result is not published yet (before 3 PM on correct lottery day)"""
+        # Get the correct day name for the lottery
+        lottery_day = self.get_expected_lottery_day(ticket_number[0].upper())
+        
+        data = self.create_data_structure(
+            ticket_number, lottery.name, check_date, 
+            False, False, False
+        )
+        
+        message = f"Result not published yet. Please check on {lottery_day.title()} after 3:00 PM"
+        
+        response = self.create_standard_response(
+            200, "success", "Result is not published", 
+            message, data
+        )
+        return Response(response, status=status.HTTP_200_OK)
 
+    def handle_same_day_result_check(self, lottery, ticket_number, check_date):
+        """Handle checking result on the correct lottery day (after 3 PM or past date)"""
         try:
             lottery_result = LotteryResult.objects.get(
                 lottery=lottery,
                 date=check_date,
                 is_published=True
             )
-
-            last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
-
-            winning_tickets = PrizeEntry.objects.filter(
-                ticket_number=ticket_number,
-                lottery_result=lottery_result
-            )
-
-            small_prize_tickets = PrizeEntry.objects.filter(
-                ticket_number=last_4_digits,
-                lottery_result=lottery_result
-            ).exclude(ticket_number=ticket_number)
-
-            all_winning_tickets = list(winning_tickets) + list(small_prize_tickets)
-
-            if all_winning_tickets:
-                results = []
-                total_prize_amount = 0
-
-                for prize in all_winning_tickets:
-                    prize_amount = float(prize.prize_amount)
-                    total_prize_amount += prize_amount
-                    is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
-
-                    result = {
-                        'prize_type': prize.get_prize_type_display(),
-                        'prize_amount': prize_amount,
-                        'lottery_name': prize.lottery_result.lottery.name,
-                        'lottery_code': prize.lottery_result.lottery.code,
-                        'draw_number': prize.lottery_result.draw_number,
-                        'date': prize.lottery_result.date,
-                        'unique_id': str(prize.lottery_result.unique_id),
-                        'winning_ticket_number': prize.ticket_number,
-                        'your_ticket_number': ticket_number,
-                        'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match'
-                    }
-
-                    if prize.place:
-                        result['place'] = prize.place
-
-                    results.append(result)
-
-                return Response({
-                    'message': f'Congratulations! You won ₹{total_prize_amount:,.0f}',
-                    'won_prize': True,
-                    'result_published': True,
-                    'isPrevious_result': False,
-                    'prize_details': results[0] if len(results) == 1 else results,
-                    'total_prizes': len(results) if len(results) > 1 else 1,
-                    'total_prize_amount': total_prize_amount
-                }, status=status.HTTP_200_OK)
-
-            return Response({
-                'message': 'Better luck next time! Your ticket did not win any prize.',
-                'won_prize': False,
-                'result_published': True,
-                'isPrevious_result': False,
-                'ticket_number': ticket_number,
-                'last_4_digits': last_4_digits,
-                'lottery_info': {
-                    'name': lottery_result.lottery.name,
-                    'code': lottery_result.lottery.code,
-                    'date': lottery_result.date,
-                    'draw_number': lottery_result.draw_number,
-                    'unique_id': str(lottery_result.unique_id)
-                }
-            }, status=status.HTTP_200_OK)
-
-        except LotteryResult.DoesNotExist:
-            latest_result = LotteryResult.objects.filter(
-                lottery=lottery,
-                date__lt=check_date,
-                is_published=True
-            ).select_related('lottery').order_by('-date').first()
-
-            if not latest_result:
-                return Response({
-                    'message': 'No published result found for this lottery',
-                    'ticket_number': ticket_number,
-                    'lottery_name': lottery.name,
-                    'lottery_code': lottery.code,
-                    'date': check_date,
-                    'result_published': False,
-                    'isPrevious_result': False
-                }, status=status.HTTP_200_OK)
-
-            last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
-
-            latest_winning_tickets = PrizeEntry.objects.filter(
-                ticket_number=ticket_number,
-                lottery_result=latest_result
-            )
-
-            latest_small_prizes = PrizeEntry.objects.filter(
-                ticket_number=last_4_digits,
-                lottery_result=latest_result
-            ).exclude(ticket_number=ticket_number)
-
-            all_latest_wins = list(latest_winning_tickets) + list(latest_small_prizes)
-            is_prev = self.is_previous_result(check_date, latest_result.date)
-
-            if all_latest_wins:
-                latest_wins = []
-                total_latest_prize = 0
-
-                for prize in all_latest_wins:
-                    prize_amount = float(prize.prize_amount)
-                    total_latest_prize += prize_amount
-                    is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
-
-                    latest_wins.append({
-                        'prize_type': prize.get_prize_type_display(),
-                        'prize_amount': prize_amount,
-                        'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
-                        'winning_ticket_number': prize.ticket_number
-                    })
-
-                return Response({
-                    'message': f'Congratulations! You won ₹{total_latest_prize:,.0f} in the latest {lottery.name} draw!',
-                    'won_prize': True,
-                    'result_published': False,
-                    'isPrevious_result': is_prev,
-                    'ticket_number': ticket_number,
-                    'requested_date': check_date,
-                    'lottery_name': lottery.name,
-                    'latest_result': {
-                        'date': latest_result.date,
-                        'draw_number': latest_result.draw_number,
-                        'unique_id': str(latest_result.unique_id),
-                        'total_prize_amount': total_latest_prize,
-                        'prize_details': latest_wins[0] if len(latest_wins) == 1 else latest_wins
-                    }
-                }, status=status.HTTP_200_OK)
+            
+            # Result exists for this specific date
+            prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
+            
+            if prize_data:
+                # Won prize on this date
+                data = self.create_data_structure(
+                    ticket_number, lottery.name, check_date, 
+                    True, True, False, lottery_result, prize_data
+                )
+                message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in {lottery.name} draw."
+                response = self.create_standard_response(
+                    200, "success", "won price today", message, data
+                )
             else:
-                return Response({
-                    'message': f'No result published for {check_date}. Your ticket did not win in the latest available result.',
-                    'won_prize': False,
-                    'result_published': False,
-                    'isPrevious_result': is_prev,
-                    'ticket_number': ticket_number,
-                    'requested_date': check_date,
-                    'lottery_name': lottery.name,
-                    'latest_result': {
-                        'date': latest_result.date,
-                        'draw_number': latest_result.draw_number,
-                        'unique_id': str(latest_result.unique_id)
-                    }
-                }, status=status.HTTP_200_OK)
+                # No prize on this date
+                data = self.create_data_structure(
+                    ticket_number, lottery.name, check_date, 
+                    False, True, False, lottery_result, None
+                )
+                response = self.create_standard_response(
+                    200, "success", "No Price Today", 
+                    "Better luck next time", data
+                )
+            
+            return Response(response, status=status.HTTP_200_OK)
+            
+        except LotteryResult.DoesNotExist:
+            # No result published for this specific date
+            lottery_day = self.get_expected_lottery_day(ticket_number[0].upper())
+            
+            data = self.create_data_structure(
+                ticket_number, lottery.name, check_date, 
+                False, False, False
+            )
+            
+            message = f"Result not published yet. Please check on {lottery_day.title()} after 3:00 PM"
+            
+            response = self.create_standard_response(
+                200, "success", "Result is not published", 
+                message, data
+            )
+            return Response(response, status=status.HTTP_200_OK)
+
+    def handle_different_day_result(self, lottery, ticket_number, check_date):
+        """Handle checking lottery on wrong day - always show most recent result with isPreviousResult: true"""
+        # Find the most recent published result for this lottery
+        previous_result = LotteryResult.objects.filter(
+            lottery=lottery,
+            is_published=True
+        ).order_by('-date').first()
+
+        if not previous_result:
+            # No previous data available at all
+            data = self.create_data_structure(
+                ticket_number, lottery.name, check_date, 
+                False, False, True
+            )
+            response = self.create_standard_response(
+                400, "fail", "No Previous data", 
+                "No result data found on database", data
+            )
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if ticket won in the most recent result
+        prize_data = self.check_ticket_prizes(ticket_number, previous_result)
+        
+        if prize_data:
+            # Won in most recent result
+            data = self.create_data_structure(
+                ticket_number, lottery.name, check_date, 
+                True, False, True, previous_result, prize_data
+            )
+            message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in the latest {lottery.name} draw."
+            response = self.create_standard_response(
+                200, "success", "Previous Result", message, data
+            )
+        else:
+            # No prize in most recent result
+            data = self.create_data_structure(
+                ticket_number, lottery.name, check_date, 
+                False, False, True, previous_result, None
+            )
+            response = self.create_standard_response(
+                200, "success", "Previous Result no price", 
+                "Better luck next time", data
+            )
+        
+        return Response(response, status=status.HTTP_200_OK)
             
 
 # <--------------NEWS SECTION---------------->
