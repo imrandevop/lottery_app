@@ -300,10 +300,6 @@ def lottery_results_by_code(request, lottery_code):
 # ---------------BAR CODE SCAN SECTION -------------
 
 
-
-
-
-
 class TicketCheckView(APIView):
     """
     Enhanced API endpoint to check Kerala lottery tickets with standardized response format
@@ -508,17 +504,31 @@ class TicketCheckView(APIView):
         # Check if requested date is today's date in India
         is_today = (check_date == current_date)
         
-        if is_lottery_day_match and is_today:
-            # Scenario 1: Same day lottery check (requested date = real India date = lottery day)
-            if current_time < result_publish_time:
-                # Case 1A: Before 3 PM IST on same day
-                return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
+        # PRIORITY 1: Check if result exists for the exact requested date first
+        try:
+            lottery_result = LotteryResult.objects.get(
+                lottery=lottery,
+                date=check_date,
+                is_published=True
+            )
+            
+            # Result exists for requested date - show that result
+            return self.handle_exact_date_result(lottery, ticket_number, check_date, lottery_result, is_today)
+            
+        except LotteryResult.DoesNotExist:
+            # No result for requested date
+            
+            if is_lottery_day_match and is_today:
+                # Special case: Today's lottery with no result yet
+                if current_time < result_publish_time:
+                    # Before 3 PM IST - result not published yet
+                    return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
+                else:
+                    # After 3 PM IST but no result - still not published
+                    return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
             else:
-                # Case 1B: After 3 PM IST on same day
-                return self.handle_same_day_result_check(lottery, ticket_number, check_date)
-        else:
-            # All other cases - show most recent result of this lottery type
-            return self.handle_different_day_result(lottery, ticket_number, check_date)
+                # Show most recent result of this lottery type
+                return self.handle_different_day_result(lottery, ticket_number, check_date)
 
     def handle_result_not_published_same_day(self, lottery, ticket_number, check_date):
         """Handle case when result is not published yet (before 3 PM on correct lottery day)"""
@@ -538,57 +548,45 @@ class TicketCheckView(APIView):
         )
         return Response(response, status=status.HTTP_200_OK)
 
-    def handle_same_day_result_check(self, lottery, ticket_number, check_date):
-        """Handle checking result on the correct lottery day (after 3 PM or past date)"""
-        try:
-            lottery_result = LotteryResult.objects.get(
-                lottery=lottery,
-                date=check_date,
-                is_published=True
-            )
-            
-            # Result exists for this specific date
-            prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
-            
-            if prize_data:
-                # Won prize on this date
-                data = self.create_data_structure(
-                    ticket_number, lottery.name, check_date, 
-                    True, True, False, lottery_result, prize_data
-                )
+    def handle_exact_date_result(self, lottery, ticket_number, check_date, lottery_result, is_today):
+        """Handle case when result exists for the exact requested date"""
+        # Check if ticket won
+        prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
+        
+        if prize_data:
+            # Won prize on requested date
+            if is_today:
+                result_status = "won price today"
                 message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in {lottery.name} draw."
-                response = self.create_standard_response(
-                    200, "success", "won price today", message, data
-                )
             else:
-                # No prize on this date
-                data = self.create_data_structure(
-                    ticket_number, lottery.name, check_date, 
-                    False, True, False, lottery_result, None
-                )
-                response = self.create_standard_response(
-                    200, "success", "No Price Today", 
-                    "Better luck next time", data
-                )
-            
-            return Response(response, status=status.HTTP_200_OK)
-            
-        except LotteryResult.DoesNotExist:
-            # No result published for this specific date
-            lottery_day = self.get_expected_lottery_day(ticket_number[0].upper())
+                result_status = "Previous Result"
+                message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in the {lottery.name} draw."
             
             data = self.create_data_structure(
                 ticket_number, lottery.name, check_date, 
-                False, False, False
+                True, True, False, lottery_result, prize_data
             )
-            
-            message = f"Result not published yet. Please check on {lottery_day.title()} after 3:00 PM"
-            
             response = self.create_standard_response(
-                200, "success", "Result is not published", 
-                message, data
+                200, "success", result_status, message, data
             )
-            return Response(response, status=status.HTTP_200_OK)
+        else:
+            # No prize on requested date
+            if is_today:
+                result_status = "No Price Today"
+                message = "Better luck next time"
+            else:
+                result_status = "Previous Result no price"
+                message = "Better luck next time"
+            
+            data = self.create_data_structure(
+                ticket_number, lottery.name, check_date, 
+                False, True, False, lottery_result, None
+            )
+            response = self.create_standard_response(
+                200, "success", result_status, message, data
+            )
+        
+        return Response(response, status=status.HTTP_200_OK)
 
     def handle_different_day_result(self, lottery, ticket_number, check_date):
         """Handle checking lottery on wrong day - always show most recent result with isPreviousResult: true"""
