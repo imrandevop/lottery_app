@@ -265,8 +265,7 @@ class LiveVideo(models.Model):
         """Validate YouTube URL and extract video ID"""
         if self.youtube_url:
             video_id = self.extract_youtube_id(self.youtube_url)
-            if not video_id:
-                self.youtube_video_id = video_id
+            self.youtube_video_id = video_id or ""  # Set to empty string if None
     
     def save(self, *args, **kwargs):
         self.full_clean()
