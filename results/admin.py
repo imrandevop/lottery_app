@@ -170,11 +170,24 @@ class PrizeEntryAdmin(admin.ModelAdmin):
 @admin.register(ImageUpdate)
 class ImageUpdateAdmin(admin.ModelAdmin):
     list_display = ['__str__', 'updated_at']
-    fields = ('update_image1', 'update_image2', 'update_image3')
     
-    # Remove the has_add_permission override to allow adding multiple instances
-    # def has_add_permission(self, request):
-    #     return not ImageUpdate.objects.exists()
+    # Update the fields to include the new redirect link fields
+    fieldsets = (
+        ('Image URLs', {
+            'fields': ('update_image1', 'update_image2', 'update_image3'),
+            'description': 'Add URLs for the three update images'
+        }),
+        ('Redirect Links', {
+            'fields': ('redirect_link1', 'redirect_link2', 'redirect_link3'),
+            'description': 'Add redirect URLs for when users tap on each image (optional)'
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    readonly_fields = ('created_at', 'updated_at')
     
     def has_delete_permission(self, request, obj=None):
         # Allow deletion so users can manage multiple instances

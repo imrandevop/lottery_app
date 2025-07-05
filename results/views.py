@@ -54,11 +54,19 @@ class LotteryResultListView(generics.ListAPIView):
             'count': queryset.count(),
             'total_points': 1250,
             'updates': {
-                "image1": image_settings.update_image1,
-                "image2": image_settings.update_image2,
-                "image3": image_settings.update_image3
+                "image1": {
+                    "image_url": image_settings.update_image1,
+                    "redirect_link": image_settings.redirect_link1
+                },
+                "image2": {
+                    "image_url": image_settings.update_image2,
+                    "redirect_link": image_settings.redirect_link2
+                },
+                "image3": {
+                    "image_url": image_settings.update_image3,
+                    "redirect_link": image_settings.redirect_link3
+                }
             },
-             # Keep this hardcoded or add your custom logic
             'results': serializer.data
         })
     
@@ -89,20 +97,20 @@ class LotteryResultListView(generics.ListAPIView):
         # Placeholder - replace with your actual logic
         return 1250
 
-class LotteryResultDetailView(generics.RetrieveAPIView):
-    """
-    API endpoint to get detailed lottery result by ID
-    """
-    queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
-    serializer_class = LotteryResultDetailSerializer
+# class LotteryResultDetailView(generics.RetrieveAPIView):
+#     """
+#     API endpoint to get detailed lottery result by ID
+#     """
+#     queryset = LotteryResult.objects.filter(is_published=True).select_related('lottery').prefetch_related('prizes')
+#     serializer_class = LotteryResultDetailSerializer
     
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response({
-            'status': 'success',
-            'result': serializer.data
-        })
+#     def retrieve(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance)
+#         return Response({
+#             'status': 'success',
+#             'result': serializer.data
+#         })
 
 class LotteryResultByUniqueIdView(APIView):
     """

@@ -78,19 +78,42 @@ class ImageUpdate(models.Model):
     """
     # Update Images
     update_image1 = models.URLField(
-        max_length=500, 
+        max_length=1000, 
         verbose_name="Update Image 1 URL",
         help_text="URL for the first update image"
     )
     update_image2 = models.URLField(
-        max_length=500, 
+        max_length=1000, 
         verbose_name="Update Image 2 URL",
         help_text="URL for the second update image"
     )
     update_image3 = models.URLField(
-        max_length=500, 
+        max_length=1000, 
         verbose_name="Update Image 3 URL",
         help_text="URL for the third update image"
+    )
+    
+    # Redirect Links for each image
+    redirect_link1 = models.URLField(
+        max_length=1000,
+        blank=True,
+        null=True,
+        verbose_name="Redirect Link 1",
+        help_text="URL to redirect when user taps on image 1"
+    )
+    redirect_link2 = models.URLField(
+        max_length=1000,
+        blank=True,
+        null=True,
+        verbose_name="Redirect Link 2",
+        help_text="URL to redirect when user taps on image 2"
+    )
+    redirect_link3 = models.URLField(
+        max_length=1000,
+        blank=True,
+        null=True,
+        verbose_name="Redirect Link 3",
+        help_text="URL to redirect when user taps on image 3"
     )
     
     # Meta fields
@@ -105,11 +128,6 @@ class ImageUpdate(models.Model):
         verbose_name_plural = "Image Updates"
         ordering = ['-updated_at']  # Show newest first
     
-    # Remove the singleton save() method override
-    # def save(self, *args, **kwargs):
-    #     if not self.pk and ImageUpdate.objects.exists():
-    #         raise ValueError("Only one ImageUpdate instance is allowed.")
-    #     super().save(*args, **kwargs)
     
     @classmethod
     def get_images(cls):
@@ -123,6 +141,9 @@ class ImageUpdate(models.Model):
                 update_image1='https://example.com/default-image1.jpg',
                 update_image2='https://example.com/default-image2.jpg',
                 update_image3='https://example.com/default-image3.jpg',
+                redirect_link1='https://example.com/redirect1',
+                redirect_link2='https://example.com/redirect2',
+                redirect_link3='https://example.com/redirect3',
             )
         
         return latest_instance

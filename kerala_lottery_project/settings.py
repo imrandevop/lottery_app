@@ -316,51 +316,15 @@ FEATURE_FLAGS = {
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose' if DEBUG else 'simple',
         },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'django.log',
-            'formatter': 'verbose',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file'] if not DEBUG else ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'django.db.backends': {
             'handlers': ['console'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'django.request': {
-            'handlers': ['console', 'file'] if not DEBUG else ['console'],
-            'level': 'ERROR',
-            'propagate': False,
-        },
-        'kerala_lottery_project': {
-            'handlers': ['console', 'file'] if not DEBUG else ['console'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
+            'level': 'INFO',
         },
     },
 }
