@@ -1,6 +1,9 @@
 from django.db import models
 import uuid
 from django.utils import timezone
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+import re
 
 
 class Lottery(models.Model):
@@ -209,3 +212,96 @@ class PredictionHistory(models.Model):
     def __str__(self):
         return f"{self.lottery_name} - {self.prize_type} - {self.prediction_date.date()}"
 
+
+
+#<---------------LIVE SECTION---------------->
+class LiveVideo(models.Model):
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('live', 'Live'),
+        ('ended', 'Ended'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    lottery_name = models.CharField(max_length=200, help_text="Name of the lottery/event")
+    youtube_url = models.URLField(
+        max_length=500,
+        help_text="YouTube video or live stream URL"
+    )
+    date = models.DateTimeField(help_text="Date and time of the live stream")
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Description of the live stream"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='scheduled',
+        help_text="Current status of the live stream"
+    )
+    
+    # Additional useful fields
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    
+    # Extracted YouTube video ID for easier embedding
+    youtube_video_id = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Auto-extracted YouTube video ID"
+    )
+    
+    class Meta:
+        ordering = ['-date']
+        verbose_name = "Live Video"
+        verbose_name_plural = "Live Videos"
+    
+    def __str__(self):
+        return f"{self.lottery_name} - {self.date.strftime('%Y-%m-%d %H:%M')}"
+    
+    def clean(self):
+        """Validate YouTube URL and extract video ID"""
+        if self.youtube_url:
+            video_id = self.extract_youtube_id(self.youtube_url)
+            if not video_id:
+                raise ValidationError({
+                    'youtube_url': 'Please enter a valid YouTube URL'
+                })
+            self.youtube_video_id = video_id
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+    
+    @staticmethod
+    def extract_youtube_id(url):
+        """Extract YouTube video ID from various YouTube URL formats"""
+        patterns = [
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)',
+            r'youtube\.com\/live\/([^&\n?#]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+    
+    @property
+    def embed_url(self):
+        """Generate YouTube embed URL"""
+        if self.youtube_video_id:
+            return f"https://www.youtube.com/embed/{self.youtube_video_id}"
+        return None
+    
+    @property
+    def is_live_now(self):
+        """Check if the stream is currently live"""
+        from django.utils import timezone
+        return (
+            self.status == 'live' and 
+            self.date <= timezone.now() and 
+            self.is_active
+        )

@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -8,6 +8,8 @@ from django.urls import path, reverse
 from django.http import HttpResponseRedirect
 from django.core.exceptions import ValidationError
 import re
+from django.utils.html import format_html
+
 
 
 # Custom widget that prevents spaces
@@ -219,6 +221,155 @@ class NewsAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+
+#<---------------LIVE SECTION---------------->
+@admin.register(LiveVideo)
+class LiveVideoAdmin(admin.ModelAdmin):
+    list_display = [
+        'lottery_name',
+        'date',
+        'status_badge',
+        'youtube_link',
+        'is_active',
+        'created_at'
+    ]
+    list_filter = [
+        'status',
+        'is_active',
+        'date',
+        'created_at'
+    ]
+    search_fields = [
+        'lottery_name',
+        'description',
+        'youtube_url'
+    ]
+    readonly_fields = [
+        'youtube_video_id',
+        'embed_url_display',
+        'created_at',
+        'updated_at'
+    ]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': (
+                'lottery_name',
+                'description',
+                'date',
+                'status',
+                'is_active'
+            )
+        }),
+        ('YouTube Information', {
+            'fields': (
+                'youtube_url',
+                'youtube_video_id',
+                'embed_url_display'
+            )
+        }),
+        ('Timestamps', {
+            'fields': (
+                'created_at',
+                'updated_at'
+            ),
+            'classes': ('collapse',)
+        })
+    )
+    
+    # Enable date hierarchy for better navigation
+    date_hierarchy = 'date'
+    
+    # Default ordering
+    ordering = ['-date']
+    
+    # Actions
+    actions = ['mark_as_live', 'mark_as_ended', 'mark_as_cancelled']
+    
+    def status_badge(self, obj):
+        """Display status as a colored badge"""
+        colors = {
+            'scheduled': '#ffc107',  # yellow
+            'live': '#28a745',       # green
+            'ended': '#6c757d',      # gray
+            'cancelled': '#dc3545'   # red
+        }
+        color = colors.get(obj.status, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 3px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    
+    def youtube_link(self, obj):
+        """Display clickable YouTube link"""
+        if obj.youtube_url:
+            return format_html(
+                '<a href="{}" target="_blank" style="color: #dc3545;">🎥 View on YouTube</a>',
+                obj.youtube_url
+            )
+        return '-'
+    youtube_link.short_description = 'YouTube'
+    
+    def embed_url_display(self, obj):
+        """Display embed URL for readonly field"""
+        if obj.embed_url:
+            return format_html(
+                '<a href="{}" target="_blank">{}</a>',
+                obj.embed_url,
+                obj.embed_url
+            )
+        return '-'
+    embed_url_display.short_description = 'Embed URL'
+    
+    # Custom actions
+    def mark_as_live(self, request, queryset):
+        """Mark selected videos as live"""
+        count = queryset.update(status='live')
+        self.message_user(
+            request,
+            f'{count} video(s) marked as live.'
+        )
+    mark_as_live.short_description = 'Mark selected videos as live'
+    
+    def mark_as_ended(self, request, queryset):
+        """Mark selected videos as ended"""
+        count = queryset.update(status='ended')
+        self.message_user(
+            request,
+            f'{count} video(s) marked as ended.'
+        )
+    mark_as_ended.short_description = 'Mark selected videos as ended'
+    
+    def mark_as_cancelled(self, request, queryset):
+        """Mark selected videos as cancelled"""
+        count = queryset.update(status='cancelled')
+        self.message_user(
+            request,
+            f'{count} video(s) marked as cancelled.'
+        )
+    mark_as_cancelled.short_description = 'Mark selected videos as cancelled'
+    
+    # Custom methods to enhance admin experience
+    def get_queryset(self, request):
+        """Optimize queryset for admin list view"""
+        return super().get_queryset(request).select_related()
+    
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        """Customize choice field display"""
+        if db_field.name == 'status':
+            kwargs['widget'] = Select(
+                attrs={'style': 'width: 200px;'}
+            )
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
+
+
+
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)

@@ -1,6 +1,6 @@
 # serializers.py
 from rest_framework import serializers
-from .models import Lottery, LotteryResult, PrizeEntry
+from .models import Lottery, LotteryResult, PrizeEntry, News, LiveVideo
 from collections import defaultdict
 
 class PrizeEntrySerializer(serializers.ModelSerializer):
@@ -254,8 +254,6 @@ class TicketCheckSerializer(serializers.Serializer):
 
         
 # <--------NEWS SECTION --------->
-from rest_framework import serializers
-from .models import News
 
 class NewsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -302,3 +300,32 @@ class LotteryPredictionResponseSerializer(serializers.Serializer):
     prize_type = serializers.CharField()
     predicted_numbers = serializers.ListField(child=serializers.CharField())
     note = serializers.CharField()
+
+#<---------------LIVE SECTION ---------------->
+
+# serializers.py
+
+
+
+class LiveVideoSerializer(serializers.ModelSerializer):
+    """Serializer for LiveVideo model"""
+    
+    embed_url = serializers.ReadOnlyField()
+    is_live_now = serializers.ReadOnlyField()
+    youtube_video_id = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = LiveVideo
+        fields = [
+            'id',
+            'lottery_name',
+            'youtube_url',
+            'youtube_video_id',
+            'embed_url',
+            'date',
+            'description',
+            'status',
+            'is_live_now',
+            'created_at',
+            'updated_at'
+        ]

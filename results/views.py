@@ -9,15 +9,16 @@ from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
-from .models import PrizeEntry
+from .models import PrizeEntry, LiveVideo
+from django.db.models import Q
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer, NewsSerializer
 from .prediction_engine import LotteryPredictionEngine
-from .serializers import LotteryPredictionRequestSerializer, LotteryPredictionResponseSerializer
+from .serializers import LotteryPredictionRequestSerializer, LiveVideoSerializer
 from datetime import timedelta
 import pytz
-
+from rest_framework.permissions import AllowAny
 
 
 class LotteryResultListView(generics.ListAPIView):
@@ -761,3 +762,46 @@ class LotteryPredictionAPIView(APIView):
                 'message': f'Prediction generation failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+
+# <--------------LIVE SECTION ---------------->
+
+class LiveVideoListView(generics.ListAPIView):
+    """
+    Single API endpoint to get all live videos with filtering
+    """
+    queryset = LiveVideo.objects.all()
+    serializer_class = LiveVideoSerializer
+    permission_classes = [AllowAny]  # No authentication required
+    pagination_class = None  # Disable pagination
+    
+    def get_queryset(self):
+        """Filter queryset based on query parameters"""
+        queryset = LiveVideo.objects.filter(is_active=True)
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Search functionality
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(lottery_name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return queryset.order_by('-date')
+    
+    def list(self, request, *args, **kwargs):
+        """Custom list method to add success message"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'message': 'success',
+            'count': len(serializer.data),
+            'data': serializer.data,            
+        })
