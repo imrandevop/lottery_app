@@ -266,10 +266,7 @@ class LiveVideo(models.Model):
         if self.youtube_url:
             video_id = self.extract_youtube_id(self.youtube_url)
             if not video_id:
-                raise ValidationError({
-                    'youtube_url': 'Please enter a valid YouTube URL'
-                })
-            self.youtube_video_id = video_id
+                self.youtube_video_id = video_id
     
     def save(self, *args, **kwargs):
         self.full_clean()
