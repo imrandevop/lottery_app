@@ -358,84 +358,30 @@ class TicketCheckView(APIView):
             "winningTicketNumber": prize_entry.get('winning_ticket_number', '')
         }
 
-    def create_previous_result(self, lottery_result=None, prize_data=None):
-        """Create previous result structure"""
-        if not lottery_result:
-            return {
-                "date": "",
-                "drawNumber": "",
-                "uniqueId": "",
-                "totalPrizeAmount": 0,
-                "prizeDetails": {}
-            }
-        
-        total_amount = 0
-        prize_details = {}
-        
-        if prize_data and prize_data.get('prize_details'):
-            # Get the first/main prize for the response
-            main_prize = prize_data['prize_details'][0]
-            prize_details = self.create_prize_details(main_prize)
-            total_amount = prize_data.get('total_amount', 0)
-        else:
-            prize_details = self.create_prize_details()
-        
-        return {
-            "date": str(lottery_result.date) if lottery_result.date else "",
-            "drawNumber": lottery_result.draw_number if lottery_result.draw_number else "",
-            "uniqueId": str(lottery_result.unique_id) if lottery_result.unique_id else "",
-            "totalPrizeAmount": total_amount,
-            "prizeDetails": prize_details
-        }
-
-    def create_data_structure(self, ticket_number, lottery_name, requested_date, 
-                            won_prize, result_published, is_previous_result, 
-                            lottery_result=None, prize_data=None):
-        """Create the data structure for response"""
-        return {
-            "ticketNumber": ticket_number,
-            "lotteryName": lottery_name,
-            "requestedDate": str(requested_date),
-            "wonPrize": won_prize,
-            "resultPublished": result_published,
-            "isPreviousResult": is_previous_result,
-            "previousResult": self.create_previous_result(lottery_result, prize_data)
-        }
-
     def check_ticket_prizes(self, ticket_number, lottery_result):
-        """Check if ticket won any prizes in the given result"""
-        last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
-
-        # Get full ticket matches
+        """Check if ticket won any prizes in the given result - Full matches only"""
+        
+        # Get only full ticket matches (removed last 4 digits logic)
         winning_tickets = PrizeEntry.objects.filter(
             ticket_number=ticket_number,
             lottery_result=lottery_result
         )
-
-        # Get last 4 digits matches (excluding full matches)
-        small_prize_tickets = PrizeEntry.objects.filter(
-            ticket_number=last_4_digits,
-            lottery_result=lottery_result
-        ).exclude(ticket_number=ticket_number)
-
-        all_wins = list(winning_tickets) + list(small_prize_tickets)
         
-        if not all_wins:
+        if not winning_tickets:
             return None
         
         # Process prize data
         prize_details = []
         total_amount = 0
         
-        for prize in all_wins:
+        for prize in winning_tickets:
             prize_amount = float(prize.prize_amount)
             total_amount += prize_amount
-            is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
             
             prize_details.append({
                 'prize_type': prize.get_prize_type_display(),
                 'prize_amount': prize_amount,
-                'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
+                'match_type': 'Full ticket match',
                 'winning_ticket_number': prize.ticket_number,
                 'place': prize.place if prize.place else None
             })

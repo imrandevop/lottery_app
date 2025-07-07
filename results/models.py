@@ -10,7 +10,7 @@ class Lottery(models.Model):
     name = models.CharField(max_length=200)
     code = models.CharField(max_length=50)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    first_price = models.DecimalField(max_digits=10, decimal_places=2)
+    first_price = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.TextField()
     
     def __str__(self):
