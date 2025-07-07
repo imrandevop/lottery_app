@@ -299,6 +299,7 @@ class LotteryPredictionResponseSerializer(serializers.Serializer):
     lottery_name = serializers.CharField()
     prize_type = serializers.CharField()
     predicted_numbers = serializers.ListField(child=serializers.CharField())
+    repeated_numbers = serializers.ListField(child=serializers.CharField(), required=False)
     note = serializers.CharField()
 
 #<---------------LIVE SECTION ---------------->

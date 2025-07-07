@@ -704,12 +704,12 @@ def latest_news(request):
 
 class LotteryPredictionAPIView(APIView):
     """
-    API View for lottery number prediction with lottery validation
+    API View for lottery number prediction with lottery validation and repeated numbers
     """
     
     def post(self, request):
         """
-        Generate lottery predictions
+        Generate lottery predictions with repeated numbers
         """
         # Validate input
         serializer = LotteryPredictionRequestSerializer(data=request.data)
@@ -724,28 +724,29 @@ class LotteryPredictionAPIView(APIView):
         prize_type = serializer.validated_data['prize_type']
         
         try:
-            # Initialize prediction engine
+            # Initialize prediction engine and generate predictions
             engine = LotteryPredictionEngine()
-            
-            # Generate prediction (this will validate lottery exists)
             result = engine.predict(lottery_name, prize_type, method='ensemble')
             
             # Store prediction history
-            prediction_history = PredictionHistory.objects.create(
+            PredictionHistory.objects.create(
                 lottery_name=lottery_name,
                 prize_type=prize_type,
                 predicted_numbers=result['predictions'],
                 prediction_date=timezone.now()
             )
             
-            # Prepare response - simplified format
+            # Build response data
             response_data = {
                 'status': 'success',
                 'lottery_name': lottery_name,
                 'prize_type': prize_type,
                 'predicted_numbers': result['predictions'],
-                'note': 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
+                'repeated_numbers': result.get('repeated_numbers', []),  # Always include repeated_numbers
             }
+            
+            # Add note at the end
+            response_data['note'] = 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -757,6 +758,7 @@ class LotteryPredictionAPIView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
+            # Handle any other unexpected errors
             return Response({
                 'status': 'error',
                 'message': f'Prediction generation failed: {str(e)}'
