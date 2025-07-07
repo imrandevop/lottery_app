@@ -302,10 +302,10 @@ if ENVIRONMENT == 'production':
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
-elif ENVIRONMENT == 'staging':
-    # Staging-specific settings
-    DEBUG = False
-    ALLOWED_HOSTS = ['staging.lottery.com', 'localhost']
+# elif ENVIRONMENT == 'staging':
+#     # Staging-specific settings
+#     DEBUG = False
+#     ALLOWED_HOSTS = ['staging.lottery.com', 'localhost']
 
 # Feature flags
 FEATURE_FLAGS = {
