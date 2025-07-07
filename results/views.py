@@ -700,8 +700,6 @@ def latest_news(request):
 #<---------------PREDICTION SECTION ---------------->
 
 
-
-
 class LotteryPredictionAPIView(APIView):
     """
     API View for lottery number prediction with lottery validation and repeated numbers
@@ -742,8 +740,11 @@ class LotteryPredictionAPIView(APIView):
                 'lottery_name': lottery_name,
                 'prize_type': prize_type,
                 'predicted_numbers': result['predictions'],
-                'repeated_numbers': result.get('repeated_numbers', []),  # Always include repeated_numbers
             }
+            
+            # Add repeated numbers for all prize types EXCEPT consolation
+            if prize_type != 'consolation':
+                response_data['repeated_numbers'] = result.get('repeated_numbers', [])
             
             # Add note at the end
             response_data['note'] = 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'

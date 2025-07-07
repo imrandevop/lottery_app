@@ -125,7 +125,7 @@ class LotteryPredictionEngine:
             
         ticket_number = str(ticket_number).strip().upper()
         
-        if prize_type in ['1st', '2nd', '3rd', 'consolation']:
+        if prize_type in ['1st', '2nd', '3rd']:
             alpha_part = re.findall(r'[A-Z]+', ticket_number)
             digit_part = re.findall(r'\d+', ticket_number)
             
@@ -160,7 +160,7 @@ class LotteryPredictionEngine:
         
         predictions = []
         
-        if prize_type in ['1st', '2nd', '3rd', 'consolation']:
+        if prize_type in ['1st', '2nd', '3rd']:
             alpha_freq = Counter([c['alpha_prefix'] for c in components_list if c['alpha_prefix']])
             digit_freq = Counter([c['digits'] for c in components_list if c['digits']])
             
@@ -239,7 +239,7 @@ class LotteryPredictionEngine:
         
         predictions = []
         
-        if prize_type in ['1st', '2nd', '3rd', 'consolation']:
+        if prize_type in ['1st', '2nd', '3rd']:
             recent_alphas = [c['alpha_prefix'] for c in components_list[:10] if c['alpha_prefix']]
             recent_digits = [c['digits'] for c in components_list[:10] if c['digits']]
             
@@ -333,7 +333,7 @@ class LotteryPredictionEngine:
         freq_predictions = self.frequency_analysis_prediction(historical_data, prize_type, count, lottery_code)
         pattern_predictions = self.pattern_recognition_prediction(historical_data, prize_type, count, lottery_code)
         
-        if prize_type in ['1st', '2nd', '3rd', 'consolation']:
+        if prize_type in ['1st', '2nd', '3rd']:
             if random.random() < 0.6:
                 prediction = freq_predictions[0] if freq_predictions else self.generate_random_numbers(prize_type, 1, lottery_code)[0]
             else:
@@ -365,7 +365,7 @@ class LotteryPredictionEngine:
         """Generate random numbers as fallback"""
         predictions = []
         
-        if prize_type in ['1st', '2nd', '3rd', 'consolation']:
+        if prize_type in ['1st', '2nd', '3rd']:
             if lottery_code:
                 second_alphabet = random.choice(self.alphabet_patterns)
                 digits = ''.join(random.choices(self.digit_patterns, k=6))
@@ -407,7 +407,7 @@ class LotteryPredictionEngine:
         method_factor = method_factors.get(prediction_method, 0.1)
         
         prize_factors = {
-            '1st': 0.1, '2nd': 0.1, '3rd': 0.1, 'consolation': 0.1,
+            '1st': 0.1, '2nd': 0.1, '3rd': 0.1,
             '4th': 0.15, '5th': 0.15, '6th': 0.2, '7th': 0.2, '8th': 0.2, '9th': 0.2
         }
         prize_factor = prize_factors.get(prize_type, 0.1)
@@ -417,6 +417,10 @@ class LotteryPredictionEngine:
     
     def predict(self, lottery_name, prize_type, method='ensemble'):
         """Main prediction method with lottery validation"""
+        # Check if consolation prize type is requested
+        if prize_type == 'consolation':
+            raise ValueError("Consolation prize predictions are not supported")
+        
         lottery = self.validate_lottery_exists(lottery_name)
         if not lottery:
             raise ValueError(f"Lottery '{lottery_name}' does not exist")
@@ -425,7 +429,7 @@ class LotteryPredictionEngine:
         historical_data = self.get_historical_data(lottery_name, prize_type)
         
         count_map = {
-            '1st': 1, '2nd': 1, '3rd': 1, 'consolation': 1,
+            '1st': 1, '2nd': 1, '3rd': 1,
             '4th': 12, '5th': 12, '6th': 12, '7th': 12, '8th': 12, '9th': 12, '10th': 12
         }
         count = count_map.get(prize_type, 12)
@@ -439,8 +443,10 @@ class LotteryPredictionEngine:
         else:
             predictions = self.generate_random_numbers(prize_type, count, lottery_code)
         
-        # Generate repeated numbers for ALL prize types (always 12 numbers)
-        repeated_numbers = self.get_repeated_numbers(lottery_name, prize_type, 12)
+        # Generate repeated numbers for all prize types EXCEPT consolation
+        repeated_numbers = []
+        if prize_type != 'consolation':
+            repeated_numbers = self.get_repeated_numbers(lottery_name, prize_type, 12)
         
         confidence = self.calculate_confidence_score(historical_data, prize_type, method)
         
