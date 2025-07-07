@@ -20,18 +20,22 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 # ALLOWED_HOSTS configuration - IMPROVED
 def get_allowed_hosts():
     """Parse ALLOWED_HOSTS from environment variable with better error handling"""
-    hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '')
+    # Try multiple environment variable names
+    hosts_env = (
+        os.getenv('DJANGO_ALLOWED_HOSTS') or 
+        os.getenv('ALLOWED_HOSTS') or
+        'sea-lion-app-begbw.ondigitalocean.app,api.lottokeralalotteries.com'  # Default fallback
+    )
     
     # Always include localhost for development
     default_hosts = ['127.0.0.1', 'localhost']
     
-    if not hosts_env:
-        return default_hosts
+    # Start with localhost hosts
+    hosts = list(default_hosts)
     
     # Split by comma and clean up each host
-    hosts = list(default_hosts)  # Start with localhost
     for host in hosts_env.split(','):
-        host = host.strip().rstrip('/')  # Remove trailing slash
+        host = host.strip().rstrip('/')  # Remove trailing slash and whitespace
         if host and host not in hosts:  # Only add non-empty, unique hosts
             hosts.append(host)
     
