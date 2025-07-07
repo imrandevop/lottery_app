@@ -403,29 +403,39 @@ class TicketCheckView(APIView):
         }
 
     def check_ticket_prizes(self, ticket_number, lottery_result):
-        """Check if ticket won any prizes in the given result - Full matches only"""
-        
-        # Get only full ticket matches (removed last 4 digits logic)
+        """Check if ticket won any prizes in the given result"""
+        last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
+
+        # Get full ticket matches
         winning_tickets = PrizeEntry.objects.filter(
             ticket_number=ticket_number,
             lottery_result=lottery_result
         )
+
+        # Get last 4 digits matches (excluding full matches)
+        small_prize_tickets = PrizeEntry.objects.filter(
+            ticket_number=last_4_digits,
+            lottery_result=lottery_result
+        ).exclude(ticket_number=ticket_number)
+
+        all_wins = list(winning_tickets) + list(small_prize_tickets)
         
-        if not winning_tickets:
+        if not all_wins:
             return None
         
         # Process prize data
         prize_details = []
         total_amount = 0
         
-        for prize in winning_tickets:
+        for prize in all_wins:
             prize_amount = float(prize.prize_amount)
             total_amount += prize_amount
+            is_small_prize = prize.ticket_number == last_4_digits and prize.ticket_number != ticket_number
             
             prize_details.append({
                 'prize_type': prize.get_prize_type_display(),
                 'prize_amount': prize_amount,
-                'match_type': 'Full ticket match',
+                'match_type': 'Last 4 digits match' if is_small_prize else 'Full ticket match',
                 'winning_ticket_number': prize.ticket_number,
                 'place': prize.place if prize.place else None
             })
