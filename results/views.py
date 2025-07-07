@@ -358,6 +358,50 @@ class TicketCheckView(APIView):
             "winningTicketNumber": prize_entry.get('winning_ticket_number', '')
         }
 
+    def create_previous_result(self, lottery_result=None, prize_data=None):
+        """Create previous result structure"""
+        if not lottery_result:
+            return {
+                "date": "",
+                "drawNumber": "",
+                "uniqueId": "",
+                "totalPrizeAmount": 0,
+                "prizeDetails": {}
+            }
+        
+        total_amount = 0
+        prize_details = {}
+        
+        if prize_data and prize_data.get('prize_details'):
+            # Get the first/main prize for the response
+            main_prize = prize_data['prize_details'][0]
+            prize_details = self.create_prize_details(main_prize)
+            total_amount = prize_data.get('total_amount', 0)
+        else:
+            prize_details = self.create_prize_details()
+        
+        return {
+            "date": str(lottery_result.date) if lottery_result.date else "",
+            "drawNumber": lottery_result.draw_number if lottery_result.draw_number else "",
+            "uniqueId": str(lottery_result.unique_id) if lottery_result.unique_id else "",
+            "totalPrizeAmount": total_amount,
+            "prizeDetails": prize_details
+        }
+
+    def create_data_structure(self, ticket_number, lottery_name, requested_date, 
+                            won_prize, result_published, is_previous_result, 
+                            lottery_result=None, prize_data=None):
+        """Create the data structure for response"""
+        return {
+            "ticketNumber": ticket_number,
+            "lotteryName": lottery_name,
+            "requestedDate": str(requested_date),
+            "wonPrize": won_prize,
+            "resultPublished": result_published,
+            "isPreviousResult": is_previous_result,
+            "previousResult": self.create_previous_result(lottery_result, prize_data)
+        }
+
     def check_ticket_prizes(self, ticket_number, lottery_result):
         """Check if ticket won any prizes in the given result - Full matches only"""
         
