@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 import re
+import pytz
 
 
 class Lottery(models.Model):
@@ -199,7 +200,7 @@ class PredictionModel(models.Model):
         return f"{self.name} - {self.get_algorithm_display()}"
 
 class PredictionHistory(models.Model):
-    """Store prediction history for performance tracking"""
+    """Store prediction history for performance tracking with enhanced stability"""
     lottery_name = models.CharField(max_length=200)
     prize_type = models.CharField(max_length=20)
     predicted_numbers = models.JSONField()
@@ -209,9 +210,30 @@ class PredictionHistory(models.Model):
     accuracy_score = models.FloatField(null=True, blank=True)
     model_used = models.ForeignKey(PredictionModel, on_delete=models.SET_NULL, null=True)
     
+    # New fields for stability tracking
+    is_stable = models.BooleanField(default=True, help_text="Whether this prediction should remain stable")
+    cycle_identifier = models.CharField(max_length=100, blank=True, help_text="Identifies the prediction cycle")
+    
+    class Meta:
+        ordering = ['-prediction_date']
+        indexes = [
+            models.Index(fields=['lottery_name', 'prize_type', '-prediction_date']),
+            models.Index(fields=['lottery_name', 'prize_type', 'is_stable']),
+        ]
+    
     def __str__(self):
         return f"{self.lottery_name} - {self.prize_type} - {self.prediction_date.date()}"
-
+    
+    def save(self, *args, **kwargs):
+        # Auto-generate cycle identifier if not provided
+        if not self.cycle_identifier:
+            india_tz = pytz.timezone('Asia/Kolkata')
+            pred_date = self.prediction_date.astimezone(india_tz) if self.prediction_date else timezone.now().astimezone(india_tz)
+            # Format: LOTTERY_PRIZETYPE_YYYY_WW (year and week number)
+            week_num = pred_date.isocalendar()[1]
+            self.cycle_identifier = f"{self.lottery_name.upper()}_{self.prize_type}_{pred_date.year}_{week_num:02d}"
+        
+        super().save(*args, **kwargs)
 
 
 #<---------------LIVE SECTION---------------->

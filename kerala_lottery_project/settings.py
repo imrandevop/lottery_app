@@ -27,6 +27,7 @@ def get_allowed_hosts():
         'sea-lion-app-begbw.ondigitalocean.app,api.lottokeralalotteries.com'  # Default fallback
     )
     
+    
     # Always include localhost for development
     default_hosts = ['127.0.0.1', 'localhost']
     

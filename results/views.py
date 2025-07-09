@@ -702,12 +702,266 @@ def latest_news(request):
 
 class LotteryPredictionAPIView(APIView):
     """
-    API View for lottery number prediction with lottery validation and repeated numbers
+    API View for lottery number prediction with stable predictions and accuracy tracking
     """
     
+    # Kerala Lottery day mapping
+    LOTTERY_DAYS = {
+        'M': 'sunday',     # Samrudhi
+        'B': 'monday',     # Bhagyathara  
+        'S': 'tuesday',    # Sthree Sakthi
+        'D': 'wednesday',  # Dhanalekshmi
+        'P': 'thursday',   # Karunya Plus
+        'R': 'friday',     # Suvarna Keralam
+        'K': 'saturday',   # Karunya
+    }
+
+    def get_lottery_day(self, lottery_name):
+        """Get the scheduled day for a lottery based on its code"""
+        try:
+            lottery = Lottery.objects.get(name__iexact=lottery_name)
+            lottery_code = lottery.code.upper() if lottery.code else None
+            return self.LOTTERY_DAYS.get(lottery_code) if lottery_code else None
+        except Lottery.DoesNotExist:
+            return None
+
+    def should_generate_new_prediction(self, lottery_name, prize_type):
+        """
+        Determine if we need to generate new predictions based on:
+        1. New result published since last prediction
+        2. 3:00 PM IST on lottery's scheduled day has passed
+        """
+        india_tz = pytz.timezone('Asia/Kolkata')
+        current_datetime = timezone.now().astimezone(india_tz)
+        current_date = current_datetime.date()
+        current_time = current_datetime.time()
+        result_publish_time = time(15, 0)  # 3:00 PM IST
+        
+        # Get the most recent prediction for this lottery and prize type
+        latest_prediction = PredictionHistory.objects.filter(
+            lottery_name__iexact=lottery_name,
+            prize_type=prize_type
+        ).order_by('-prediction_date').first()
+        
+        if not latest_prediction:
+            return True  # No previous prediction exists
+        
+        # Get the lottery day
+        lottery_day = self.get_lottery_day(lottery_name)
+        if not lottery_day:
+            return True  # Unknown lottery, generate new prediction
+        
+        # Check if there's a new published result since the last prediction
+        try:
+            lottery = Lottery.objects.get(name__iexact=lottery_name)
+            latest_result = LotteryResult.objects.filter(
+                lottery=lottery,
+                is_published=True,
+                date__gte=latest_prediction.prediction_date.date()
+            ).order_by('-date', '-updated_at').first()
+            
+            if latest_result and latest_result.updated_at > latest_prediction.prediction_date:
+                return True  # New result published since last prediction
+        except Lottery.DoesNotExist:
+            return True
+        
+        # Check if we've passed 3:00 PM on the lottery's scheduled day
+        prediction_date = latest_prediction.prediction_date.astimezone(india_tz).date()
+        
+        # Find the next lottery day after the prediction was made
+        days_of_week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        lottery_day_index = days_of_week.index(lottery_day)
+        
+        # Calculate days since prediction
+        days_since_prediction = (current_date - prediction_date).days
+        
+        if days_since_prediction >= 7:
+            return True  # More than a week has passed
+        
+        # Check if it's the lottery day and past 3:00 PM
+        current_day = current_date.strftime('%A').lower()
+        if current_day == lottery_day and current_time >= result_publish_time:
+            # Check if we haven't generated a prediction for this cycle yet
+            if prediction_date < current_date:
+                return True
+        
+        return False
+
+    def get_stable_prediction(self, lottery_name, prize_type):
+        """Get stable prediction - either existing or generate new if needed"""
+        if self.should_generate_new_prediction(lottery_name, prize_type):
+            # Generate new prediction
+            try:
+                engine = LotteryPredictionEngine()
+                result = engine.predict(lottery_name, prize_type, method='ensemble')
+                
+                # Store new prediction
+                PredictionHistory.objects.create(
+                    lottery_name=lottery_name,
+                    prize_type=prize_type,
+                    predicted_numbers=result['predictions'],
+                    prediction_date=timezone.now()
+                )
+                
+                return result
+            except Exception as e:
+                raise e
+        else:
+            # Return existing stable prediction
+            latest_prediction = PredictionHistory.objects.filter(
+                lottery_name__iexact=lottery_name,
+                prize_type=prize_type
+            ).order_by('-prediction_date').first()
+            
+            if latest_prediction:
+                # Recreate the result format
+                engine = LotteryPredictionEngine()
+                repeated_numbers = []
+                if prize_type != 'consolation':
+                    repeated_numbers = engine.get_repeated_numbers(lottery_name, prize_type, 12)
+                
+                return {
+                    'predictions': latest_prediction.predicted_numbers,
+                    'repeated_numbers': repeated_numbers,
+                    'confidence': 0.65,  # Default confidence for stable predictions
+                    'method': 'ensemble',
+                    'historical_data_count': 0,
+                    'lottery_code': None
+                }
+            else:
+                # Fallback - generate new if no existing prediction found
+                engine = LotteryPredictionEngine()
+                result = engine.predict(lottery_name, prize_type, method='ensemble')
+                
+                PredictionHistory.objects.create(
+                    lottery_name=lottery_name,
+                    prize_type=prize_type,
+                    predicted_numbers=result['predictions'],
+                    prediction_date=timezone.now()
+                )
+                
+                return result
+
+    def calculate_prediction_accuracy(self, lottery_name, prize_type):
+        """Calculate accuracy against the most recently published result"""
+        try:
+            lottery = Lottery.objects.get(name__iexact=lottery_name)
+            
+            # Get the most recently published result
+            latest_result = LotteryResult.objects.filter(
+                lottery=lottery,
+                is_published=True
+            ).order_by('-date', '-updated_at').first()
+            
+            if not latest_result:
+                return None
+            
+            # Get the most recent prediction before this result
+            prediction = PredictionHistory.objects.filter(
+                lottery_name__iexact=lottery_name,
+                prize_type=prize_type,
+                prediction_date__lte=latest_result.updated_at
+            ).order_by('-prediction_date').first()
+            
+            if not prediction:
+                return None
+            
+            # Get winning numbers from 4th-10th prizes (4-digit numbers)
+            winning_numbers = list(PrizeEntry.objects.filter(
+                lottery_result=latest_result,
+                prize_type__in=['4th', '5th', '6th', '7th', '8th', '9th', '10th']
+            ).values_list('ticket_number', flat=True))
+            
+            # Convert to last 4 digits for comparison
+            winning_last_4 = []
+            for num in winning_numbers:
+                if num:
+                    last_4 = str(num)[-4:] if len(str(num)) >= 4 else str(num).zfill(4)
+                    if last_4.isdigit() and len(last_4) == 4:
+                        winning_last_4.append(last_4)
+            
+            if not winning_last_4:
+                return None
+            
+            # Compare predictions with winning numbers
+            predicted_numbers = prediction.predicted_numbers
+            if not predicted_numbers:
+                return None
+            
+            accuracy_results = {
+                "100%": [],
+                "75%": [],
+                "50%": [],
+                "25%": []
+            }
+            
+            perfect_matches = 0
+            total_accuracy_points = 0
+            
+            for pred_num in predicted_numbers:
+                pred_str = str(pred_num)
+                
+                # For 1st, 2nd, 3rd prizes, use last 4 digits
+                if prize_type in ['1st', '2nd', '3rd']:
+                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
+                else:
+                    pred_last_4 = pred_str
+                
+                # Find best match
+                best_match_percentage = 0
+                for winning_num in winning_last_4:
+                    match_count = sum(1 for i, digit in enumerate(pred_last_4) 
+                                    if i < len(winning_num) and digit == winning_num[i])
+                    
+                    if match_count == 4:
+                        match_percentage = 100
+                    elif match_count == 3:
+                        match_percentage = 75
+                    elif match_count == 2:
+                        match_percentage = 50
+                    elif match_count == 1:
+                        match_percentage = 25
+                    else:
+                        match_percentage = 0
+                    
+                    best_match_percentage = max(best_match_percentage, match_percentage)
+                
+                # Categorize the prediction
+                if best_match_percentage == 100:
+                    accuracy_results["100%"].append(pred_last_4)
+                    perfect_matches += 1
+                    total_accuracy_points += 100
+                elif best_match_percentage == 75:
+                    accuracy_results["75%"].append(pred_last_4)
+                    total_accuracy_points += 75
+                elif best_match_percentage == 50:
+                    accuracy_results["50%"].append(pred_last_4)
+                    total_accuracy_points += 50
+                elif best_match_percentage == 25:
+                    accuracy_results["25%"].append(pred_last_4)
+                    total_accuracy_points += 25
+            
+            # Calculate overall accuracy percentage
+            total_predictions = len(predicted_numbers)
+            overall_accuracy = (total_accuracy_points / (total_predictions * 100)) * 100 if total_predictions > 0 else 0
+            
+            return {
+                "date": str(latest_result.date),
+                "summary": {
+                    "perfect_match_count": perfect_matches,
+                    "overall_accuracy_percent": round(overall_accuracy, 2)
+                },
+                "digit_accuracy": accuracy_results
+            }
+            
+        except Lottery.DoesNotExist:
+            return None
+        except Exception as e:
+            return None
+
     def post(self, request):
         """
-        Generate lottery predictions with repeated numbers
+        Generate stable lottery predictions with accuracy tracking
         """
         # Validate input
         serializer = LotteryPredictionRequestSerializer(data=request.data)
@@ -722,19 +976,13 @@ class LotteryPredictionAPIView(APIView):
         prize_type = serializer.validated_data['prize_type']
         
         try:
-            # Initialize prediction engine and generate predictions
-            engine = LotteryPredictionEngine()
-            result = engine.predict(lottery_name, prize_type, method='ensemble')
+            # Get stable prediction
+            result = self.get_stable_prediction(lottery_name, prize_type)
             
-            # Store prediction history
-            PredictionHistory.objects.create(
-                lottery_name=lottery_name,
-                prize_type=prize_type,
-                predicted_numbers=result['predictions'],
-                prediction_date=timezone.now()
-            )
+            # Calculate accuracy for the most recent result
+            accuracy_data = self.calculate_prediction_accuracy(lottery_name, prize_type)
             
-            # Build response data
+            # Build response data (keeping existing structure)
             response_data = {
                 'status': 'success',
                 'lottery_name': lottery_name,
@@ -745,6 +993,10 @@ class LotteryPredictionAPIView(APIView):
             # Add repeated numbers for all prize types EXCEPT consolation
             if prize_type != 'consolation':
                 response_data['repeated_numbers'] = result.get('repeated_numbers', [])
+            
+            # Add new accuracy field
+            if accuracy_data:
+                response_data['yesterday_prediction_accuracy'] = accuracy_data
             
             # Add note at the end
             response_data['note'] = 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
