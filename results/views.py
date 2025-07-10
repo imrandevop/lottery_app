@@ -864,8 +864,12 @@ class LotteryPredictionAPIView(APIView):
                 
                 return result
 
+    # Fixed accuracy calculation method - replace the existing one
+
     def calculate_prediction_accuracy(self, lottery_name, prize_type):
-        """Calculate accuracy against the most recently published result"""
+        """
+        FIXED: Calculate accuracy against the correct prize type with proper format handling
+        """
         try:
             lottery = Lottery.objects.get(name__iexact=lottery_name)
             
@@ -888,102 +892,345 @@ class LotteryPredictionAPIView(APIView):
             if not prediction:
                 return None
             
-            # Get winning numbers from 4th-10th prizes (4-digit numbers)
-            winning_numbers = list(PrizeEntry.objects.filter(
+            # FIXED: Get winning numbers for the SAME prize type
+            if prize_type == 'consolation':
+                # Skip consolation prize accuracy (not supported)
+                return {
+                    "date": str(latest_result.date),
+                    "error": "Consolation prize accuracy not supported"
+                }
+            
+            # Get winning numbers for the EXACT same prize type
+            winning_entries = PrizeEntry.objects.filter(
                 lottery_result=latest_result,
-                prize_type__in=['4th', '5th', '6th', '7th', '8th', '9th', '10th']
-            ).values_list('ticket_number', flat=True))
+                prize_type=prize_type  # FIXED: Use same prize type, not hardcoded 4th-10th
+            ).values_list('ticket_number', flat=True)
             
-            # Convert to last 4 digits for comparison
-            winning_last_4 = []
-            for num in winning_numbers:
-                if num:
-                    last_4 = str(num)[-4:] if len(str(num)) >= 4 else str(num).zfill(4)
-                    if last_4.isdigit() and len(last_4) == 4:
-                        winning_last_4.append(last_4)
+            winning_numbers = [str(num).strip() for num in winning_entries if num]
             
-            if not winning_last_4:
-                return None
+            if not winning_numbers:
+                return {
+                    "date": str(latest_result.date),
+                    "error": f"No winning numbers found for {prize_type} prize"
+                }
             
-            # Compare predictions with winning numbers
+            # Get predicted numbers
             predicted_numbers = prediction.predicted_numbers
             if not predicted_numbers:
                 return None
             
+            # FIXED: Format-aware comparison based on prize type
             accuracy_results = {
                 "100%": [],
                 "75%": [],
                 "50%": [],
-                "25%": []
+                "25%": [],
+                "detailed_matches": []  # NEW: Detailed breakdown
             }
             
             perfect_matches = 0
             total_accuracy_points = 0
+            comparison_details = []
             
             for pred_num in predicted_numbers:
-                pred_str = str(pred_num)
+                pred_str = str(pred_num).strip().upper()
                 
-                # For 1st, 2nd, 3rd prizes, use last 4 digits
+                # FIXED: Format handling based on prize type
                 if prize_type in ['1st', '2nd', '3rd']:
-                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
+                    # For 1st-3rd prizes: Compare full format (e.g., "KR123456")
+                    pred_compare = pred_str
+                    comparison_type = "full_format"
                 else:
-                    pred_last_4 = pred_str
+                    # For 4th-10th prizes: Compare last 4 digits
+                    pred_compare = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
+                    comparison_type = "last_4_digits"
                 
-                # Find best match
                 best_match_percentage = 0
-                for winning_num in winning_last_4:
-                    match_count = sum(1 for i, digit in enumerate(pred_last_4) 
-                                    if i < len(winning_num) and digit == winning_num[i])
+                best_match_details = None
+                
+                # Compare against each winning number
+                for winning_num in winning_numbers:
+                    winning_str = str(winning_num).strip().upper()
                     
-                    if match_count == 4:
-                        match_percentage = 100
-                    elif match_count == 3:
-                        match_percentage = 75
-                    elif match_count == 2:
-                        match_percentage = 50
-                    elif match_count == 1:
-                        match_percentage = 25
+                    # FIXED: Format winning number based on prize type
+                    if prize_type in ['1st', '2nd', '3rd']:
+                        # Compare full format
+                        winning_compare = winning_str
+                        
+                        # Handle different lengths by padding or truncating
+                        max_len = max(len(pred_compare), len(winning_compare))
+                        pred_padded = pred_compare.ljust(max_len, '0')[:max_len]
+                        winning_padded = winning_compare.ljust(max_len, '0')[:max_len]
+                        
+                        match_count = sum(1 for i, (p, w) in enumerate(zip(pred_padded, winning_padded)) if p == w)
+                        total_positions = max_len
+                    else:
+                        # Compare last 4 digits
+                        winning_compare = winning_str[-4:] if len(winning_str) >= 4 else winning_str.zfill(4)
+                        
+                        match_count = sum(1 for i, (p, w) in enumerate(zip(pred_compare, winning_compare)) if p == w)
+                        total_positions = 4
+                    
+                    # Calculate match percentage based on total positions
+                    if total_positions > 0:
+                        match_ratio = match_count / total_positions
+                        
+                        # FIXED: More granular percentage calculation
+                        if match_ratio == 1.0:  # All digits match
+                            match_percentage = 100
+                        elif match_ratio >= 0.75:  # 75%+ digits match
+                            match_percentage = 75
+                        elif match_ratio >= 0.5:   # 50%+ digits match
+                            match_percentage = 50
+                        elif match_ratio >= 0.25:  # 25%+ digits match
+                            match_percentage = 25
+                        else:
+                            match_percentage = 0
                     else:
                         match_percentage = 0
                     
-                    best_match_percentage = max(best_match_percentage, match_percentage)
+                    # Track best match
+                    if match_percentage > best_match_percentage:
+                        best_match_percentage = match_percentage
+                        best_match_details = {
+                            "predicted": pred_compare,
+                            "winning": winning_compare,
+                            "matches": match_count,
+                            "total_positions": total_positions,
+                            "percentage": match_percentage,
+                            "comparison_type": comparison_type
+                        }
+                
+                # Record the result
+                comparison_details.append(best_match_details)
                 
                 # Categorize the prediction
                 if best_match_percentage == 100:
-                    accuracy_results["100%"].append(pred_last_4)
+                    accuracy_results["100%"].append(pred_compare)
                     perfect_matches += 1
                     total_accuracy_points += 100
                 elif best_match_percentage == 75:
-                    accuracy_results["75%"].append(pred_last_4)
+                    accuracy_results["75%"].append(pred_compare)
                     total_accuracy_points += 75
                 elif best_match_percentage == 50:
-                    accuracy_results["50%"].append(pred_last_4)
+                    accuracy_results["50%"].append(pred_compare)
                     total_accuracy_points += 50
                 elif best_match_percentage == 25:
-                    accuracy_results["25%"].append(pred_last_4)
+                    accuracy_results["25%"].append(pred_compare)
                     total_accuracy_points += 25
             
-            # Calculate overall accuracy percentage
+            # Calculate overall accuracy
             total_predictions = len(predicted_numbers)
             overall_accuracy = (total_accuracy_points / (total_predictions * 100)) * 100 if total_predictions > 0 else 0
             
+            # Store detailed matches for debugging
+            accuracy_results["detailed_matches"] = comparison_details
+            
             return {
                 "date": str(latest_result.date),
+                "prize_type": prize_type,
+                "comparison_method": comparison_type,
+                "winning_numbers": winning_numbers,
+                "predicted_numbers": [str(p) for p in predicted_numbers],
                 "summary": {
                     "perfect_match_count": perfect_matches,
-                    "overall_accuracy_percent": round(overall_accuracy, 2)
+                    "overall_accuracy_percent": round(overall_accuracy, 2),
+                    "total_predictions": total_predictions,
+                    "total_winning_numbers": len(winning_numbers)
                 },
-                "digit_accuracy": accuracy_results
+                "digit_accuracy": {k: v for k, v in accuracy_results.items() if k != "detailed_matches"},
+                "detailed_breakdown": accuracy_results["detailed_matches"][:5]  # Show first 5 for debugging
             }
             
         except Lottery.DoesNotExist:
             return None
         except Exception as e:
-            return None
+            return {
+                "error": f"Accuracy calculation failed: {str(e)}"
+            }
+    
+    def calculate_comprehensive_accuracy(self, lottery_name, prize_type):
+        """
+        BONUS: Calculate accuracy showing ALL matches, not just best matches
+        This gives a more complete picture of prediction performance
+        """
+        try:
+            lottery = Lottery.objects.get(name__iexact=lottery_name)
+            
+            # Get the most recently published result
+            latest_result = LotteryResult.objects.filter(
+                lottery=lottery,
+                is_published=True
+            ).order_by('-date', '-updated_at').first()
+            
+            if not latest_result:
+                return None
+            
+            # Get all predictions for this lottery/prize type in the last 30 days
+            from datetime import timedelta
+            cutoff_date = latest_result.date - timedelta(days=30)
+            
+            predictions = PredictionHistory.objects.filter(
+                lottery_name__iexact=lottery_name,
+                prize_type=prize_type,
+                prediction_date__gte=cutoff_date,
+                prediction_date__lte=latest_result.updated_at
+            ).order_by('-prediction_date')
+            
+            if not predictions:
+                return None
+            
+            # Get winning numbers
+            winning_entries = PrizeEntry.objects.filter(
+                lottery_result=latest_result,
+                prize_type=prize_type
+            ).values_list('ticket_number', flat=True)
+            
+            winning_numbers = [str(num).strip() for num in winning_entries if num]
+            
+            comprehensive_results = {
+                "all_matches": {
+                    "100%": [],
+                    "75%": [],
+                    "50%": [],
+                    "25%": [],
+                    "0%": []
+                },
+                "prediction_history": []
+            }
+            
+            # Analyze each prediction
+            for prediction in predictions:
+                prediction_analysis = {
+                    "prediction_date": prediction.prediction_date.isoformat(),
+                    "predicted_numbers": prediction.predicted_numbers,
+                    "matches": []
+                }
+                
+                for pred_num in prediction.predicted_numbers:
+                    pred_str = str(pred_num).strip().upper()
+                    
+                    # Format based on prize type
+                    if prize_type in ['1st', '2nd', '3rd']:
+                        pred_compare = pred_str
+                    else:
+                        pred_compare = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
+                    
+                    # Check against all winning numbers
+                    all_matches_for_this_pred = []
+                    
+                    for winning_num in winning_numbers:
+                        winning_str = str(winning_num).strip().upper()
+                        
+                        if prize_type in ['1st', '2nd', '3rd']:
+                            winning_compare = winning_str
+                            max_len = max(len(pred_compare), len(winning_compare))
+                            pred_padded = pred_compare.ljust(max_len, '0')[:max_len]
+                            winning_padded = winning_compare.ljust(max_len, '0')[:max_len]
+                            match_count = sum(1 for p, w in zip(pred_padded, winning_padded) if p == w)
+                            total_positions = max_len
+                        else:
+                            winning_compare = winning_str[-4:] if len(winning_str) >= 4 else winning_str.zfill(4)
+                            match_count = sum(1 for p, w in zip(pred_compare, winning_compare) if p == w)
+                            total_positions = 4
+                        
+                        if total_positions > 0:
+                            match_ratio = match_count / total_positions
+                            
+                            if match_ratio == 1.0:
+                                match_percentage = 100
+                            elif match_ratio >= 0.75:
+                                match_percentage = 75
+                            elif match_ratio >= 0.5:
+                                match_percentage = 50
+                            elif match_ratio >= 0.25:
+                                match_percentage = 25
+                            else:
+                                match_percentage = 0
+                            
+                            if match_percentage > 0:
+                                all_matches_for_this_pred.append({
+                                    "winning_number": winning_compare,
+                                    "match_percentage": match_percentage,
+                                    "matches": match_count,
+                                    "total_positions": total_positions
+                                })
+                    
+                    # Record ALL matches for this prediction
+                    for match in all_matches_for_this_pred:
+                        percentage_key = f"{match['match_percentage']}%"
+                        comprehensive_results["all_matches"][percentage_key].append({
+                            "predicted": pred_compare,
+                            "winning": match["winning_number"],
+                            "match_count": match["matches"],
+                            "total_positions": match["total_positions"]
+                        })
+                    
+                    # If no matches found, record as 0%
+                    if not all_matches_for_this_pred:
+                        comprehensive_results["all_matches"]["0%"].append({
+                            "predicted": pred_compare,
+                            "no_matches": True
+                        })
+                    
+                    prediction_analysis["matches"] = all_matches_for_this_pred
+                
+                comprehensive_results["prediction_history"].append(prediction_analysis)
+            
+            # Calculate comprehensive statistics
+            total_matches = sum(len(matches) for matches in comprehensive_results["all_matches"].values())
+            
+            comprehensive_stats = {
+                "total_comparisons": total_matches,
+                "match_distribution": {
+                    percentage: len(matches) for percentage, matches in comprehensive_results["all_matches"].items()
+                }
+            }
+            
+            return {
+                "date": str(latest_result.date),
+                "prize_type": prize_type,
+                "winning_numbers": winning_numbers,
+                "comprehensive_stats": comprehensive_stats,
+                "all_matches": comprehensive_results["all_matches"],
+                "recent_predictions": comprehensive_results["prediction_history"][:3]  # Last 3 predictions
+            }
+            
+        except Exception as e:
+            return {
+                "error": f"Comprehensive accuracy calculation failed: {str(e)}"
+            }
+        
+    def get_accuracy_explanation(self, prize_type, comparison_method):
+        """
+        Provide clear explanation of how accuracy is calculated
+        """
+        explanations = {
+            'full_format': {
+                '1st': 'Compares full ticket format (e.g., "KR123456") against 1st prize winner',
+                '2nd': 'Compares full ticket format (e.g., "KA789012") against 2nd prize winner', 
+                '3rd': 'Compares full ticket format (e.g., "KN345678") against 3rd prize winner'
+            },
+            'last_4_digits': {
+                '4th': 'Compares last 4 digits against 4th prize winners',
+                '5th': 'Compares last 4 digits against 5th prize winners',
+                '6th': 'Compares last 4 digits against 6th prize winners',
+                '7th': 'Compares last 4 digits against 7th prize winners',
+                '8th': 'Compares last 4 digits against 8th prize winners',
+                '9th': 'Compares last 4 digits against 9th prize winners',
+                '10th': 'Compares last 4 digits against 10th prize winners'
+            }
+        }
+        
+        method_explanations = explanations.get(comparison_method, {})
+        return method_explanations.get(prize_type, f'Compares predicted numbers against {prize_type} prize winners using {comparison_method} method')
+
+
+
 
     def post(self, request):
         """
-        Generate stable lottery predictions with accuracy tracking
+        Generate stable lottery predictions with FIXED accuracy tracking
         """
         # Validate input
         serializer = LotteryPredictionRequestSerializer(data=request.data)
@@ -1001,7 +1248,7 @@ class LotteryPredictionAPIView(APIView):
             # Get stable prediction
             result = self.get_stable_prediction(lottery_name, prize_type)
             
-            # Calculate accuracy for the most recent result
+            # FIXED: Calculate accuracy with proper format handling
             accuracy_data = self.calculate_prediction_accuracy(lottery_name, prize_type)
             
             # Build response data (keeping existing structure)
@@ -1016,9 +1263,35 @@ class LotteryPredictionAPIView(APIView):
             if prize_type != 'consolation':
                 response_data['repeated_numbers'] = result.get('repeated_numbers', [])
             
-            # Add new accuracy field
+            # ENHANCED: Add detailed accuracy information
             if accuracy_data:
-                response_data['yesterday_prediction_accuracy'] = accuracy_data
+                if 'error' in accuracy_data:
+                    response_data['accuracy_info'] = {
+                        'status': 'error',
+                        'message': accuracy_data.get('error', 'Unknown error'),
+                        'date': accuracy_data.get('date', 'Unknown')
+                    }
+                else:
+                    response_data['prediction_accuracy'] = {
+                        'date': accuracy_data['date'],
+                        'prize_type': accuracy_data['prize_type'],
+                        'comparison_method': accuracy_data['comparison_method'],
+                        'summary': accuracy_data['summary'],
+                        'accuracy_breakdown': accuracy_data['digit_accuracy'],
+                        'sample_comparisons': accuracy_data['detailed_breakdown']
+                    }
+                    
+                    # Add interpretation help
+                    response_data['accuracy_interpretation'] = {
+                        'comparison_method': accuracy_data['comparison_method'],
+                        'explanation': self.get_accuracy_explanation(prize_type, accuracy_data['comparison_method']),
+                        'note': 'Accuracy is calculated against the most recent published result for the same prize type'
+                    }
+            else:
+                response_data['accuracy_info'] = {
+                    'status': 'no_data',
+                    'message': 'No recent results available for accuracy calculation'
+                }
             
             # Add note at the end
             response_data['note'] = 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
