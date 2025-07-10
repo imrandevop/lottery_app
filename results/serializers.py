@@ -330,3 +330,23 @@ class LiveVideoSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
+
+
+class LotteryPercentageRequestSerializer(serializers.Serializer):
+    """Serializer for lottery percentage request"""
+    lottery_name = serializers.CharField(max_length=200, required=True, help_text="Name of the lottery")
+    lottery_number = serializers.CharField(max_length=4, required=True, help_text="4-digit lottery number")
+    
+    def validate_lottery_number(self, value):
+        """Validate lottery number format"""
+        # Remove any spaces and validate
+        value = str(value).strip()
+        
+        # Check if it's a valid number (1-4 digits)
+        if not value.isdigit():
+            raise serializers.ValidationError("Lottery number must contain only digits")
+        
+        if len(value) > 4:
+            raise serializers.ValidationError("Lottery number cannot exceed 4 digits")
+        
+        return value

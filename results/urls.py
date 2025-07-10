@@ -1,7 +1,7 @@
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view
 from . import views
-from .views import LotteryPredictionAPIView, LiveVideoListView
+from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI
 app_name = 'results'
 
 urlpatterns = [
@@ -24,6 +24,8 @@ urlpatterns = [
     path('predict/', LotteryPredictionAPIView.as_view(), name='lottery-prediction'),
 
     path('live-videos/', LiveVideoListView.as_view(), name='live-videos-list'),
+
+    path('lottery-percentage/', LotteryWinningPercentageAPI.as_view(), name='lottery-percentage'),
 
 
 
