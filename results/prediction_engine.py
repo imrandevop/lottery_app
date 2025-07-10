@@ -70,6 +70,7 @@ class LotteryPredictionEngine:
         query &= Q(prize_type=prize_type)
         
         # Get historical data for the specific prize type only
+        # FIXED: Return model instances instead of dictionaries
         historical_data = PrizeEntry.objects.filter(query).select_related(
             'lottery_result', 'lottery_result__lottery'
         ).order_by('-lottery_result__date')[:2000]
@@ -77,6 +78,7 @@ class LotteryPredictionEngine:
         # Extract last 4 digits from all ticket numbers
         last_4_digits = []
         for entry in historical_data:
+            # FIXED: Now entry.ticket_number works because entry is a model instance
             if entry.ticket_number:
                 ticket_str = str(entry.ticket_number).strip()
                 # Always get last 4 digits regardless of prize type
