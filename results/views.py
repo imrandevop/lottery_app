@@ -19,6 +19,9 @@ from .serializers import LotteryPredictionRequestSerializer, LiveVideoSerializer
 from datetime import timedelta
 import pytz
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+import logging
+logger = logging.getLogger('lottery_app')
 
 
 class LotteryResultListView(generics.ListAPIView):
@@ -698,12 +701,15 @@ def latest_news(request):
 
 
 #<---------------PREDICTION SECTION ---------------->
-
+class PredictionRateThrottle(AnonRateThrottle):
+    scope = 'prediction'
 
 class LotteryPredictionAPIView(APIView):
     """
     API View for lottery number prediction with stable predictions and accuracy tracking
     """
+    throttle_classes = [PredictionRateThrottle]
+    throttle_scope = 'prediction'
     
     # Kerala Lottery day mapping
     LOTTERY_DAYS = {
@@ -788,12 +794,13 @@ class LotteryPredictionAPIView(APIView):
         return False
 
     def get_stable_prediction(self, lottery_name, prize_type):
-        """Get stable prediction - either existing or generate new if needed"""
+        """Get stable prediction with caching - MUCH FASTER"""
         if self.should_generate_new_prediction(lottery_name, prize_type):
             # Generate new prediction
             try:
                 engine = LotteryPredictionEngine()
-                result = engine.predict(lottery_name, prize_type, method='ensemble')
+                # Use the new cached method
+                result = engine.predict_with_cache(lottery_name, prize_type, method='ensemble')
                 
                 # Store new prediction
                 PredictionHistory.objects.create(
@@ -807,31 +814,44 @@ class LotteryPredictionAPIView(APIView):
             except Exception as e:
                 raise e
         else:
-            # Return existing stable prediction
+            # Check cache first before database
+            from results.utils.cache_utils import get_cached_prediction
+            cached_result = get_cached_prediction(lottery_name, prize_type)
+            
+            if cached_result:
+                return cached_result
+            
+            # Return existing stable prediction from database
             latest_prediction = PredictionHistory.objects.filter(
                 lottery_name__iexact=lottery_name,
                 prize_type=prize_type
             ).order_by('-prediction_date').first()
             
             if latest_prediction:
-                # Recreate the result format
+                # Recreate the result format and cache it
                 engine = LotteryPredictionEngine()
                 repeated_numbers = []
                 if prize_type != 'consolation':
                     repeated_numbers = engine.get_repeated_numbers(lottery_name, prize_type, 12)
                 
-                return {
+                result = {
                     'predictions': latest_prediction.predicted_numbers,
                     'repeated_numbers': repeated_numbers,
-                    'confidence': 0.65,  # Default confidence for stable predictions
+                    'confidence': 0.65,
                     'method': 'ensemble',
                     'historical_data_count': 0,
                     'lottery_code': None
                 }
+                
+                # Cache this result
+                from results.utils.cache_utils import cache_prediction
+                cache_prediction(lottery_name, prize_type, result, timeout=3600)
+                
+                return result
             else:
-                # Fallback - generate new if no existing prediction found
+                # Fallback - generate new
                 engine = LotteryPredictionEngine()
-                result = engine.predict(lottery_name, prize_type, method='ensemble')
+                result = engine.predict_with_cache(lottery_name, prize_type, method='ensemble')
                 
                 PredictionHistory.objects.create(
                     lottery_name=lottery_name,

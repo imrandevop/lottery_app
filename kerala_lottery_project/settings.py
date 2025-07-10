@@ -8,6 +8,10 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+logs_dir = BASE_DIR / 'logs'
+if not logs_dir.exists():
+    logs_dir.mkdir(exist_ok=True)
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -131,8 +135,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
+        'anon': '60/hour',  # Reduced from 100 for safety
+        'user': '300/hour',  # Reduced from 1000 for safety
+        'prediction': '30/hour',  # New: specific for predictions
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
@@ -204,6 +209,57 @@ else:
             },
         }
     }
+
+
+
+
+# SMART CACHING STRATEGY - DATABASE CACHE WITH REDIS UPGRADE PATH
+
+
+REDIS_URL = os.getenv('REDIS_URL', None)
+
+if REDIS_URL:
+    # Redis cache (for future upgrade)
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'CONNECTION_POOL_KWARGS': {
+                    'max_connections': 20,
+                    'retry_on_timeout': True,
+                },
+                'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            },
+            'KEY_PREFIX': 'lottery_app',
+            'TIMEOUT': 300,
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    print("⚡ Redis cache enabled - Premium performance!")
+else:
+    # Database cache (current strategy)
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+            'LOCATION': 'lottery_cache_table',
+            'TIMEOUT': 300,  # 5 minutes
+            'OPTIONS': {
+                'MAX_ENTRIES': 1000,  # Limit cache size
+                'CULL_FREQUENCY': 3,  # Clean old entries
+            }
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+    print("💾 Database cache enabled - Fast and free!")
+
+# Use Redis for sessions (optional but recommended)
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+
+
+
 
 # Session configuration
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
@@ -321,15 +377,49 @@ FEATURE_FLAGS = {
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {name} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {name} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
+            'level': 'INFO',
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'lottery_app.log',
+            'formatter': 'verbose',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'errors.log',
+            'formatter': 'verbose',
         },
     },
     'loggers': {
+        'lottery_app': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         'django': {
             'handlers': ['console'],
             'level': 'INFO',
+        },
+        'django.request': {
+            'handlers': ['error_file'],
+            'level': 'ERROR',
+            'propagate': False,
         },
     },
 }

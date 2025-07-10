@@ -1,4 +1,11 @@
 # lottery_prediction/prediction_engine.py (FINAL CLEAN VERSION)
+from results.utils.cache_utils import (
+    cache_prediction, get_cached_prediction,
+    cache_historical_data, get_cached_historical_data
+)
+import logging
+
+logger = logging.getLogger('lottery_app')
 import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
@@ -9,6 +16,8 @@ from django.db.models import Q
 from django.utils import timezone
 from results.models import LotteryResult, PrizeEntry, Lottery
 from .models import PredictionHistory, PredictionModel
+
+logger = logging.getLogger('lottery_app')
 
 class LotteryPredictionEngine:
     """
@@ -27,8 +36,11 @@ class LotteryPredictionEngine:
         except Lottery.DoesNotExist:
             return None
     
-    def get_historical_data(self, lottery_name=None, prize_type=None, limit=1000):
-        """Fetch historical lottery data"""
+    def get_historical_data_optimized(self, lottery_name=None, prize_type=None, limit=500):
+        """
+        Optimized historical data fetching with reduced database load
+        """
+        # Build query with select_related for single query
         query = Q(lottery_result__is_published=True)
         
         if lottery_name:
@@ -37,8 +49,15 @@ class LotteryPredictionEngine:
         if prize_type:
             query &= Q(prize_type=prize_type)
         
+        # Use select_related and values for efficiency
         historical_data = PrizeEntry.objects.filter(query).select_related(
             'lottery_result', 'lottery_result__lottery'
+        ).values(
+            'ticket_number',
+            'prize_type', 
+            'lottery_result__date',
+            'lottery_result__lottery__name',
+            'lottery_result__lottery__code'
         ).order_by('-lottery_result__date')[:limit]
         
         return historical_data
@@ -458,3 +477,75 @@ class LotteryPredictionEngine:
             'historical_data_count': len(historical_data),
             'lottery_code': lottery_code
         }
+    
+    def predict_with_cache(self, lottery_name, prize_type, method='ensemble'):
+        """
+        Cached version of predict method - MAJOR PERFORMANCE BOOST
+        """
+        # Try to get from cache first
+        cached_result = get_cached_prediction(lottery_name, prize_type)
+        if cached_result:
+            logger.info(f"Returning cached prediction for {lottery_name}-{prize_type}")
+            return cached_result
+        
+        # Generate new prediction if not cached
+        try:
+            result = self.predict(lottery_name, prize_type, method)
+            
+            # Cache the result for 1 hour
+            cache_prediction(lottery_name, prize_type, result, timeout=3600)
+            
+            logger.info(f"Generated and cached new prediction for {lottery_name}-{prize_type}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Prediction failed for {lottery_name}-{prize_type}: {e}")
+            raise
+
+    def get_historical_data_cached(self, lottery_name=None, prize_type=None, limit=1000):
+        """
+        Cached version of historical data fetching
+        """
+        # Try cache first
+        cached_data = get_cached_historical_data(lottery_name, prize_type)
+        if cached_data:
+            logger.info(f"Using cached historical data for {lottery_name}-{prize_type}")
+            return cached_data
+        
+        # Fetch from database
+        historical_data = self.get_historical_data(lottery_name, prize_type, limit)
+        
+        # Convert to list for caching
+        data_list = list(historical_data.values(
+            'ticket_number', 'prize_type', 'lottery_result__date'
+        ))
+        
+        # Cache for 30 minutes
+        cache_historical_data(lottery_name, prize_type, data_list, timeout=1800)
+        
+        return historical_data
+    def get_repeated_numbers_cached(self, lottery_name, prize_type, count=12):
+        """
+        🚀 CACHED VERSION of get_repeated_numbers - Much faster!
+        """
+        from results.utils.cache_utils import cache_repeated_numbers, get_cached_repeated_numbers
+        
+        # Try cache first
+        cached_numbers = get_cached_repeated_numbers(lottery_name, prize_type)
+        if cached_numbers:
+            logger.info(f"⚡ FAST: Using cached repeated numbers for {lottery_name}-{prize_type}")
+            return cached_numbers
+        
+        # Generate new repeated numbers
+        logger.info(f"🔄 GENERATING: New repeated numbers for {lottery_name}-{prize_type}")
+        repeated_numbers = self.get_repeated_numbers(lottery_name, prize_type, count)
+        
+        # Cache for 2 hours (repeated numbers change less frequently)
+        cache_repeated_numbers(lottery_name, prize_type, repeated_numbers, timeout=7200)
+        
+        return repeated_numbers
+    def get_historical_data(self, lottery_name=None, prize_type=None, limit=1000):
+        """
+        UPDATED: Use the optimized version by default
+        """
+        return self.get_historical_data_optimized(lottery_name, prize_type, limit)
