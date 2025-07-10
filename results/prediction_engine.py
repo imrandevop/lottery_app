@@ -49,15 +49,9 @@ class LotteryPredictionEngine:
         if prize_type:
             query &= Q(prize_type=prize_type)
         
-        # Use select_related and values for efficiency
+        # Return model instances instead of dictionaries
         historical_data = PrizeEntry.objects.filter(query).select_related(
             'lottery_result', 'lottery_result__lottery'
-        ).values(
-            'ticket_number',
-            'prize_type', 
-            'lottery_result__date',
-            'lottery_result__lottery__name',
-            'lottery_result__lottery__code'
         ).order_by('-lottery_result__date')[:limit]
         
         return historical_data
