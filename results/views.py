@@ -869,8 +869,7 @@ class LotteryPredictionAPIView(APIView):
 
     def calculate_prediction_accuracy(self, lottery_name, prize_type):
         """
-        FIXED: Calculate accuracy against the correct prize type with proper format handling
-        KEEPS EXACT SAME OUTPUT FORMAT as original
+        FIXED: Calculate accuracy with proper format handling
         """
         try:
             lottery = Lottery.objects.get(name__iexact=lottery_name)
@@ -894,58 +893,52 @@ class LotteryPredictionAPIView(APIView):
             if not prediction:
                 return None
             
-            # FIXED: Get winning numbers for the SAME prize type (not hardcoded 4th-10th)
-            if prize_type == 'consolation':
-                # Skip consolation - not supported
-                return None
-                
-            # Use the SAME prize type as the prediction
+            # FIXED: Get winning numbers for the EXACT prize type only
             winning_numbers = list(PrizeEntry.objects.filter(
                 lottery_result=latest_result,
-                prize_type=prize_type  # FIXED: Use same prize type instead of hardcoded 4th-10th
+                prize_type=prize_type  # Exact match only
             ).values_list('ticket_number', flat=True))
             
-            # FALLBACK: If no winning numbers for exact prize type, try related prizes
             if not winning_numbers:
-                if prize_type in ['1st', '2nd', '3rd']:
-                    # For 1st-3rd prizes, try to get any of 1st, 2nd, 3rd
-                    winning_numbers = list(PrizeEntry.objects.filter(
-                        lottery_result=latest_result,
-                        prize_type__in=['1st', '2nd', '3rd']
-                    ).values_list('ticket_number', flat=True))
-                else:
-                    # For 4th-10th prizes, try to get any of 4th-10th  
-                    winning_numbers = list(PrizeEntry.objects.filter(
-                        lottery_result=latest_result,
-                        prize_type__in=['4th', '5th', '6th', '7th', '8th', '9th', '10th']
-                    ).values_list('ticket_number', flat=True))
-            
-            # FIXED: Convert to last 4 digits for comparison with format awareness
-            winning_last_4 = []
-            for num in winning_numbers:
-                if num:
-                    num_str = str(num).strip()
-                    
-                    # FIXED: Format handling based on prize type
-                    if prize_type in ['1st', '2nd', '3rd']:
-                        # For 1st-3rd prizes: extract last 4 digits from full format (e.g., "KR123456" -> "3456")
-                        last_4 = num_str[-4:] if len(num_str) >= 4 else num_str.zfill(4)
-                    else:
-                        # For 4th-10th prizes: use last 4 digits as is
-                        last_4 = num_str[-4:] if len(num_str) >= 4 else num_str.zfill(4)
-                    
-                    if last_4.isdigit() and len(last_4) == 4:
-                        winning_last_4.append(last_4)
-            
-            if not winning_last_4:
                 return None
             
-            # Compare predictions with winning numbers
+            # FIXED: Format winning numbers based on prize type
+            winning_formatted = []
+            for num in winning_numbers:
+                if num:
+                    num_str = str(num).strip().upper()
+                    
+                    if prize_type in ['1st', '2nd', '3rd']:
+                        # For 1st-3rd prizes: use full format (e.g., "DU350667")
+                        if len(num_str) >= 6:  # Valid full format
+                            winning_formatted.append(num_str)
+                    else:
+                        # For 4th-10th prizes: ensure 4-digit format with leading zeros
+                        if len(num_str) <= 4 and num_str.isdigit():
+                            winning_formatted.append(num_str.zfill(4))
+            
+            if not winning_formatted:
+                return None
+            
+            # FIXED: Format predicted numbers to match winning number format
             predicted_numbers = prediction.predicted_numbers
             if not predicted_numbers:
                 return None
             
-            # KEEP EXACT SAME OUTPUT FORMAT
+            predicted_formatted = []
+            for pred_num in predicted_numbers:
+                pred_str = str(pred_num).strip().upper()
+                
+                if prize_type in ['1st', '2nd', '3rd']:
+                    # For 1st-3rd prizes: use full format as is
+                    predicted_formatted.append(pred_str)
+                else:
+                    # For 4th-10th prizes: extract last 4 digits and zero-pad
+                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str
+                    if pred_last_4.isdigit():
+                        predicted_formatted.append(pred_last_4.zfill(4))
+            
+            # Compare predictions with winning numbers
             accuracy_results = {
                 "100%": [],
                 "75%": [],
@@ -956,57 +949,69 @@ class LotteryPredictionAPIView(APIView):
             perfect_matches = 0
             total_accuracy_points = 0
             
-            for pred_num in predicted_numbers:
-                pred_str = str(pred_num)
-                
-                # FIXED: Format predicted number based on prize type
-                if prize_type in ['1st', '2nd', '3rd']:
-                    # For 1st-3rd prizes: extract last 4 digits from prediction (e.g., "KR123456" -> "3456")
-                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
-                else:
-                    # For 4th-10th prizes: use as is
-                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
-                
-                # Find best match (KEEP ORIGINAL LOGIC)
+            for pred_num in predicted_formatted:
                 best_match_percentage = 0
-                for winning_num in winning_last_4:
-                    match_count = sum(1 for i, digit in enumerate(pred_last_4) 
-                                    if i < len(winning_num) and digit == winning_num[i])
-                    
-                    # KEEP ORIGINAL PERCENTAGE MAPPING
-                    if match_count == 4:
-                        match_percentage = 100
-                    elif match_count == 3:
-                        match_percentage = 75
-                    elif match_count == 2:
-                        match_percentage = 50
-                    elif match_count == 1:
-                        match_percentage = 25
+                
+                for winning_num in winning_formatted:
+                    if prize_type in ['1st', '2nd', '3rd']:
+                        # Full format comparison for 1st-3rd prizes
+                        if pred_num == winning_num:
+                            match_percentage = 100
+                        elif len(pred_num) >= 6 and len(winning_num) >= 6:
+                            # Partial matching: check how many positions match
+                            min_len = min(len(pred_num), len(winning_num))
+                            match_count = sum(1 for i in range(min_len) 
+                                            if pred_num[i] == winning_num[i])
+                            
+                            if match_count == min_len:
+                                match_percentage = 100
+                            elif match_count >= min_len * 0.75:
+                                match_percentage = 75
+                            elif match_count >= min_len * 0.5:
+                                match_percentage = 50
+                            elif match_count >= min_len * 0.25:
+                                match_percentage = 25
+                            else:
+                                match_percentage = 0
+                        else:
+                            match_percentage = 0
                     else:
-                        match_percentage = 0
+                        # 4-digit comparison for 4th-10th prizes
+                        match_count = sum(1 for i, digit in enumerate(pred_num) 
+                                        if i < len(winning_num) and digit == winning_num[i])
+                        
+                        if match_count == 4:
+                            match_percentage = 100
+                        elif match_count == 3:
+                            match_percentage = 75
+                        elif match_count == 2:
+                            match_percentage = 50
+                        elif match_count == 1:
+                            match_percentage = 25
+                        else:
+                            match_percentage = 0
                     
                     best_match_percentage = max(best_match_percentage, match_percentage)
                 
-                # KEEP EXACT SAME CATEGORIZATION LOGIC
+                # Categorize the prediction
                 if best_match_percentage == 100:
-                    accuracy_results["100%"].append(pred_last_4)
+                    accuracy_results["100%"].append(pred_num)
                     perfect_matches += 1
                     total_accuracy_points += 100
                 elif best_match_percentage == 75:
-                    accuracy_results["75%"].append(pred_last_4)
+                    accuracy_results["75%"].append(pred_num)
                     total_accuracy_points += 75
                 elif best_match_percentage == 50:
-                    accuracy_results["50%"].append(pred_last_4)
+                    accuracy_results["50%"].append(pred_num)
                     total_accuracy_points += 50
                 elif best_match_percentage == 25:
-                    accuracy_results["25%"].append(pred_last_4)
+                    accuracy_results["25%"].append(pred_num)
                     total_accuracy_points += 25
             
-            # Calculate overall accuracy percentage (KEEP ORIGINAL FORMULA)
-            total_predictions = len(predicted_numbers)
+            # Calculate overall accuracy percentage
+            total_predictions = len(predicted_formatted)
             overall_accuracy = (total_accuracy_points / (total_predictions * 100)) * 100 if total_predictions > 0 else 0
             
-            # RETURN EXACT SAME FORMAT AS ORIGINAL
             return {
                 "date": str(latest_result.date),
                 "summary": {

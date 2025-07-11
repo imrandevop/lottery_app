@@ -57,36 +57,57 @@ class LotteryPredictionEngine:
         return historical_data
     
     def get_repeated_numbers(self, lottery_name, prize_type, count=12):
-        """Get most frequently occurring 4-digit numbers from historical data for specific prize type"""
-        # Build query for specific lottery, prize type, and published results only
+        """
+        FIXED: Get repeated numbers in the correct format for each prize type
+        """
         query = Q(lottery_result__is_published=True)
         query &= Q(lottery_result__lottery__name__iexact=lottery_name)
         query &= Q(prize_type=prize_type)
         
-        # Get historical data for the specific prize type only
-        # FIXED: Return model instances instead of dictionaries
         historical_data = PrizeEntry.objects.filter(query).select_related(
             'lottery_result', 'lottery_result__lottery'
         ).order_by('-lottery_result__date')[:2000]
         
-        # Extract last 4 digits from all ticket numbers
-        last_4_digits = []
-        for entry in historical_data:
-            # FIXED: Now entry.ticket_number works because entry is a model instance
-            if entry.ticket_number:
-                ticket_str = str(entry.ticket_number).strip()
-                # Always get last 4 digits regardless of prize type
-                last_4 = ticket_str[-4:] if len(ticket_str) >= 4 else ticket_str.zfill(4)
-                if last_4.isdigit() and len(last_4) == 4:
-                    last_4_digits.append(last_4)
+        repeated_numbers = []
         
-        if not last_4_digits:
-            # Generate random 4-digit numbers if no historical data
-            return [str(random.randint(1000, 9999)).zfill(4) for _ in range(count)]
+        if prize_type in ['1st', '2nd', '3rd']:
+            # For 1st-3rd prizes: collect full format numbers
+            for entry in historical_data:
+                if entry.ticket_number:
+                    ticket_str = str(entry.ticket_number).strip().upper()
+                    # Ensure it's a valid full format (at least 6 characters)
+                    if len(ticket_str) >= 6:
+                        repeated_numbers.append(ticket_str)
+        else:
+            # For 4th-10th prizes: collect 4-digit numbers
+            for entry in historical_data:
+                if entry.ticket_number:
+                    ticket_str = str(entry.ticket_number).strip()
+                    # For 4th-10th, tickets are already in 4-digit format
+                    if len(ticket_str) <= 4 and ticket_str.isdigit():
+                        repeated_numbers.append(ticket_str.zfill(4))
+                    elif len(ticket_str) > 4:
+                        # Fallback: extract last 4 digits
+                        last_4 = ticket_str[-4:]
+                        if last_4.isdigit():
+                            repeated_numbers.append(last_4.zfill(4))
         
-        # Count frequency of each 4-digit number
-        digit_frequency = Counter(last_4_digits)
-        most_frequent = digit_frequency.most_common()
+        if not repeated_numbers:
+            # Generate appropriate format random numbers if no historical data
+            if prize_type in ['1st', '2nd', '3rd']:
+                # Generate full format random numbers
+                lottery = Lottery.objects.filter(name__iexact=lottery_name).first()
+                lottery_code = lottery.code.upper() if lottery and lottery.code else 'XX'
+                return [f"{lottery_code}{chr(65 + random.randint(0, 25))}{random.randint(100000, 999999)}" 
+                    for _ in range(count)]
+            else:
+                # Generate 4-digit random numbers
+                return [str(random.randint(1000, 9999)).zfill(4) for _ in range(count)]
+        
+        # Count frequency and return most common
+        from collections import Counter
+        frequency = Counter(repeated_numbers)
+        most_frequent = frequency.most_common()
         
         result = []
         
@@ -96,40 +117,52 @@ class LotteryPredictionEngine:
                 break
             result.append(num)
         
-        # Fill remaining slots with variations of existing numbers
+        # Fill remaining slots with variations
         while len(result) < count:
             if most_frequent:
-                # Take one of the top frequent numbers and create variations
-                base_options = most_frequent[:min(5, len(most_frequent))]  # Use top 5 most frequent
-                base_num = random.choice(base_options)[0]  # Randomly pick from top options
-                base_int = int(base_num)
+                base_num = random.choice(most_frequent[:5])[0]  # Pick from top 5
                 
-                # Create variations with different ranges for more diversity
-                variation_ranges = [(-100, 100), (-500, 500), (-200, 200), (-300, 300), (-50, 50)]
-                variation_range = random.choice(variation_ranges)
-                
-                for attempt in range(100):  # Max attempts to find unique number
-                    variation = random.randint(variation_range[0], variation_range[1])
-                    new_num = max(0, min(9999, base_int + variation))
-                    new_num_str = str(new_num).zfill(4)
-                    
-                    if new_num_str not in result:
-                        result.append(new_num_str)
-                        break
+                if prize_type in ['1st', '2nd', '3rd']:
+                    # For full format: vary the numeric part
+                    if len(base_num) >= 6:
+                        alpha_part = base_num[:2]  # First 2 characters
+                        numeric_part = base_num[2:]  # Rest is numeric
+                        
+                        try:
+                            base_numeric = int(numeric_part)
+                            variation = random.randint(-50000, 50000)
+                            new_numeric = max(100000, min(999999, base_numeric + variation))
+                            new_num = alpha_part + str(new_numeric).zfill(6)
+                            
+                            if new_num not in result:
+                                result.append(new_num)
+                                continue
+                        except ValueError:
+                            pass
                 else:
-                    # If couldn't create unique variation, use random
-                    while True:
-                        random_num = str(random.randint(1000, 9999)).zfill(4)
-                        if random_num not in result:
-                            result.append(random_num)
-                            break
+                    # For 4-digit: create numeric variations
+                    try:
+                        base_int = int(base_num)
+                        variation = random.randint(-500, 500)
+                        new_num = max(0, min(9999, base_int + variation))
+                        new_num_str = str(new_num).zfill(4)
+                        
+                        if new_num_str not in result:
+                            result.append(new_num_str)
+                            continue
+                    except ValueError:
+                        pass
+            
+            # Fallback: generate random number
+            if prize_type in ['1st', '2nd', '3rd']:
+                lottery = Lottery.objects.filter(name__iexact=lottery_name).first()
+                lottery_code = lottery.code.upper() if lottery and lottery.code else 'XX'
+                random_num = f"{lottery_code}{chr(65 + random.randint(0, 25))}{random.randint(100000, 999999)}"
             else:
-                # No historical data, generate random
-                while True:
-                    random_num = str(random.randint(1000, 9999)).zfill(4)
-                    if random_num not in result:
-                        result.append(random_num)
-                        break
+                random_num = str(random.randint(1000, 9999)).zfill(4)
+            
+            if random_num not in result:
+                result.append(random_num)
         
         return result[:count]
     
