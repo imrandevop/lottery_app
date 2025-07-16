@@ -4,9 +4,8 @@ set -o errexit
 
 pip install -r requirements.txt
 
-python manage.py makemigrations  # Add this line
+# Only do static files during build (no DB operations)
 python manage.py collectstatic --no-input
-python manage.py migrate
 
-# Create cache table (ignore if already exists)
-python manage.py createcachetable lottery_cache_table || echo "Cache table already exists or using memory cache"
+# Skip migrations and cache table creation during build
+echo "Build completed - migrations will run at startup"
