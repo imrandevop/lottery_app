@@ -123,7 +123,7 @@
 .checkbox-container {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
 }
 
 .checkbox-group {
@@ -143,6 +143,66 @@
     margin-bottom: 0;
     font-weight: normal;
     cursor: pointer;
+}
+
+/* Special styling for the new "Notify" checkbox */
+.checkbox-group input[type="checkbox"]#notify {
+    accent-color: #28a745; /* Green color for notify checkbox */
+    transform: scale(1.1); /* Slightly larger */
+}
+
+.checkbox-group label[for="notify"] {
+    color: #28a745; /* Green text for notify label */
+    font-weight: 500;
+    position: relative;
+}
+
+/* Add a small notification icon next to notify label */
+.checkbox-group label[for="notify"]::after {
+    content: "📱";
+    font-size: 12px;
+    margin-left: 4px;
+    opacity: 0.7;
+}
+
+/* Hover effect for notify checkbox */
+.checkbox-group input[type="checkbox"]#notify:hover + label {
+    color: #1e7e34;
+}
+
+/* Checked state styling for notify checkbox */
+.checkbox-group input[type="checkbox"]#notify:checked + label {
+    color: #155724;
+    font-weight: 600;
+}
+
+.checkbox-group input[type="checkbox"]#notify:checked + label::after {
+    content: "✅";
+    opacity: 1;
+}
+
+/* Responsive design for checkbox container */
+@media (max-width: 768px) {
+    .checkbox-container {
+        gap: 10px;
+    }
+    
+    .checkbox-group {
+        margin-top: 16px;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .checkbox-group input[type="checkbox"]#notify {
+        accent-color: #000;
+    }
+    
+    .checkbox-group label[for="notify"] {
+        color: #000;
+        border: 1px solid #000;
+        padding: 2px 4px;
+    }
 }
 
 /* ========== BUTTON STYLING ========== */

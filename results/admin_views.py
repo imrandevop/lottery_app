@@ -1,14 +1,17 @@
-# admin_views.py
+# admin_views.py - Updated with notification support
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_protect
 from django.contrib import messages
 from django.contrib.admin import site
 from django.contrib.admin.sites import AdminSite
-from .models import Lottery, LotteryResult, PrizeEntry
+from .models import Lottery, LotteryResult, PrizeEntry, NotificationLog
+from .services.fcm_service import FCMService
 import json
 import re
+import logging
 
+logger = logging.getLogger('lottery_app')
 
 def clean_spaces_from_data(data):
     """
@@ -142,14 +145,39 @@ def handle_form_submission(request):
             # For non-AJAX requests, redirect
             return redirect('results:add_result')
         
-        # Create lottery result
+        # Get lottery object
+        lottery = Lottery.objects.get(id=lottery_id)
+        
+        # Create lottery result with new notification field
         lottery_result = LotteryResult.objects.create(
-            lottery_id=lottery_id,
+            lottery=lottery,
             date=date,
             draw_number=draw_number,  # Already cleaned of spaces
             is_published=cleaned_post.get('is_published') == 'on',
-            is_bumper=cleaned_post.get('is_bumper') == 'on'
+            is_bumper=cleaned_post.get('is_bumper') == 'on',
+            results_ready_notification=cleaned_post.get('results_ready_notification') == 'on'
         )
+        
+        # Send first notification automatically for new results
+        try:
+            fcm_result = FCMService.send_lottery_result_started(lottery.name)
+            
+            # Log the notification
+            NotificationLog.objects.create(
+                notification_type='result_started',
+                title="🎯 Kerala Lottery Results Loading...",
+                body=f"We're adding the latest {lottery.name} results. Stay tuned!",
+                lottery_name=lottery.name,
+                draw_number=draw_number,
+                success_count=fcm_result['success_count'],
+                failure_count=fcm_result['failure_count'],
+                total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
+            )
+            
+            logger.info(f"📱 Started notification sent for new result: {lottery.name} - {draw_number}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to send started notification: {e}")
         
         # Process prize entries
         prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
@@ -171,7 +199,40 @@ def handle_form_submission(request):
                         place=place  # Already cleaned of spaces
                     )
         
-        messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
+        # Send completion notification if requested
+        if lottery_result.results_ready_notification:
+            try:
+                fcm_result = FCMService.send_lottery_result_completed(
+                    lottery_result.lottery.name, 
+                    lottery_result.draw_number
+                )
+                
+                # Log the notification
+                NotificationLog.objects.create(
+                    notification_type='result_completed',
+                    title="🎉 Kerala Lottery Results Ready!",
+                    body=f"{lottery_result.lottery.name} Draw {lottery_result.draw_number} results are now available. Check if you won!",
+                    lottery_name=lottery_result.lottery.name,
+                    draw_number=lottery_result.draw_number,
+                    success_count=fcm_result['success_count'],
+                    failure_count=fcm_result['failure_count'],
+                    total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
+                )
+                
+                logger.info(f"📱 Completed notification sent: {lottery_result.lottery.name} - {lottery_result.draw_number}")
+                
+                # Auto-publish when notification is sent
+                if not lottery_result.is_published:
+                    lottery_result.is_published = True
+                    lottery_result.save()
+                
+                messages.success(request, f'Lottery result for {lottery_result} has been created successfully and users have been notified! 📱')
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to send completion notification: {e}")
+                messages.warning(request, f'Lottery result for {lottery_result} has been created successfully but notification failed to send.')
+        else:
+            messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
         
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -242,6 +303,7 @@ def handle_form_submission(request):
     
     except Exception as e:
         messages.error(request, f'Error creating lottery result: {str(e)}')
+        logger.error(f"❌ Error creating lottery result: {e}")
         # Get admin context for error case too
         admin_site = site
         context = {
@@ -264,7 +326,6 @@ def handle_form_submission(request):
             'app_label': 'results',
         }
         return render(request, 'admin/lottery_add_result.html', context)
-    
 
 
 @csrf_protect
@@ -400,12 +461,20 @@ def handle_edit_form_submission(request, lottery_result):
             # For non-AJAX requests, redirect
             return redirect('results:edit_result', result_id=lottery_result.id)
         
+        # Check if notification should be sent (only if checkbox is newly checked)
+        results_ready_notification = cleaned_post.get('results_ready_notification') == 'on'
+        should_send_notification = (
+            results_ready_notification and 
+            not lottery_result.results_ready_notification
+        )
+        
         # Update lottery result
         lottery_result.lottery_id = lottery_id
         lottery_result.date = date
         lottery_result.draw_number = draw_number  # Already cleaned of spaces
         lottery_result.is_published = cleaned_post.get('is_published') == 'on'
         lottery_result.is_bumper = cleaned_post.get('is_bumper') == 'on'
+        lottery_result.results_ready_notification = results_ready_notification
         lottery_result.save()
         
         # Delete existing prize entries
@@ -431,7 +500,40 @@ def handle_edit_form_submission(request, lottery_result):
                         place=place  # Already cleaned of spaces
                     )
         
-        messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
+        # Send completion notification if requested
+        if should_send_notification:
+            try:
+                fcm_result = FCMService.send_lottery_result_completed(
+                    lottery_result.lottery.name, 
+                    lottery_result.draw_number
+                )
+                
+                # Log the notification
+                NotificationLog.objects.create(
+                    notification_type='result_completed',
+                    title="🎉 Kerala Lottery Results Ready!",
+                    body=f"{lottery_result.lottery.name} Draw {lottery_result.draw_number} results are now available. Check if you won!",
+                    lottery_name=lottery_result.lottery.name,
+                    draw_number=lottery_result.draw_number,
+                    success_count=fcm_result['success_count'],
+                    failure_count=fcm_result['failure_count'],
+                    total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
+                )
+                
+                logger.info(f"📱 Completed notification sent: {lottery_result.lottery.name} - {lottery_result.draw_number}")
+                
+                # Auto-publish when notification is sent
+                if not lottery_result.is_published:
+                    lottery_result.is_published = True
+                    lottery_result.save()
+                
+                messages.success(request, f'Lottery result for {lottery_result} has been updated successfully and users have been notified! 📱')
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to send completion notification: {e}")
+                messages.warning(request, f'Lottery result for {lottery_result} has been updated successfully but notification failed to send.')
+        else:
+            messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
         
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -502,6 +604,7 @@ def handle_edit_form_submission(request, lottery_result):
     
     except Exception as e:
         messages.error(request, f'Error updating lottery result: {str(e)}')
+        logger.error(f"❌ Error updating lottery result: {e}")
         # Get admin context for error case too
         admin_site = site
         context = {

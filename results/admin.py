@@ -1,6 +1,6 @@
 # admin.py
-from django.contrib import admin
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo
+from django.contrib import admin, messages
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, NotificationLog
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -9,6 +9,8 @@ from django.http import HttpResponseRedirect
 from django.core.exceptions import ValidationError
 import re
 from django.utils.html import format_html
+from django.shortcuts import render, redirect
+from .services.fcm_service import FCMService
 
 
 
@@ -142,21 +144,59 @@ class LotteryResultAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            # Override the default add and change URLs
             path('add/', self.admin_site.admin_view(self.redirect_to_custom_add), name='results_lotteryresult_add'),
-            # Add a new URL pattern to catch detail view requests and redirect to edit
-            path('<path:object_id>/', self.admin_site.admin_view(self.redirect_to_custom_edit), name='results_lotteryresult_change'),
+            path('<path:object_id>/change/', self.admin_site.admin_view(self.redirect_to_custom_edit), name='results_lotteryresult_change'),
+            # Custom notification URL
+            path('send-notifications/', self.admin_site.admin_view(self.send_notifications_view), name='send-notifications'),
         ]
         return custom_urls + urls
     
     def redirect_to_custom_add(self, request):
         """Redirect from the standard admin add page to our custom add view."""
-        return HttpResponseRedirect(reverse('results:add_result'))
+        return HttpResponseRedirect('/api/results/admin/add-result/')
     
     def redirect_to_custom_edit(self, request, object_id):
         """Redirect from the standard admin detail page to our custom edit view."""
         # Extract just the numeric ID from the object_id path
-        result_id = object_id.split('/')[0]
-        return HttpResponseRedirect(reverse('results:edit_result', kwargs={'result_id': result_id}))
+        result_id = object_id.rstrip('/').split('/')[-1]
+        return HttpResponseRedirect(f'/api/results/admin/edit-result/{result_id}/')
+    
+    def send_notifications_view(self, request):
+        """Custom admin view to send notifications"""
+        # Your existing notification view code...
+        if request.method == 'POST':
+            notification_type = request.POST.get('type')
+            lottery_name = request.POST.get('lottery_name', 'Kerala Lottery')
+            draw_number = request.POST.get('draw_number', 'Latest')
+            
+            try:
+                if notification_type == 'test':
+                    result = FCMService.test_notification()
+                    messages.success(request, f"Test notification sent! Success: {result['success_count']}, Failed: {result['failure_count']}")
+                
+                elif notification_type == 'started':
+                    result = FCMService.send_lottery_result_started(lottery_name)
+                    messages.success(request, f"Started notification sent for {lottery_name}! Success: {result['success_count']}, Failed: {result['failure_count']}")
+                
+                elif notification_type == 'completed':
+                    result = FCMService.send_lottery_result_completed(lottery_name, draw_number)
+                    messages.success(request, f"Completed notification sent for {lottery_name}! Success: {result['success_count']}, Failed: {result['failure_count']}")
+                
+            except Exception as e:
+                messages.error(request, f"Failed to send notification: {e}")
+            
+            return redirect('..')
+        
+        # Get lottery choices
+        from .models import Lottery
+        lotteries = Lottery.objects.all()
+        
+        context = {
+            'title': 'Send Push Notifications',
+            'lotteries': lotteries,
+        }
+        return render(request, 'admin/send_notifications.html', context)
 
 
 # Admin for PrizeEntry with no-space form

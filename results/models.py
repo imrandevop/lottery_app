@@ -32,6 +32,11 @@ class LotteryResult(models.Model):
     draw_number = models.CharField(max_length=50)
     is_published = models.BooleanField(default=False, verbose_name="Published")
     is_bumper = models.BooleanField(default=False, verbose_name="Bumper")
+    results_ready_notification = models.BooleanField(
+        default=False, 
+        verbose_name="Notify",
+        help_text="Send 'Results Ready' notification to users"
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -323,3 +328,50 @@ class LiveVideo(models.Model):
             self.date <= timezone.now() and 
             self.is_active
         )
+    
+
+
+#<---------------NOTIFICATION SECTION---------------->
+
+
+class NotificationLog(models.Model):
+    """
+    Track sent notifications for analytics and debugging
+    """
+    NOTIFICATION_TYPES = [
+        ('result_started', 'Result Addition Started'),
+        ('result_completed', 'Result Addition Completed'),
+        ('test', 'Test Notification'),
+        ('custom', 'Custom Notification'),
+    ]
+    
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    lottery_name = models.CharField(max_length=200, blank=True, null=True)
+    draw_number = models.CharField(max_length=50, blank=True, null=True)
+    
+    # FCM Response data
+    success_count = models.IntegerField(default=0)
+    failure_count = models.IntegerField(default=0)
+    total_tokens = models.IntegerField(default=0)
+    
+    # Timing
+    sent_at = models.DateTimeField(auto_now_add=True)
+    
+    # Additional data (JSON)
+    extra_data = models.JSONField(default=dict, blank=True)
+    
+    class Meta:
+        verbose_name = "Notification Log"
+        verbose_name_plural = "Notification Logs"
+        ordering = ['-sent_at']
+    
+    def __str__(self):
+        return f"{self.get_notification_type_display()} - {self.sent_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    @property
+    def success_rate(self):
+        if self.total_tokens == 0:
+            return 0
+        return (self.success_count / self.total_tokens) * 100

@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import Lottery, LotteryResult, PrizeEntry, News, LiveVideo
 from collections import defaultdict
 
+
 class PrizeEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = PrizeEntry
@@ -350,3 +351,6 @@ class LotteryPercentageRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("Lottery number cannot exceed 4 digits")
         
         return value
+    
+
+#<---------------NOTIFICATION SECTION ---------------->

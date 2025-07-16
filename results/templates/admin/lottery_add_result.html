@@ -100,6 +100,10 @@
                                     <input type="checkbox" name="is_bumper" id="bumper" {% if lottery_result and lottery_result.is_bumper %}checked{% endif %}>
                                     <label for="bumper">Is bumper</label>
                                 </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" name="results_ready_notification" id="notify" {% if lottery_result and lottery_result.results_ready_notification %}checked{% endif %}>
+                                    <label for="notify">Notify</label>
+                                </div>
                             </div>
                         </div>
                     </div>

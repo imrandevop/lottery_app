@@ -1159,6 +1159,256 @@ function showSpaceNotification() {
 }
 
 
+// Add these functions to your existing lottery_admin.js file
+
+/**
+ * Enhanced form validation with new notification checkbox
+ */
+function validateAndSubmitWithNotification(e) {
+    e.preventDefault();
+    
+    // Basic validation
+    const lottery = document.querySelector('select[name="lottery"]').value;
+    const drawNumber = document.querySelector('input[name="draw_number"]').value;
+    const date = document.querySelector('input[name="date"]').value;
+    
+    if (!lottery || !drawNumber || !date) {
+        showNotification('Please fill in all required fields in the Lottery Draw Information section.', 'error');
+        return;
+    }
+    
+    // Check if at least one prize entry is filled
+    let hasEntries = false;
+    const prizeTypes = Object.keys(entryCounters);
+    
+    for (const prizeType of prizeTypes) {
+        const entriesContainer = document.getElementById(prizeType + '-entries');
+        if (!entriesContainer) continue;
+        
+        const entries = entriesContainer.querySelectorAll('.prize-entry');
+        
+        for (const entry of entries) {
+            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]');
+            const values = Array.from(inputs).map(input => input.value.trim());
+            
+            if (values.filter(v => v !== '').length >= 2) {
+                hasEntries = true;
+                break;
+            }
+        }
+        
+        if (hasEntries) break;
+    }
+    
+    if (!hasEntries) {
+        showNotification('Please add at least one prize entry.', 'error');
+        return;
+    }
+    
+    // Check if notification checkbox is checked
+    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
+    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
+    const willSendNotification = notifyCheckbox && notifyCheckbox.checked;
+    
+    // Auto-check published if notification is being sent
+    if (willSendNotification && isPublishedCheckbox && !isPublishedCheckbox.checked) {
+        isPublishedCheckbox.checked = true;
+        showNotification('Auto-enabled "Mark as declared" since notification is being sent.', 'info');
+    }
+    
+    // Show appropriate saving message
+    if (willSendNotification) {
+        showNotification('Saving results and sending notification to users...', 'info');
+    } else {
+        showNotification('Saving lottery results...', 'info');
+    }
+    
+    // Get the form and create FormData object
+    const form = document.getElementById('lotteryForm');
+    const formData = new FormData(form);
+    
+    // Get UI elements for status updates
+    const saveBtn = document.querySelector('.save-btn-bottom');
+    let iconSpan = null;
+    let textSpan = null;
+    
+    // Update UI to show loading state
+    if (saveBtn) {
+        iconSpan = saveBtn.querySelector('span:first-child');
+        textSpan = saveBtn.querySelector('span:last-child');
+        
+        saveBtn.classList.add('loading');
+        saveBtn.disabled = true;
+        
+        if (iconSpan) iconSpan.textContent = willSendNotification ? '📱' : '⏳';
+        if (textSpan) {
+            const isEditMode = form.querySelector('input[name="result_id"]');
+            if (willSendNotification) {
+                textSpan.textContent = isEditMode ? 'Updating & Notifying...' : 'Saving & Notifying...';
+            } else {
+                textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
+            }
+        }
+    }
+    
+    // Perform AJAX submission
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Server returned an error response: ' + response.status);
+        }
+        return response.text();
+    })
+    .then(html => {
+        // Success handling
+        isDirty = false;
+        
+        // Look for success messages in the response
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const successMsg = doc.querySelector('.messagelist .success');
+        const errorMsg = doc.querySelector('.messagelist .error');
+        
+        if (errorMsg) {
+            showNotification(errorMsg.textContent.trim(), 'error');
+        } else if (successMsg) {
+            let message = successMsg.textContent.trim();
+            
+            // Enhance message if notification was sent
+            if (willSendNotification) {
+                message = message + ' 📱 Users have been notified!';
+            }
+            
+            showNotification(message, 'success');
+        } else {
+            // Default success message
+            const defaultMsg = willSendNotification ? 
+                'Results saved and users notified! 📱' : 
+                'Lottery results saved successfully!';
+            showNotification(defaultMsg, 'success');
+        }
+        
+        // Update any necessary parts of the page
+        const resultId = doc.querySelector('input[name="result_id"]');
+        if (resultId && !form.querySelector('input[name="result_id"]')) {
+            // If this was a new entry that now has an ID, update the form
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'result_id';
+            hiddenInput.value = resultId.value;
+            form.appendChild(hiddenInput);
+            
+            // Update page title to show we're in edit mode
+            const title = document.querySelector('.form-header');
+            if (title) {
+                title.textContent = 'Lottery Result Edit System';
+            }
+        }
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting form:', error);
+        const errorMsg = willSendNotification ? 
+            'Error saving results and sending notification. Please try again.' :
+            'Error saving lottery results. Please try again.';
+        showNotification(errorMsg, 'error');
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    });
+}
+
+/**
+ * Enhanced notification checkbox behavior
+ */
+function initializeNotificationCheckbox() {
+    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
+    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
+    
+    if (notifyCheckbox) {
+        // Add change event listener
+        notifyCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // Show confirmation when checking
+                showNotification('Notification will be sent when you save the results.', 'info');
+                
+                // Auto-check published (but don't force it)
+                if (isPublishedCheckbox && !isPublishedCheckbox.checked) {
+                    isPublishedCheckbox.checked = true;
+                    showNotification('Auto-enabled "Mark as declared" for notification.', 'info');
+                }
+            } else {
+                showNotification('Notification will not be sent.', 'info');
+            }
+            
+            isDirty = true;
+            notifyPreviewUpdate();
+        });
+        
+        // Add visual feedback
+        notifyCheckbox.addEventListener('mouseenter', function() {
+            if (!this.checked) {
+                this.style.transform = 'scale(1.2)';
+                this.style.transition = 'transform 0.2s ease';
+            }
+        });
+        
+        notifyCheckbox.addEventListener('mouseleave', function() {
+            this.style.transform = 'scale(1.1)';
+        });
+    }
+}
+
+/**
+ * Update the main initialization function
+ */
+function initLotteryAdminEnhanced() {
+    // Call existing initialization
+    initLotteryAdmin();
+    
+    // Initialize new notification checkbox
+    initializeNotificationCheckbox();
+    
+    // Replace the form submission handler with the enhanced version
+    const form = document.getElementById('lotteryForm');
+    if (form) {
+        form.removeEventListener('submit', validateAndSubmit);
+        form.addEventListener('submit', validateAndSubmitWithNotification);
+    }
+}
+
+// Update the DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', function() {
+    initLotteryAdminEnhanced();
+});
+
+
 
 
 

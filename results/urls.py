@@ -1,3 +1,4 @@
+#results\urls.py
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view
 from . import views
@@ -26,6 +27,11 @@ urlpatterns = [
     path('live-videos/', LiveVideoListView.as_view(), name='live-videos-list'),
 
     path('lottery-percentage/', LotteryWinningPercentageAPI.as_view(), name='lottery-percentage'),
+
+
+    path('notifications/result-started/', views.send_result_started_notification, name='send_result_started'),
+    path('notifications/result-completed/', views.send_result_completed_notification, name='send_result_completed'),
+    path('notifications/test/', views.send_test_notification, name='send_test_notification'),
 
 
 

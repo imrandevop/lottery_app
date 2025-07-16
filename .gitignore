@@ -32,3 +32,6 @@ Desktop.ini
 .vscode/
 *.swp
 *.swo
+
+
+firebase-service-account.json

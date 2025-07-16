@@ -3,13 +3,13 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
-from .models import PrizeEntry, LiveVideo
+from .models import PrizeEntry, LiveVideo, NotificationLog
 from django.db.models import Q
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
@@ -23,6 +23,18 @@ from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 import logging
 import numpy as np
 from collections import Counter
+from .services.fcm_service import FCMService
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
+import json
+
+
+
 logger = logging.getLogger('lottery_app')
 
 
@@ -1869,3 +1881,314 @@ class LotteryWinningPercentageAPI(APIView):
                 'message': 'Internal server error occurred while calculating percentage',
                 'status': 'error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+#<--------------NOTIFICATION SECTION ---------------->
+
+
+@api_view(['POST'])
+def send_result_started_notification(request):
+    """
+    Manually trigger "result addition started" notification
+    
+    Body:
+    {
+        "lottery_name": "Karunya"
+    }
+    """
+    lottery_name = request.data.get('lottery_name', 'Kerala Lottery')
+    
+    try:
+        # Send notification
+        result = FCMService.send_lottery_result_started(lottery_name)
+        
+        # Log notification
+        NotificationLog.objects.create(
+            notification_type='result_started',
+            title="🎯 Kerala Lottery Results Loading...",
+            body=f"We're adding the latest {lottery_name} results. Stay tuned!",
+            lottery_name=lottery_name,
+            success_count=result['success_count'],
+            failure_count=result['failure_count'],
+            total_tokens=result['success_count'] + result['failure_count']
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Result started notification sent',
+            'lottery_name': lottery_name,
+            'statistics': result
+        })
+        
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to send notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def send_result_completed_notification(request):
+    """
+    Manually trigger "result addition completed" notification
+    
+    Body:
+    {
+        "lottery_name": "Karunya",
+        "draw_number": "KR-123"
+    }
+    """
+    lottery_name = request.data.get('lottery_name', 'Kerala Lottery')
+    draw_number = request.data.get('draw_number', 'Latest')
+    
+    try:
+        # Send notification
+        result = FCMService.send_lottery_result_completed(lottery_name, draw_number)
+        
+        # Log notification
+        NotificationLog.objects.create(
+            notification_type='result_completed',
+            title="🎉 Kerala Lottery Results Ready!",
+            body=f"{lottery_name} Draw {draw_number} results are now available. Check if you won!",
+            lottery_name=lottery_name,
+            draw_number=draw_number,
+            success_count=result['success_count'],
+            failure_count=result['failure_count'],
+            total_tokens=result['success_count'] + result['failure_count']
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Result completed notification sent',
+            'lottery_name': lottery_name,
+            'draw_number': draw_number,
+            'statistics': result
+        })
+        
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to send notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def send_test_notification(request):
+    """
+    Send test notification to all users
+    """
+    try:
+        result = FCMService.test_notification()
+        
+        # Log notification
+        NotificationLog.objects.create(
+            notification_type='test',
+            title="🧪 Test Notification",
+            body="This is a test notification from Kerala Lottery App!",
+            success_count=result['success_count'],
+            failure_count=result['failure_count'],
+            total_tokens=result['success_count'] + result['failure_count']
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Test notification sent',
+            'statistics': result
+        })
+        
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to send test notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@staff_member_required
+@csrf_protect
+@require_http_methods(["GET", "POST"])
+def custom_lottery_admin_view(request, result_id=None):
+    """
+    Custom admin view for adding/editing lottery results with notification support
+    """
+    is_edit_mode = result_id is not None
+    lottery_result = None
+    prize_entries_json = '{}'
+    
+    if is_edit_mode:
+        lottery_result = get_object_or_404(LotteryResult, id=result_id)
+        # Get existing prize entries for edit mode
+        prize_entries = {}
+        for prize_type in ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']:
+            entries = PrizeEntry.objects.filter(
+                lottery_result=lottery_result,
+                prize_type=prize_type
+            ).values('prize_amount', 'ticket_number', 'place')
+            if entries:
+                prize_entries[prize_type] = list(entries)
+        
+        prize_entries_json = json.dumps(prize_entries)
+    
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # Get form data
+                lottery_id = request.POST.get('lottery')
+                draw_number = request.POST.get('draw_number')
+                date = request.POST.get('date')
+                is_published = request.POST.get('is_published') == 'on'
+                is_bumper = request.POST.get('is_bumper') == 'on'
+                results_ready_notification = request.POST.get('results_ready_notification') == 'on'
+                
+                # Validate required fields
+                if not all([lottery_id, draw_number, date]):
+                    messages.error(request, 'Please fill in all required fields.')
+                    return render(request, 'admin/lottery_result_form.html', {
+                        'is_edit_mode': is_edit_mode,
+                        'lottery_result': lottery_result,
+                        'lotteries': Lottery.objects.all(),
+                        'prize_types': [
+                            ('1st', '1st Prize'), ('2nd', '2nd Prize'), ('3rd', '3rd Prize'),
+                            ('consolation', 'Consolation Prize'), ('4th', '4th Prize'),
+                            ('5th', '5th Prize'), ('6th', '6th Prize'), ('7th', '7th Prize'),
+                            ('8th', '8th Prize'), ('9th', '9th Prize'), ('10th', '10th Prize')
+                        ],
+                        'prize_entries_json': prize_entries_json
+                    })
+                
+                lottery = Lottery.objects.get(id=lottery_id)
+                
+                # Create or update lottery result
+                if is_edit_mode:
+                    # Check if notification should be sent (only if checkbox is newly checked)
+                    should_send_notification = (
+                        results_ready_notification and 
+                        not lottery_result.results_ready_notification
+                    )
+                    
+                    # Update existing result
+                    lottery_result.lottery = lottery
+                    lottery_result.draw_number = draw_number
+                    lottery_result.date = date
+                    lottery_result.is_published = is_published
+                    lottery_result.is_bumper = is_bumper
+                    lottery_result.results_ready_notification = results_ready_notification
+                    lottery_result.save()
+                    
+                    action = 'updated'
+                    
+                else:
+                    # Create new result
+                    lottery_result = LotteryResult.objects.create(
+                        lottery=lottery,
+                        draw_number=draw_number,
+                        date=date,
+                        is_published=is_published,
+                        is_bumper=is_bumper,
+                        results_ready_notification=results_ready_notification
+                    )
+                    
+                    # Send first notification automatically for new results
+                    try:
+                        fcm_result = FCMService.send_lottery_result_started(lottery.name)
+                        
+                        # Log the notification
+                        NotificationLog.objects.create(
+                            notification_type='result_started',
+                            title="🎯 Kerala Lottery Results Loading...",
+                            body=f"We're adding the latest {lottery.name} results. Stay tuned!",
+                            lottery_name=lottery.name,
+                            draw_number=draw_number,
+                            success_count=fcm_result['success_count'],
+                            failure_count=fcm_result['failure_count'],
+                            total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
+                        )
+                        
+                        logger.info(f"📱 Started notification sent for new result: {lottery.name} - {draw_number}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to send started notification: {e}")
+                    
+                    should_send_notification = results_ready_notification
+                    action = 'created'
+                
+                # Process prize entries (your existing prize entry logic)
+                # Clear existing entries if editing
+                if is_edit_mode:
+                    PrizeEntry.objects.filter(lottery_result=lottery_result).delete()
+                
+                # Process each prize type
+                for prize_type in ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']:
+                    amounts = request.POST.getlist(f'{prize_type}_prize_amount[]')
+                    ticket_numbers = request.POST.getlist(f'{prize_type}_ticket_number[]')
+                    places = request.POST.getlist(f'{prize_type}_place[]')
+                    
+                    # Create prize entries
+                    for i, (amount, ticket_number) in enumerate(zip(amounts, ticket_numbers)):
+                        if amount and ticket_number:
+                            place = places[i] if i < len(places) else ''
+                            
+                            PrizeEntry.objects.create(
+                                lottery_result=lottery_result,
+                                prize_type=prize_type,
+                                prize_amount=amount,
+                                ticket_number=ticket_number,
+                                place=place if place else None
+                            )
+                
+                # Send completion notification if requested
+                if should_send_notification:
+                    try:
+                        fcm_result = FCMService.send_lottery_result_completed(
+                            lottery_result.lottery.name, 
+                            lottery_result.draw_number
+                        )
+                        
+                        # Log the notification
+                        NotificationLog.objects.create(
+                            notification_type='result_completed',
+                            title="🎉 Kerala Lottery Results Ready!",
+                            body=f"{lottery_result.lottery.name} Draw {lottery_result.draw_number} results are now available. Check if you won!",
+                            lottery_name=lottery_result.lottery.name,
+                            draw_number=lottery_result.draw_number,
+                            success_count=fcm_result['success_count'],
+                            failure_count=fcm_result['failure_count'],
+                            total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
+                        )
+                        
+                        logger.info(f"📱 Completed notification sent: {lottery_result.lottery.name} - {lottery_result.draw_number}")
+                        
+                        # Auto-publish when notification is sent
+                        if not lottery_result.is_published:
+                            lottery_result.is_published = True
+                            lottery_result.save()
+                        
+                        messages.success(request, f'Lottery result {action} successfully and users have been notified! 📱')
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to send completion notification: {e}")
+                        messages.warning(request, f'Lottery result {action} successfully but notification failed to send.')
+                else:
+                    messages.success(request, f'Lottery result {action} successfully!')
+                
+                # Redirect based on action
+                if not is_edit_mode:
+                    return redirect('custom_lottery_admin_edit', result_id=lottery_result.id)
+                else:
+                    return redirect('custom_lottery_admin_edit', result_id=lottery_result.id)
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in custom lottery admin: {e}")
+            messages.error(request, f'Error {action if "action" in locals() else "processing"} lottery result: {str(e)}')
+    
+    # GET request - show form
+    context = {
+        'is_edit_mode': is_edit_mode,
+        'lottery_result': lottery_result,
+        'lotteries': Lottery.objects.all(),
+        'prize_types': [
+            ('1st', '1st Prize'), ('2nd', '2nd Prize'), ('3rd', '3rd Prize'),
+            ('consolation', 'Consolation Prize'), ('4th', '4th Prize'),
+            ('5th', '5th Prize'), ('6th', '6th Prize'), ('7th', '7th Prize'),
+            ('8th', '8th Prize'), ('9th', '9th Prize'), ('10th', '10th Prize')
+        ],
+        'prize_entries_json': prize_entries_json
+    }
+    
+    return render(request, 'admin/lottery_result_form.html', context)

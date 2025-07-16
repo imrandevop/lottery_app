@@ -2,6 +2,9 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
+# Firebase Configuration
+import firebase_admin
+from firebase_admin import credentials
 
 load_dotenv()
 
@@ -423,3 +426,30 @@ LOGGING = {
         },
     },
 }
+
+
+
+# Add these to your settings.py file
+
+
+
+# Firebase settings
+FIREBASE_CONFIG = {
+    'SERVICE_ACCOUNT_KEY_PATH': BASE_DIR / 'firebase-service-account.json',  # Path to your downloaded JSON file
+    'PROJECT_ID': 'lotto-app-f3440',  # Your Firebase project ID
+}
+
+# Initialize Firebase Admin SDK
+def initialize_firebase():
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.Certificate(FIREBASE_CONFIG['SERVICE_ACCOUNT_KEY_PATH'])
+            firebase_admin.initialize_app(cred, {
+                'projectId': FIREBASE_CONFIG['PROJECT_ID'],
+            })
+            print("✅ Firebase Admin SDK initialized successfully!")
+        except Exception as e:
+            print(f"❌ Failed to initialize Firebase: {e}")
+            
+# Call initialization
+initialize_firebase()
