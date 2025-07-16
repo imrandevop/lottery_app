@@ -434,22 +434,39 @@ LOGGING = {
 
 
 # Firebase settings
-FIREBASE_CONFIG = {
-    'SERVICE_ACCOUNT_KEY_PATH': BASE_DIR / 'firebase-service-account.json',  # Path to your downloaded JSON file
-    'PROJECT_ID': 'lotto-app-f3440',  # Your Firebase project ID
-}
+import os
+import json
+from pathlib import Path
 
-# Initialize Firebase Admin SDK
+# Firebase settings
 def initialize_firebase():
     if not firebase_admin._apps:
         try:
-            cred = credentials.Certificate(FIREBASE_CONFIG['SERVICE_ACCOUNT_KEY_PATH'])
+            # Try to get Firebase config from environment variable first
+            firebase_key = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY')
+            
+            if firebase_key:
+                # Parse JSON from environment variable
+                service_account_info = json.loads(firebase_key)
+                cred = credentials.Certificate(service_account_info)
+                print("✅ Using Firebase config from environment variable")
+            else:
+                # Fallback to file path
+                file_path = BASE_DIR / 'firebase-service-account.json'
+                if file_path.exists():
+                    cred = credentials.Certificate(str(file_path))
+                    print("✅ Using Firebase config from file")
+                else:
+                    print("❌ No Firebase configuration found")
+                    return
+            
             firebase_admin.initialize_app(cred, {
-                'projectId': FIREBASE_CONFIG['PROJECT_ID'],
+                'projectId': 'lotto-app-f3440',
             })
             print("✅ Firebase Admin SDK initialized successfully!")
+            
         except Exception as e:
             print(f"❌ Failed to initialize Firebase: {e}")
-            
+
 # Call initialization
 initialize_firebase()
