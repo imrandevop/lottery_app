@@ -53,6 +53,11 @@
 {% endblock %}
 
 {% block content %}
+<!-- Success message data attribute for JavaScript -->
+{% if success_message %}
+<div data-success-message="{{ success_message }}" style="display: none;"></div>
+{% endif %}
+
 <!-- ========== MAIN ADMIN CONTENT ========== -->
 <div class="lottery-admin-container">
     <div class="lottery-form-container">

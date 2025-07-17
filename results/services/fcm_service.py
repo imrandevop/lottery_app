@@ -183,35 +183,40 @@ class FCMService:
             logger.error(f"❌ Failed to send notification to all users: {e}")
             return {'success_count': 0, 'failure_count': 0, 'invalid_tokens': []}
     
+    # Replace these two methods in your existing fcm_service.py
+
     @staticmethod
     def send_lottery_result_started(lottery_name: str) -> Dict:
         """
         Send notification when lottery result addition starts
+        Frontend expects type: 'live_result_starts'
         """
-        title = "🎯 Kerala Lottery Results Loading..."
-        body = f"We're adding the latest {lottery_name} results. Stay tuned!"
+        title = "Live Results Starting!"
+        body = f"Kerala {lottery_name} lottery results are now loading. Stay tuned!"
         
         data = {
-            'type': 'result_started',
+            'type': 'live_result_starts',  # Changed from 'result_started' to match frontend
             'lottery_name': lottery_name,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': str(int(datetime.now().timestamp()))  # Changed to epoch timestamp
         }
         
         return FCMService.send_to_all_users(title, body, data)
-    
+
     @staticmethod
-    def send_lottery_result_completed(lottery_name: str, draw_number: str) -> Dict:
+    def send_lottery_result_completed(lottery_name: str, draw_number: str, result_unique_id: str = None) -> Dict:
         """
         Send notification when lottery result addition is completed
+        Frontend expects type: 'result_published'
         """
-        title = "🎉 Kerala Lottery Results Ready!"
+        title = "Results Published!"
         body = f"{lottery_name} Draw {draw_number} results are now available. Check if you won!"
         
         data = {
-            'type': 'result_completed',
+            'type': 'result_published',  # Changed from 'result_completed' to match frontend
+            'result_id': result_unique_id or '',  # Added result_id field for navigation
             'lottery_name': lottery_name,
             'draw_number': draw_number,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': str(int(datetime.now().timestamp()))  # Changed to epoch timestamp
         }
         
         return FCMService.send_to_all_users(title, body, data)
