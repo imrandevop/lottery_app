@@ -276,6 +276,15 @@ function processBulkEntries(prizeType) {
 }
 
 /**
+ * Validate form and submit if valid - MODIFIED to remove confirmation
+ */
+/**
+ * Validate form and submit via AJAX
+ */
+/**
+ * Validate form and submit via AJAX - Customized for Django lottery admin
+ */
+/**
  * Validate form and submit via AJAX without confirmation popup
  */
 function validateAndSubmit(e) {
@@ -367,46 +376,35 @@ function validateAndSubmit(e) {
         // Look for success messages in the response
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
+        const successMsg = doc.querySelector('.messagelist .success');
+        const errorMsg = doc.querySelector('.messagelist .error');
         
-        // Check if there's a success message passed in the context
-        const successMsgElement = doc.querySelector('[data-success-message]');
-        if (successMsgElement) {
-            const successMessage = successMsgElement.getAttribute('data-success-message');
-            showNotification(successMessage, 'success');
+        if (errorMsg) {
+            // Show error message
+            showNotification(errorMsg.textContent.trim(), 'error');
+        } else if (successMsg) {
+            // Show success message
+            showNotification(successMsg.textContent.trim(), 'success');
+            
+            // Update any necessary parts of the page without reloading
+            const resultId = doc.querySelector('input[name="result_id"]');
+            if (resultId && !form.querySelector('input[name="result_id"]')) {
+                // If this was a new entry that now has an ID, update the form
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'result_id';
+                hiddenInput.value = resultId.value;
+                form.appendChild(hiddenInput);
+                
+                // Update page title to show we're in edit mode
+                const title = document.querySelector('.form-header');
+                if (title) {
+                    title.textContent = 'Lottery Result Edit System';
+                }
+            }
         } else {
-            // Fallback to looking for Django messages
-            const successMsg = doc.querySelector('.messagelist .success');
-            const errorMsg = doc.querySelector('.messagelist .error');
-            
-            if (errorMsg) {
-                showNotification(errorMsg.textContent.trim(), 'error');
-            } else if (successMsg) {
-                showNotification(successMsg.textContent.trim(), 'success');
-            } else {
-                // Default success message
-                showNotification('Lottery results saved successfully!', 'success');
-            }
-        }
-        
-        // Update any necessary parts of the page without reloading
-        const resultId = doc.querySelector('input[name="result_id"]');
-        if (resultId && !form.querySelector('input[name="result_id"]')) {
-            // If this was a new entry that now has an ID, update the form
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'result_id';
-            hiddenInput.value = resultId.value;
-            form.appendChild(hiddenInput);
-            
-            // Update page title to show we're in edit mode
-            const title = document.querySelector('.form-header');
-            if (title) {
-                title.textContent = 'Lottery Result Edit System';
-            }
-            
-            // Update URL to edit URL without page reload
-            const newUrl = `/app/results/admin/edit-result/${resultId.value}/`;
-            window.history.pushState({}, '', newUrl);
+            // Default success message
+            showNotification('Lottery results saved successfully!', 'success');
         }
         
         // Reset UI loading state
@@ -614,6 +612,15 @@ function initializeFixedButtons() {
     initButtonInteractions();
 }
 
+/**
+ * Handle preview toggle for fixed buttons
+ */
+/**
+ * Handle preview toggle for fixed buttons - FIXED VERSION
+ */
+/**
+ * Handle preview toggle for fixed buttons - COMPLETE FIX
+ */
 /**
  * Handle preview toggle for fixed buttons - FIXED VERSION
  */
@@ -1062,6 +1069,7 @@ function notifyPreviewUpdate() {
     }, 300);
 }
 
+
 function applyNoSpacesToInput(input) {
     if (!input) return;
     
@@ -1149,6 +1157,9 @@ function showSpaceNotification() {
         notification.style.opacity = '0';
     }, 1500);
 }
+
+
+// Add these functions to your existing lottery_admin.js file
 
 /**
  * Enhanced form validation with new notification checkbox
@@ -1396,6 +1407,10 @@ function initLotteryAdminEnhanced() {
 document.addEventListener('DOMContentLoaded', function() {
     initLotteryAdminEnhanced();
 });
+
+
+
+
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {

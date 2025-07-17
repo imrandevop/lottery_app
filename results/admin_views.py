@@ -1,4 +1,4 @@
-# admin_views.py - Updated with notification support and fixes
+# admin_views.py - Updated with notification support
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_protect
@@ -226,18 +226,13 @@ def handle_form_submission(request):
                     lottery_result.is_published = True
                     lottery_result.save()
                 
-                # Only add message for non-AJAX requests
-                if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    messages.success(request, f'Lottery result for {lottery_result} has been created successfully and users have been notified! 📱')
+                messages.success(request, f'Lottery result for {lottery_result} has been created successfully and users have been notified! 📱')
                 
             except Exception as e:
                 logger.error(f"❌ Failed to send completion notification: {e}")
-                if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    messages.warning(request, f'Lottery result for {lottery_result} has been created successfully but notification failed to send.')
+                messages.warning(request, f'Lottery result for {lottery_result} has been created successfully but notification failed to send.')
         else:
-            # Only add message for non-AJAX requests
-            if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
+            messages.success(request, f'Lottery result for {lottery_result} has been created successfully.')
         
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -265,15 +260,8 @@ def handle_form_submission(request):
             # Get admin context for sidebar
             admin_site = site
             
-            # Determine success message for AJAX response
-            success_message = ""
-            if lottery_result.results_ready_notification:
-                success_message = f'Lottery result for {lottery_result} has been created successfully and users have been notified! 📱'
-            else:
-                success_message = f'Lottery result for {lottery_result} has been created successfully.'
-            
             context = {
-                'title': 'Edit Lottery Result',  # Changed to Edit mode
+                'title': 'Edit Lottery Result',
                 'lotteries': Lottery.objects.all(),
                 'prize_types': [
                     ('1st', '1st Prize'),
@@ -305,13 +293,12 @@ def handle_form_submission(request):
                 # Lottery result data
                 'lottery_result': lottery_result,
                 'prize_entries_json': prize_entries_json_str,  # Safe JSON string
-                'is_edit_mode': True,  # This is now edit mode
-                'success_message': success_message,  # Pass success message to template
+                'is_edit_mode': True,
             }
             return render(request, 'admin/lottery_add_result.html', context)
         
-        # For non-AJAX requests, redirect to the edit view
-        return redirect('results:edit_result', result_id=lottery_result.id)
+        # For non-AJAX requests, redirect
+        return redirect(request.path)
 
     
     except Exception as e:
@@ -541,18 +528,13 @@ def handle_edit_form_submission(request, lottery_result):
                     lottery_result.is_published = True
                     lottery_result.save()
                 
-                # Only add message for non-AJAX requests
-                if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    messages.success(request, f'Lottery result for {lottery_result} has been updated successfully and users have been notified! 📱')
+                messages.success(request, f'Lottery result for {lottery_result} has been updated successfully and users have been notified! 📱')
                 
             except Exception as e:
                 logger.error(f"❌ Failed to send completion notification: {e}")
-                if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    messages.warning(request, f'Lottery result for {lottery_result} has been updated successfully but notification failed to send.')
+                messages.warning(request, f'Lottery result for {lottery_result} has been updated successfully but notification failed to send.')
         else:
-            # Only add message for non-AJAX requests
-            if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
+            messages.success(request, f'Lottery result for {lottery_result} has been updated successfully.')
         
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -579,13 +561,6 @@ def handle_edit_form_submission(request, lottery_result):
             
             # Get admin context for sidebar
             admin_site = site
-            
-            # Determine success message for AJAX response
-            success_message = ""
-            if should_send_notification:
-                success_message = f'Lottery result for {lottery_result} has been updated successfully and users have been notified! 📱'
-            else:
-                success_message = f'Lottery result for {lottery_result} has been updated successfully.'
             
             context = {
                 'title': 'Edit Lottery Result',
@@ -621,7 +596,6 @@ def handle_edit_form_submission(request, lottery_result):
                 'lottery_result': lottery_result,
                 'prize_entries_json': prize_entries_json_str,  # Safe JSON string
                 'is_edit_mode': True,
-                'success_message': success_message,  # Add this line
             }
             return render(request, 'admin/lottery_add_result.html', context)
         
