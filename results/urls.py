@@ -39,7 +39,7 @@ urlpatterns = [
     path('debug/send-to-token/', views.debug_send_to_specific_token, name='debug_send_to_token'),
     path('debug/list-tokens/', views.debug_list_user_tokens, name='debug_list_tokens'),
     path('debug/test-production/', views.debug_test_production_methods, name='debug_test_production'),
-
+     path('debug/fcm-comprehensive/', views.debug_fcm_comprehensive, name='debug_fcm_comprehensive'),
     # Get detailed result by ID
     # path('<int:pk>/', views.LotteryResultDetailView.as_view(), name='lottery-result-detail'),
     

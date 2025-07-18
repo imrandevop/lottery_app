@@ -2507,3 +2507,121 @@ def debug_test_production_methods(request):
         })
 
 
+# Add this comprehensive debug endpoint to your views.py
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_fcm_comprehensive(request):
+    """
+    Comprehensive debug of FCM user queries
+    """
+    try:
+        from django.db import connection
+        
+        # 1. Test the EXACT query used in send_to_all_users
+        print("🔍 Testing exact FCM query...")
+        users_with_tokens = User.objects.filter(
+            fcm_token__isnull=False,
+            # notifications_enabled=True  # Commented out as per your fix
+        ).exclude(fcm_token='')
+        
+        print(f"📊 Query count: {users_with_tokens.count()}")
+        
+        # 2. Get the actual SQL query being executed
+        query_sql = str(users_with_tokens.query)
+        print(f"🔍 SQL Query: {query_sql}")
+        
+        # 3. Get all users to see what we have
+        all_users = User.objects.all()
+        print(f"👥 Total users in database: {all_users.count()}")
+        
+        # 4. Check users with any fcm_token value (including empty strings)
+        users_with_any_token = User.objects.exclude(fcm_token__isnull=True)
+        print(f"📱 Users with any fcm_token value: {users_with_any_token.count()}")
+        
+        # 5. Check users with empty string tokens
+        users_with_empty_tokens = User.objects.filter(fcm_token='')
+        print(f"📭 Users with empty string tokens: {users_with_empty_tokens.count()}")
+        
+        # 6. Check users with null tokens
+        users_with_null_tokens = User.objects.filter(fcm_token__isnull=True)
+        print(f"📪 Users with null tokens: {users_with_null_tokens.count()}")
+        
+        # 7. Get detailed info for each user
+        user_details = []
+        for user in all_users[:10]:  # Limit to first 10 users
+            try:
+                user_info = {
+                    'id': user.id,
+                    'name': getattr(user, 'name', 'No name'),
+                    'phone_number': getattr(user, 'phone_number', 'No phone'),
+                    'fcm_token_is_null': user.fcm_token is None,
+                    'fcm_token_length': len(user.fcm_token) if user.fcm_token else 0,
+                    'fcm_token_preview': user.fcm_token[:20] + '...' if user.fcm_token and len(user.fcm_token) > 20 else user.fcm_token,
+                    'notifications_enabled': getattr(user, 'notifications_enabled', 'Field not found'),
+                    'notifications_enabled_type': type(getattr(user, 'notifications_enabled', None)).__name__
+                }
+                user_details.append(user_info)
+            except Exception as e:
+                user_details.append({'error': f'Error processing user {user.id}: {str(e)}'})
+        
+        # 8. Test the tokens list extraction
+        tokens_list = list(users_with_tokens.values_list('fcm_token', flat=True))
+        print(f"🎫 Extracted tokens list length: {len(tokens_list)}")
+        
+        # 9. Test if the specific user (vishnulal) matches the query
+        try:
+            vishnulal = User.objects.get(id=16)
+            vishnulal_matches = users_with_tokens.filter(id=16).exists()
+            vishnulal_info = {
+                'id': vishnulal.id,
+                'name': vishnulal.name,
+                'fcm_token_exists': bool(vishnulal.fcm_token),
+                'fcm_token_length': len(vishnulal.fcm_token) if vishnulal.fcm_token else 0,
+                'fcm_token_is_empty_string': vishnulal.fcm_token == '',
+                'fcm_token_is_null': vishnulal.fcm_token is None,
+                'matches_fcm_query': vishnulal_matches,
+                'notifications_enabled': getattr(vishnulal, 'notifications_enabled', 'Field not found')
+            }
+        except User.DoesNotExist:
+            vishnulal_info = {'error': 'User with ID 16 not found'}
+        except Exception as e:
+            vishnulal_info = {'error': f'Error getting vishnulal: {str(e)}'}
+        
+        return Response({
+            'debug_results': {
+                'fcm_query_count': users_with_tokens.count(),
+                'fcm_query_sql': query_sql,
+                'total_users': all_users.count(),
+                'users_with_any_token': users_with_any_token.count(),
+                'users_with_empty_tokens': users_with_empty_tokens.count(),
+                'users_with_null_tokens': users_with_null_tokens.count(),
+                'extracted_tokens_count': len(tokens_list),
+                'tokens_preview': [token[:20] + '...' for token in tokens_list[:3]],
+                'vishnulal_analysis': vishnulal_info,
+                'all_users_sample': user_details
+            },
+            'recommendations': {
+                'issue_type': 'token_filtering' if users_with_any_token.count() > users_with_tokens.count() else 'no_tokens',
+                'next_steps': [
+                    'Check if fcm_token field contains empty strings instead of null',
+                    'Verify field names match exactly',
+                    'Check if User model has the expected fcm_token field'
+                ]
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error in comprehensive debug: {e}")
+        print(f"📜 Full traceback: {error_details}")
+        
+        return Response({
+            'error': str(e),
+            'error_details': error_details,
+            'debug_info': 'Failed to run comprehensive FCM debug'
+        })
+
+# Add this URL to your urls.py:
+# path('debug/fcm-comprehensive/', views.debug_fcm_comprehensive, name='debug_fcm_comprehensive'),
