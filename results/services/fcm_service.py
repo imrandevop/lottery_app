@@ -1,337 +1,193 @@
-# results/services/fcm_service.py
+# Replace your results/services/fcm_service.py with this production-ready version:
 
 import logging
-from typing import List, Dict, Optional
-from firebase_admin import messaging
+from typing import List, Dict
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from datetime import datetime
+from django.utils import timezone
+from firebase_admin import credentials, messaging, initialize_app
+import firebase_admin
+from results.models import FcmToken
 
 logger = logging.getLogger('lottery_app')
-User = get_user_model()
 
 class FCMService:
-    """
-    Firebase Cloud Messaging service for sending push notifications
-    """
+    """Production-ready Firebase FCM service"""
     
-    # Replace the validate_fcm_token method in fcm_service.py with this improved version
-
-    # Temporarily replace the validate_fcm_token method with this:
-
-    @staticmethod
-    def validate_fcm_token(token: str) -> bool:
-        """
-        TEMPORARY: Disable validation to test notifications
-        """
-        # Basic checks only
-        if not token or not isinstance(token, str):
-            return False
-        
-        token = token.strip()
-        
-        # Very basic length check
-        if len(token) < 50:
-            return False
-        
-        # For now, return True for all tokens that pass basic checks
-        return True
-        
-        # TODO: Re-enable proper validation after testing
-        # Original validation code below...
+    _initialized = False
+    _test_mode = False
     
-    @staticmethod
-    def send_to_token(token: str, title: str, body: str, data: Dict = None, image_url: str = None) -> bool:
-        """
-        Enhanced send_to_token with validation
-        
-        Args:
-            token: FCM token
-            title: Notification title
-            body: Notification body
-            data: Additional data (optional)
-            image_url: Image URL for rich notifications (optional)
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            # Validate token first
-            if not FCMService.validate_fcm_token(token):
-                logger.error(f"❌ Invalid FCM token format: {token[:10]}...")
-                return False
-            
-            # Build notification with proper Android configuration
-            notification = messaging.Notification(
-                title=title,
-                body=body,
-                image=image_url
-            )
-            
-            # Enhanced Android config
-            android_config = messaging.AndroidConfig(
-                priority='high',
-                notification=messaging.AndroidNotification(
-                    icon='ic_notification',
-                    color='#FF6B35',
-                    sound='default',
-                    click_action='FLUTTER_NOTIFICATION_CLICK',
-                    channel_id='default_channel',  # Add channel ID
-                    tag='lottery_notification'  # Add tag for grouping
-                ),
-                data=data or {}
-            )
-            
-            # Build message
-            message = messaging.Message(
-                notification=notification,
-                token=token,
-                data=data or {},
-                android=android_config
-            )
-            
-            # Send message
-            response = messaging.send(message)
-            logger.info(f"✅ Notification sent successfully: {response}")
-            return True
-            
-        except messaging.UnregisteredError:
-            logger.error(f"❌ FCM token is unregistered: {token[:10]}...")
-            # Auto-cleanup invalid token
-            User.objects.filter(fcm_token=token).update(fcm_token=None)
-            return False
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to send notification to token {token[:10]}...: {e}")
-            return False
+    @classmethod
+    def _initialize_firebase(cls):
+        """Initialize Firebase Admin SDK for production"""
+        if not cls._initialized:
+            try:
+                if not firebase_admin._apps:
+                    # Try to get credentials
+                    if hasattr(settings, 'FIREBASE_CREDENTIALS_FILE'):
+                        # Development: Use service account file
+                        cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_FILE)
+                        initialize_app(cred)
+                        logger.info("✅ Firebase initialized with service account file")
+                    elif hasattr(settings, 'FIREBASE_CREDENTIALS') and settings.FIREBASE_CREDENTIALS:
+                        # Production: Use environment variables
+                        cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS)
+                        initialize_app(cred)
+                        logger.info("✅ Firebase initialized with environment variables")
+                    else:
+                        # Fallback to test mode
+                        logger.warning("⚠️ No Firebase credentials found, using test mode")
+                        cls._test_mode = True
+                        cls._initialized = True
+                        return
+                
+                cls._initialized = True
+                cls._test_mode = False
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Firebase: {str(e)}")
+                logger.warning("⚠️ Falling back to test mode")
+                cls._test_mode = True
+                cls._initialized = True
     
-    @staticmethod
-    def send_to_multiple_tokens(tokens: List[str], title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
-        """
-        Send notification to multiple FCM tokens with enhanced validation
-        
-        Args:
-            tokens: List of FCM tokens
-            title: Notification title
-            body: Notification body
-            data: Additional data (optional)
-            image_url: Image URL for rich notifications (optional)
-            
-        Returns:
-            Dict: Success and failure counts
-        """
-        if not tokens:
-            return {'success_count': 0, 'failure_count': 0, 'invalid_tokens': []}
+    @classmethod
+    def send_to_all_users(cls, title: str, body: str, data: Dict = None) -> Dict:
+        """Send notification to all active users"""
+        cls._initialize_firebase()
         
         try:
-            # Validate and filter tokens
-            valid_tokens = []
-            invalid_tokens = []
+            # Get all active FCM tokens
+            active_tokens = list(FcmToken.objects.filter(
+                is_active=True,
+                notifications_enabled=True
+            ).values_list('fcm_token', flat=True))
             
-            for token in tokens:
-                if token and token.strip() and FCMService.validate_fcm_token(token):
-                    valid_tokens.append(token)
-                else:
-                    invalid_tokens.append(token)
+            if not active_tokens:
+                logger.warning("No active FCM tokens found")
+                return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
             
-            if not valid_tokens:
-                logger.warning(f"⚠️ No valid tokens found out of {len(tokens)} provided")
-                return {'success_count': 0, 'failure_count': len(tokens), 'invalid_tokens': tokens}
+            # Test mode (when Firebase is not available)
+            if cls._test_mode:
+                logger.info(f"TEST MODE - Would send notification:")
+                logger.info(f"Title: {title}")
+                logger.info(f"Body: {body}")
+                logger.info(f"To {len(active_tokens)} devices")
+                
+                # Update last_used for test
+                FcmToken.objects.filter(
+                    is_active=True,
+                    notifications_enabled=True
+                ).update(last_used=timezone.now())
+                
+                return {
+                    'success_count': len(active_tokens),
+                    'failure_count': 0,
+                    'message': f'TEST: Would send to {len(active_tokens)} devices'
+                }
             
-            # Build notification
-            notification = messaging.Notification(
-                title=title,
-                body=body,
-                image=image_url
-            )
+            # Real Firebase sending
+            total_success = 0
+            total_failure = 0
             
-            # Enhanced Android config
-            android_config = messaging.AndroidConfig(
-                priority='high',
-                notification=messaging.AndroidNotification(
-                    icon='ic_notification',
-                    color='#FF6B35',
-                    sound='default',
-                    click_action='FLUTTER_NOTIFICATION_CLICK',
-                    channel_id='default_channel',
-                    tag='lottery_notification'
-                ),
-                data=data or {}
-            )
+            # Send in batches of 500 (FCM limit)
+            for i in range(0, len(active_tokens), 500):
+                batch_tokens = active_tokens[i:i + 500]
+                success, failure = cls._send_multicast(batch_tokens, title, body, data)
+                total_success += success
+                total_failure += failure
             
-            # Build multicast message
-            message = messaging.MulticastMessage(
-                notification=notification,
-                tokens=valid_tokens,
-                data=data or {},
-                android=android_config
-            )
-            
-            # Send message
-            response = messaging.send_multicast(message)
-            
-            # Handle failed responses
-            failed_tokens = []
-            if response.failure_count > 0:
-                for idx, resp in enumerate(response.responses):
-                    if not resp.success:
-                        failed_token = valid_tokens[idx]
-                        failed_tokens.append(failed_token)
-                        logger.warning(f"❌ Failed to send to token {failed_token[:10]}...: {resp.exception}")
-                        
-                        # Auto-cleanup unregistered tokens
-                        if isinstance(resp.exception, messaging.UnregisteredError):
-                            User.objects.filter(fcm_token=failed_token).update(fcm_token=None)
-                            logger.info(f"🧹 Cleaned up unregistered token: {failed_token[:10]}...")
-            
-            # Combine all invalid tokens
-            all_invalid_tokens = invalid_tokens + failed_tokens
-            
-            logger.info(f"✅ Multicast complete: {response.success_count} successful, {response.failure_count} failed, {len(invalid_tokens)} invalid format")
+            logger.info(f"📱 Real notification sent: {total_success} success, {total_failure} failed")
             
             return {
-                'success_count': response.success_count,
-                'failure_count': response.failure_count + len(invalid_tokens),
-                'invalid_tokens': all_invalid_tokens
+                'success_count': total_success,
+                'failure_count': total_failure,
+                'message': f'Sent to {total_success}/{len(active_tokens)} devices'
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to send multicast notification: {e}")
-            return {'success_count': 0, 'failure_count': len(tokens), 'invalid_tokens': tokens}
+            logger.error(f"❌ Failed to send notifications: {str(e)}")
+            return {'success_count': 0, 'failure_count': 0, 'message': f'Error: {str(e)}'}
     
-    @staticmethod
-    def send_to_all_users(title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
-        """
-        Send notification to all users with FCM tokens
-        
-        Args:
-            title: Notification title
-            body: Notification body
-            data: Additional data (optional)
-            image_url: Image URL for rich notifications (optional)
-            
-        Returns:
-            Dict: Success and failure counts
-        """
+    @classmethod
+    def _send_multicast(cls, tokens: List[str], title: str, body: str, data: Dict = None) -> tuple:
+        """Send notification to multiple tokens using real Firebase"""
         try:
-            # Get all valid FCM tokens
-            users_with_tokens = User.objects.filter(
-                fcm_token__isnull=False,
-                notifications_enabled=True
-            ).exclude(fcm_token='').values_list('fcm_token', flat=True)
+            message = messaging.MulticastMessage(
+                notification=messaging.Notification(title=title, body=body),
+                data={k: str(v) for k, v in (data or {}).items()},
+                tokens=tokens,
+                android=messaging.AndroidConfig(
+                    priority='high',
+                    notification=messaging.AndroidNotification(
+                        channel_id='default_channel',
+                        sound='default',
+                        icon='ic_notification',
+                        color='#FF6B6B',
+                    ),
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(
+                            alert=messaging.ApsAlert(title=title, body=body),
+                            sound='default',
+                            badge=1,
+                        ),
+                    ),
+                ),
+            )
             
-            tokens = list(users_with_tokens)
+            response = messaging.send_multicast(message)
             
-            if not tokens:
-                logger.warning("⚠️ No FCM tokens found for users")
-                return {'success_count': 0, 'failure_count': 0, 'invalid_tokens': []}
+            # Handle failed tokens
+            if response.failure_count > 0:
+                failed_tokens = []
+                for idx, resp in enumerate(response.responses):
+                    if not resp.success:
+                        failed_token = tokens[idx]
+                        error = resp.exception
+                        
+                        # Deactivate invalid tokens
+                        if isinstance(error, (messaging.UnregisteredError, messaging.SenderIdMismatchError)):
+                            FcmToken.objects.filter(fcm_token=failed_token).update(is_active=False)
+                            logger.info(f"Deactivated invalid token: {failed_token[:20]}...")
+                        
+                        failed_tokens.append(failed_token)
             
-            logger.info(f"📱 Sending notification to {len(tokens)} users")
+            # Update last_used for successful tokens
+            successful_tokens = [tokens[idx] for idx, resp in enumerate(response.responses) if resp.success]
+            if successful_tokens:
+                FcmToken.objects.filter(fcm_token__in=successful_tokens).update(last_used=timezone.now())
             
-            # Send to all tokens with enhanced validation
-            result = FCMService.send_to_multiple_tokens(tokens, title, body, data, image_url)
-            
-            # Clean up invalid tokens from database
-            if result['invalid_tokens']:
-                User.objects.filter(fcm_token__in=result['invalid_tokens']).update(fcm_token=None)
-                logger.info(f"🧹 Cleaned up {len(result['invalid_tokens'])} invalid tokens from database")
-            
-            return result
+            return response.success_count, response.failure_count
             
         except Exception as e:
-            logger.error(f"❌ Failed to send notification to all users: {e}")
-            return {'success_count': 0, 'failure_count': 0, 'invalid_tokens': []}
+            logger.error(f"❌ Multicast send failed: {str(e)}")
+            return 0, len(tokens)
     
-    @staticmethod
-    def send_lottery_result_started(lottery_name: str) -> Dict:
-        """
-        Send notification when lottery result addition starts
-        Frontend expects type: 'live_result_starts'
-        """
-        title = "Live Results Starting!"
-        body = f"Kerala {lottery_name} lottery results are now loading. Stay tuned!"
+    @classmethod
+    def send_new_result_notification(cls, lottery_name: str) -> Dict:
+        """Send notification when new result is added"""
+        title = "🎯 New Kerala Lottery Results!"
+        body = f"Fresh {lottery_name} results are being added. Check them out now!"
         
         data = {
-            'type': 'live_result_starts',
+            'type': 'new_result',
             'lottery_name': lottery_name,
-            'timestamp': str(int(datetime.now().timestamp()))
+            'click_action': 'OPEN_RESULTS'
         }
         
-        return FCMService.send_to_all_users(title, body, data)
-
-    @staticmethod
-    def send_lottery_result_completed(lottery_name: str, draw_number: str, result_unique_id: str = None) -> Dict:
-        """
-        Send notification when lottery result addition is completed
-        Frontend expects type: 'result_published'
-        """
-        title = "Results Published!"
+        return cls.send_to_all_users(title, body, data)
+    
+    @classmethod
+    def send_result_ready_notification(cls, lottery_name: str, draw_number: str) -> Dict:
+        """Send notification when result is ready (checkbox ticked)"""
+        title = "🎉 Lottery Results Ready!"
         body = f"{lottery_name} Draw {draw_number} results are now available. Check if you won!"
         
         data = {
-            'type': 'result_published',
-            'result_id': result_unique_id or '',
+            'type': 'result_ready',
             'lottery_name': lottery_name,
             'draw_number': draw_number,
-            'timestamp': str(int(datetime.now().timestamp()))
+            'click_action': 'OPEN_RESULTS'
         }
         
-        return FCMService.send_to_all_users(title, body, data)
-    
-    @staticmethod
-    def test_notification() -> Dict:
-        """
-        Send a test notification to all users
-        """
-        title = "🧪 Test Notification"
-        body = "This is a test notification from Kerala Lottery App!"
-        
-        data = {
-            'type': 'test',
-            'timestamp': str(int(datetime.now().timestamp()))
-        }
-        
-        result = FCMService.send_to_all_users(title, body, data)
-        
-        # Additional debugging info
-        logger.info(f"📊 Test notification result: {result}")
-        
-        return result
-    
-    @staticmethod
-    def get_user_token_stats() -> Dict:
-        """
-        Get statistics about user FCM tokens for debugging
-        """
-        try:
-            total_users = User.objects.count()
-            users_with_tokens = User.objects.filter(
-                fcm_token__isnull=False
-            ).exclude(fcm_token='').count()
-            
-            users_with_notifications_enabled = User.objects.filter(
-                fcm_token__isnull=False,
-                notifications_enabled=True
-            ).exclude(fcm_token='').count()
-            
-            stats = {
-                'total_users': total_users,
-                'users_with_tokens': users_with_tokens,
-                'users_with_notifications_enabled': users_with_notifications_enabled,
-                'token_coverage_percentage': round((users_with_tokens / total_users * 100), 2) if total_users > 0 else 0,
-                'notification_enabled_percentage': round((users_with_notifications_enabled / total_users * 100), 2) if total_users > 0 else 0
-            }
-            
-            logger.info(f"📊 FCM Token Stats: {stats}")
-            return stats
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get token stats: {e}")
-            return {
-                'total_users': 0,
-                'users_with_tokens': 0,
-                'users_with_notifications_enabled': 0,
-                'token_coverage_percentage': 0,
-                'notification_enabled_percentage': 0,
-                'error': str(e)
-            }
+        return cls.send_to_all_users(title, body, data)

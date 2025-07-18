@@ -9,7 +9,7 @@ from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
-from .models import PrizeEntry, LiveVideo, NotificationLog
+from .models import PrizeEntry, LiveVideo
 from django.db.models import Q
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
@@ -28,10 +28,11 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
 import json
+from results.models import FcmToken
 
 
 
@@ -1885,743 +1886,93 @@ class LotteryWinningPercentageAPI(APIView):
 
 #<--------------NOTIFICATION SECTION ---------------->
 
-
-@api_view(['POST'])
-def send_result_started_notification(request):
-    """
-    Manually trigger "result addition started" notification
-    
-    Body:
-    {
-        "lottery_name": "Karunya"
-    }
-    """
-    lottery_name = request.data.get('lottery_name', 'Kerala Lottery')
-    
+@csrf_exempt
+@require_http_methods(["POST"])
+def register_fcm_token(request):
+    """Single API endpoint to register/update FCM tokens"""
     try:
-        # Send notification
-        result = FCMService.send_lottery_result_started(lottery_name)
+        data = json.loads(request.body)
         
-        # Log notification
-        NotificationLog.objects.create(
-            notification_type='result_started',
-            title="🎯 Kerala Lottery Results Loading...",
-            body=f"We're adding the latest {lottery_name} results. Stay tuned!",
-            lottery_name=lottery_name,
-            success_count=result['success_count'],
-            failure_count=result['failure_count'],
-            total_tokens=result['success_count'] + result['failure_count']
-        )
+        # Extract required fields
+        fcm_token = data.get('fcm_token')
+        phone_number = data.get('phone_number')
+        name = data.get('name')
+        notifications_enabled = data.get('notifications_enabled', True)
         
-        return Response({
-            'status': 'success',
-            'message': 'Result started notification sent',
-            'lottery_name': lottery_name,
-            'statistics': result
-        })
-        
-    except Exception as e:
-        return Response({
-            'status': 'error',
-            'message': f'Failed to send notification: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-def send_result_completed_notification(request):
-    """
-    Manually trigger "result addition completed" notification
-    
-    Body:
-    {
-        "lottery_name": "Karunya",
-        "draw_number": "KR-123"
-    }
-    """
-    lottery_name = request.data.get('lottery_name', 'Kerala Lottery')
-    draw_number = request.data.get('draw_number', 'Latest')
-    
-    try:
-        # Send notification
-        result = FCMService.send_lottery_result_completed(lottery_name, draw_number)
-        
-        # Log notification
-        NotificationLog.objects.create(
-            notification_type='result_completed',
-            title="🎉 Kerala Lottery Results Ready!",
-            body=f"{lottery_name} Draw {draw_number} results are now available. Check if you won!",
-            lottery_name=lottery_name,
-            draw_number=draw_number,
-            success_count=result['success_count'],
-            failure_count=result['failure_count'],
-            total_tokens=result['success_count'] + result['failure_count']
-        )
-        
-        return Response({
-            'status': 'success',
-            'message': 'Result completed notification sent',
-            'lottery_name': lottery_name,
-            'draw_number': draw_number,
-            'statistics': result
-        })
-        
-    except Exception as e:
-        return Response({
-            'status': 'error',
-            'message': f'Failed to send notification: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-def send_test_notification(request):
-    """
-    Send test notification to all users
-    """
-    try:
-        result = FCMService.test_notification()
-        
-        # Log notification
-        NotificationLog.objects.create(
-            notification_type='test',
-            title="🧪 Test Notification",
-            body="This is a test notification from Kerala Lottery App!",
-            success_count=result['success_count'],
-            failure_count=result['failure_count'],
-            total_tokens=result['success_count'] + result['failure_count']
-        )
-        
-        return Response({
-            'status': 'success',
-            'message': 'Test notification sent',
-            'statistics': result
-        })
-        
-    except Exception as e:
-        return Response({
-            'status': 'error',
-            'message': f'Failed to send test notification: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@staff_member_required
-@csrf_protect
-@require_http_methods(["GET", "POST"])
-def custom_lottery_admin_view(request, result_id=None):
-    """
-    Custom admin view for adding/editing lottery results with notification support
-    """
-    is_edit_mode = result_id is not None
-    lottery_result = None
-    prize_entries_json = '{}'
-    
-    if is_edit_mode:
-        lottery_result = get_object_or_404(LotteryResult, id=result_id)
-        # Get existing prize entries for edit mode
-        prize_entries = {}
-        for prize_type in ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']:
-            entries = PrizeEntry.objects.filter(
-                lottery_result=lottery_result,
-                prize_type=prize_type
-            ).values('prize_amount', 'ticket_number', 'place')
-            if entries:
-                prize_entries[prize_type] = list(entries)
-        
-        prize_entries_json = json.dumps(prize_entries)
-    
-    if request.method == 'POST':
-        try:
-            with transaction.atomic():
-                # Get form data
-                lottery_id = request.POST.get('lottery')
-                draw_number = request.POST.get('draw_number')
-                date = request.POST.get('date')
-                is_published = request.POST.get('is_published') == 'on'
-                is_bumper = request.POST.get('is_bumper') == 'on'
-                results_ready_notification = request.POST.get('results_ready_notification') == 'on'
-                
-                # Validate required fields
-                if not all([lottery_id, draw_number, date]):
-                    messages.error(request, 'Please fill in all required fields.')
-                    return render(request, 'admin/lottery_result_form.html', {
-                        'is_edit_mode': is_edit_mode,
-                        'lottery_result': lottery_result,
-                        'lotteries': Lottery.objects.all(),
-                        'prize_types': [
-                            ('1st', '1st Prize'), ('2nd', '2nd Prize'), ('3rd', '3rd Prize'),
-                            ('consolation', 'Consolation Prize'), ('4th', '4th Prize'),
-                            ('5th', '5th Prize'), ('6th', '6th Prize'), ('7th', '7th Prize'),
-                            ('8th', '8th Prize'), ('9th', '9th Prize'), ('10th', '10th Prize')
-                        ],
-                        'prize_entries_json': prize_entries_json
-                    })
-                
-                lottery = Lottery.objects.get(id=lottery_id)
-                
-                # Create or update lottery result
-                if is_edit_mode:
-                    # Check if notification should be sent (only if checkbox is newly checked)
-                    should_send_notification = (
-                        results_ready_notification and 
-                        not lottery_result.results_ready_notification
-                    )
-                    
-                    # Update existing result
-                    lottery_result.lottery = lottery
-                    lottery_result.draw_number = draw_number
-                    lottery_result.date = date
-                    lottery_result.is_published = is_published
-                    lottery_result.is_bumper = is_bumper
-                    lottery_result.results_ready_notification = results_ready_notification
-                    lottery_result.save()
-                    
-                    action = 'updated'
-                    
-                else:
-                    # Create new result
-                    lottery_result = LotteryResult.objects.create(
-                        lottery=lottery,
-                        draw_number=draw_number,
-                        date=date,
-                        is_published=is_published,
-                        is_bumper=is_bumper,
-                        results_ready_notification=results_ready_notification
-                    )
-                    
-                    # Send first notification automatically for new results
-                    try:
-                        fcm_result = FCMService.send_lottery_result_started(lottery.name)
-                        
-                        # Log the notification
-                        NotificationLog.objects.create(
-                            notification_type='result_started',
-                            title="🎯 Kerala Lottery Results Loading...",
-                            body=f"We're adding the latest {lottery.name} results. Stay tuned!",
-                            lottery_name=lottery.name,
-                            draw_number=draw_number,
-                            success_count=fcm_result['success_count'],
-                            failure_count=fcm_result['failure_count'],
-                            total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
-                        )
-                        
-                        logger.info(f"📱 Started notification sent for new result: {lottery.name} - {draw_number}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Failed to send started notification: {e}")
-                    
-                    should_send_notification = results_ready_notification
-                    action = 'created'
-                
-                # Process prize entries (your existing prize entry logic)
-                # Clear existing entries if editing
-                if is_edit_mode:
-                    PrizeEntry.objects.filter(lottery_result=lottery_result).delete()
-                
-                # Process each prize type
-                for prize_type in ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']:
-                    amounts = request.POST.getlist(f'{prize_type}_prize_amount[]')
-                    ticket_numbers = request.POST.getlist(f'{prize_type}_ticket_number[]')
-                    places = request.POST.getlist(f'{prize_type}_place[]')
-                    
-                    # Create prize entries
-                    for i, (amount, ticket_number) in enumerate(zip(amounts, ticket_numbers)):
-                        if amount and ticket_number:
-                            place = places[i] if i < len(places) else ''
-                            
-                            PrizeEntry.objects.create(
-                                lottery_result=lottery_result,
-                                prize_type=prize_type,
-                                prize_amount=amount,
-                                ticket_number=ticket_number,
-                                place=place if place else None
-                            )
-                
-                # Send completion notification if requested
-                if should_send_notification:
-                    try:
-                        fcm_result = FCMService.send_lottery_result_completed(
-                            lottery_result.lottery.name, 
-                            lottery_result.draw_number
-                        )
-                        
-                        # Log the notification
-                        NotificationLog.objects.create(
-                            notification_type='result_completed',
-                            title="🎉 Kerala Lottery Results Ready!",
-                            body=f"{lottery_result.lottery.name} Draw {lottery_result.draw_number} results are now available. Check if you won!",
-                            lottery_name=lottery_result.lottery.name,
-                            draw_number=lottery_result.draw_number,
-                            success_count=fcm_result['success_count'],
-                            failure_count=fcm_result['failure_count'],
-                            total_tokens=fcm_result['success_count'] + fcm_result['failure_count']
-                        )
-                        
-                        logger.info(f"📱 Completed notification sent: {lottery_result.lottery.name} - {lottery_result.draw_number}")
-                        
-                        # Auto-publish when notification is sent
-                        if not lottery_result.is_published:
-                            lottery_result.is_published = True
-                            lottery_result.save()
-                        
-                        messages.success(request, f'Lottery result {action} successfully and users have been notified! 📱')
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Failed to send completion notification: {e}")
-                        messages.warning(request, f'Lottery result {action} successfully but notification failed to send.')
-                else:
-                    messages.success(request, f'Lottery result {action} successfully!')
-                
-                # Redirect based on action
-                if not is_edit_mode:
-                    return redirect('custom_lottery_admin_edit', result_id=lottery_result.id)
-                else:
-                    return redirect('custom_lottery_admin_edit', result_id=lottery_result.id)
-                    
-        except Exception as e:
-            logger.error(f"❌ Error in custom lottery admin: {e}")
-            messages.error(request, f'Error {action if "action" in locals() else "processing"} lottery result: {str(e)}')
-    
-    # GET request - show form
-    context = {
-        'is_edit_mode': is_edit_mode,
-        'lottery_result': lottery_result,
-        'lotteries': Lottery.objects.all(),
-        'prize_types': [
-            ('1st', '1st Prize'), ('2nd', '2nd Prize'), ('3rd', '3rd Prize'),
-            ('consolation', 'Consolation Prize'), ('4th', '4th Prize'),
-            ('5th', '5th Prize'), ('6th', '6th Prize'), ('7th', '7th Prize'),
-            ('8th', '8th Prize'), ('9th', '9th Prize'), ('10th', '10th Prize')
-        ],
-        'prize_entries_json': prize_entries_json
-    }
-    
-    return render(request, 'admin/lottery_result_form.html', context)
-
-
-
-
-#<----------------DEBUG AREA---------------->
-# Add these views to your Django views.py
-
-# Fixed Django views.py - Replace the problematic views with these
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from results.services.fcm_service import FCMService
-import firebase_admin
-from firebase_admin import messaging
-from datetime import datetime
-
-User = get_user_model()
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_firebase_status(request):
-    """
-    Debug Firebase configuration and user token status
-    """
-    try:
-        # Check Firebase initialization
-        firebase_status = {
-            'initialized': bool(firebase_admin._apps),
-            'project_id': getattr(settings, 'FIREBASE_SETTINGS', {}).get('PROJECT_ID', 'Not set'),
-            'fcm_enabled': getattr(settings, 'FIREBASE_SETTINGS', {}).get('ENABLE_FCM', False),
-        }
-        
-        # Get user token statistics
-        user_stats = FCMService.get_user_token_stats()
-        
-        # Get sample tokens for testing
-        sample_tokens = list(User.objects.filter(
-            fcm_token__isnull=False,
-            notifications_enabled=True
-        ).exclude(fcm_token='').values_list('fcm_token', flat=True)[:3])
-        
-        # Recent users with tokens - using date_joined instead of created_at
-        recent_users = User.objects.filter(
-            fcm_token__isnull=False
-        ).exclude(fcm_token='').order_by('-id')[:5].values(
-            'id', 'name', 'phone_number', 'notifications_enabled', 
-            'date_joined'  # Changed from created_at
-        )
-        
-        return Response({
-            'firebase_status': firebase_status,
-            'user_stats': user_stats,
-            'sample_tokens': [token[:20] + '...' for token in sample_tokens],
-            'recent_users_with_tokens': list(recent_users),
-            'debug_info': {
-                'total_firebase_apps': len(firebase_admin._apps),
-                'settings_configured': hasattr(settings, 'FIREBASE_SETTINGS'),
-            }
-        })
-        
-    except Exception as e:
-        return Response({
-            'error': str(e),
-            'firebase_initialized': bool(firebase_admin._apps) if 'firebase_admin' in globals() else False
-        })
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def debug_send_to_specific_token(request):
-    """
-    Send test notification to a specific token for debugging
-    
-    Body:
-    {
-        "fcm_token": "your_token_here",
-        "title": "Test Title",
-        "body": "Test Body"
-    }
-    """
-    fcm_token = request.data.get('fcm_token')
-    title = request.data.get('title', '🧪 Debug Test')
-    body = request.data.get('body', 'Direct token test from Django backend')
-    
-    if not fcm_token:
-        return Response({
-            'status': 'error',
-            'message': 'fcm_token is required'
-        })
-    
-    try:
-        # Validate token format
-        if not FCMService.validate_fcm_token(fcm_token):
-            return Response({
+        # Validate required fields
+        if not all([fcm_token, phone_number, name]):
+            return JsonResponse({
                 'status': 'error',
-                'message': 'Invalid FCM token format',
-                'token_preview': fcm_token[:20] + '...'
-            })
+                'message': 'Missing required fields: fcm_token, phone_number, name'
+            }, status=400)
         
-        # Send notification
-        success = FCMService.send_to_token(
-            token=fcm_token,
-            title=title,
-            body=body,
-            data={
-                'type': 'debug_test',
-                'timestamp': str(int(datetime.now().timestamp()))
-            }
-        )
+        # Check if token already exists
+        existing_token = FcmToken.objects.filter(fcm_token=fcm_token).first()
         
-        return Response({
-            'status': 'success' if success else 'failed',
-            'message': f'Notification {"sent successfully" if success else "failed to send"}',
-            'token_preview': fcm_token[:20] + '...',
-            'title': title,
-            'body': body
-        })
-        
-    except Exception as e:
-        return Response({
-            'status': 'error',
-            'message': f'Failed to send notification: {str(e)}',
-            'token_preview': fcm_token[:20] + '...'
-        })
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_list_user_tokens(request):
-    """
-    List all users with FCM tokens for debugging
-    """
-    try:
-        users_with_tokens = User.objects.filter(
-            fcm_token__isnull=False
-        ).exclude(fcm_token='').order_by('-id')[:10]
-        
-        user_list = []
-        for user in users_with_tokens:
-            user_list.append({
-                'id': user.id,
-                'name': user.name,
-                'phone_number': user.phone_number,
-                'notifications_enabled': user.notifications_enabled,
-                'token_preview': user.fcm_token[:20] + '...' if user.fcm_token else None,
-                'token_valid_format': FCMService.validate_fcm_token(user.fcm_token) if user.fcm_token else False,
-                'date_joined': user.date_joined,  # Changed from created_at
-                'fcm_token_updated_at': getattr(user, 'fcm_token_updated_at', None)  # Added this field since it exists
-            })
-        
-        return Response({
-            'total_users_with_tokens': User.objects.filter(
-                fcm_token__isnull=False
-            ).exclude(fcm_token='').count(),
-            'users': user_list
-        })
-        
-    except Exception as e:
-        return Response({
-            'error': str(e)
-        })
-
-# Bonus: Add a simple model inspection endpoint to see available fields
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_user_model_fields(request):
-    """
-    Show available fields in the User model for debugging
-    """
-    try:
-        # Get all field names from the User model
-        field_names = [field.name for field in User._meta.get_fields()]
-        
-        # Get a sample user to show field types
-        sample_user = User.objects.first()
-        sample_data = {}
-        
-        if sample_user:
-            for field_name in field_names:
-                try:
-                    value = getattr(sample_user, field_name, 'N/A')
-                    # Don't show sensitive data
-                    if field_name in ['password', 'fcm_token']:
-                        sample_data[field_name] = f"<{type(value).__name__}>"
-                    else:
-                        sample_data[field_name] = str(value)[:50] + ('...' if len(str(value)) > 50 else '')
-                except Exception as e:
-                    sample_data[field_name] = f"Error: {str(e)}"
-        
-        return Response({
-            'available_fields': field_names,
-            'sample_user_data': sample_data,
-            'total_users': User.objects.count()
-        })
-        
-    except Exception as e:
-        return Response({
-            'error': str(e)
-        })
-    
-
-
-
-# Add this to your views.py to test production methods
-
-from datetime import datetime
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def debug_test_production_methods(request):
-    """
-    Test the actual production FCM methods used in admin_views.py
-    """
-    test_type = request.data.get('test_type', 'result_completed')
-    
-    try:
-        if test_type == 'result_started':
-            # Test lottery result started notification (automatic on new result)
-            lottery_name = request.data.get('lottery_name', 'KARUNYA PLUS')
+        if existing_token:
+            # Update existing token
+            existing_token.phone_number = phone_number
+            existing_token.name = name
+            existing_token.notifications_enabled = notifications_enabled
+            existing_token.is_active = True
+            existing_token.last_used = timezone.now()
+            existing_token.save()
             
-            print(f"🧪 Testing send_lottery_result_started with: {lottery_name}")
-            result = FCMService.send_lottery_result_started(lottery_name)
-            print(f"📱 FCM Result: {result}")
+            logger.info(f"📱 FCM token updated: {phone_number}")
             
-            return Response({
+            return JsonResponse({
                 'status': 'success',
-                'test_type': test_type,
-                'lottery_name': lottery_name,
-                'fcm_result': result,
-                'message': f'send_lottery_result_started("{lottery_name}") executed'
+                'message': 'FCM token updated successfully',
+                'user_id': existing_token.id,
+                'username': existing_token.phone_number,
+                'name': existing_token.name,
+                'phone_number': existing_token.phone_number,
+                'notifications_enabled': existing_token.notifications_enabled,
             })
-            
-        elif test_type == 'result_completed':
-            # Test lottery result completed notification (checkbox trigger)
-            lottery_name = request.data.get('lottery_name', 'KARUNYA PLUS')
-            draw_number = request.data.get('draw_number', 'KN-123')
-            result_unique_id = request.data.get('result_unique_id', 'test-result-456')
-            
-            print(f"🧪 Testing send_lottery_result_completed with: {lottery_name}, {draw_number}, {result_unique_id}")
-            result = FCMService.send_lottery_result_completed(
-                lottery_name=lottery_name,
-                draw_number=draw_number,
-                result_unique_id=result_unique_id
-            )
-            print(f"📱 FCM Result: {result}")
-            
-            return Response({
-                'status': 'success',
-                'test_type': test_type,
-                'lottery_name': lottery_name,
-                'draw_number': draw_number,
-                'result_unique_id': result_unique_id,
-                'fcm_result': result,
-                'message': f'send_lottery_result_completed executed'
-            })
-            
-        elif test_type == 'test_notification':
-            # Test the general test notification
-            print(f"🧪 Testing FCMService.test_notification()")
-            result = FCMService.test_notification()
-            print(f"📱 FCM Result: {result}")
-            
-            return Response({
-                'status': 'success',
-                'test_type': test_type,
-                'fcm_result': result,
-                'message': 'FCMService.test_notification() executed'
-            })
-            
-        elif test_type == 'send_to_all_users':
-            # Test sending to all users directly
-            title = request.data.get('title', '🧪 Direct All Users Test')
-            body = request.data.get('body', 'Testing send_to_all_users method directly')
-            
-            print(f"🧪 Testing send_to_all_users with: {title}, {body}")
-            result = FCMService.send_to_all_users(
-                title=title,
-                body=body,
-                data={
-                    'type': 'debug_all_users_test',
-                    'timestamp': str(int(datetime.now().timestamp()))
-                }
-            )
-            print(f"📱 FCM Result: {result}")
-            
-            return Response({
-                'status': 'success',
-                'test_type': test_type,
-                'title': title,
-                'body': body,
-                'fcm_result': result,
-                'message': 'send_to_all_users executed directly'
-            })
-            
+        
         else:
-            return Response({
-                'error': 'Invalid test_type. Options: result_started, result_completed, test_notification, send_to_all_users'
-            })
-        
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"❌ Error in debug_test_production_methods: {e}")
-        print(f"📜 Full traceback: {error_details}")
-        
-        return Response({
+            # Check if user with this phone number exists with different token
+            existing_user = FcmToken.objects.filter(phone_number=phone_number).first()
+            
+            if existing_user:
+                # Deactivate old token
+                existing_user.is_active = False
+                existing_user.save()
+                logger.info(f"📱 Deactivated old token for: {phone_number}")
+            
+            # Create new token
+            new_token = FcmToken.objects.create(
+                fcm_token=fcm_token,
+                phone_number=phone_number,
+                name=name,
+                notifications_enabled=notifications_enabled,
+                is_active=True,
+                last_used=timezone.now()
+            )
+            
+            logger.info(f"📱 New FCM token registered: {phone_number}")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': 'FCM token registered successfully',
+                'user_id': new_token.id,
+                'username': new_token.phone_number,
+                'name': new_token.name,
+                'phone_number': new_token.phone_number,
+                'notifications_enabled': new_token.notifications_enabled,
+            }, status=201)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
             'status': 'error',
-            'test_type': test_type,
-            'error': str(e),
-            'error_details': error_details,
-            'message': f'Production method {test_type} failed with exception'
-        })
-
-
-# Add this comprehensive debug endpoint to your views.py
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_fcm_comprehensive(request):
-    """
-    Comprehensive debug of FCM user queries
-    """
-    try:
-        from django.db import connection
-        
-        # 1. Test the EXACT query used in send_to_all_users
-        print("🔍 Testing exact FCM query...")
-        users_with_tokens = User.objects.filter(
-            fcm_token__isnull=False,
-            # notifications_enabled=True  # Commented out as per your fix
-        ).exclude(fcm_token='')
-        
-        print(f"📊 Query count: {users_with_tokens.count()}")
-        
-        # 2. Get the actual SQL query being executed
-        query_sql = str(users_with_tokens.query)
-        print(f"🔍 SQL Query: {query_sql}")
-        
-        # 3. Get all users to see what we have
-        all_users = User.objects.all()
-        print(f"👥 Total users in database: {all_users.count()}")
-        
-        # 4. Check users with any fcm_token value (including empty strings)
-        users_with_any_token = User.objects.exclude(fcm_token__isnull=True)
-        print(f"📱 Users with any fcm_token value: {users_with_any_token.count()}")
-        
-        # 5. Check users with empty string tokens
-        users_with_empty_tokens = User.objects.filter(fcm_token='')
-        print(f"📭 Users with empty string tokens: {users_with_empty_tokens.count()}")
-        
-        # 6. Check users with null tokens
-        users_with_null_tokens = User.objects.filter(fcm_token__isnull=True)
-        print(f"📪 Users with null tokens: {users_with_null_tokens.count()}")
-        
-        # 7. Get detailed info for each user
-        user_details = []
-        for user in all_users[:10]:  # Limit to first 10 users
-            try:
-                user_info = {
-                    'id': user.id,
-                    'name': getattr(user, 'name', 'No name'),
-                    'phone_number': getattr(user, 'phone_number', 'No phone'),
-                    'fcm_token_is_null': user.fcm_token is None,
-                    'fcm_token_length': len(user.fcm_token) if user.fcm_token else 0,
-                    'fcm_token_preview': user.fcm_token[:20] + '...' if user.fcm_token and len(user.fcm_token) > 20 else user.fcm_token,
-                    'notifications_enabled': getattr(user, 'notifications_enabled', 'Field not found'),
-                    'notifications_enabled_type': type(getattr(user, 'notifications_enabled', None)).__name__
-                }
-                user_details.append(user_info)
-            except Exception as e:
-                user_details.append({'error': f'Error processing user {user.id}: {str(e)}'})
-        
-        # 8. Test the tokens list extraction
-        tokens_list = list(users_with_tokens.values_list('fcm_token', flat=True))
-        print(f"🎫 Extracted tokens list length: {len(tokens_list)}")
-        
-        # 9. Test if the specific user (vishnulal) matches the query
-        try:
-            vishnulal = User.objects.get(id=16)
-            vishnulal_matches = users_with_tokens.filter(id=16).exists()
-            vishnulal_info = {
-                'id': vishnulal.id,
-                'name': vishnulal.name,
-                'fcm_token_exists': bool(vishnulal.fcm_token),
-                'fcm_token_length': len(vishnulal.fcm_token) if vishnulal.fcm_token else 0,
-                'fcm_token_is_empty_string': vishnulal.fcm_token == '',
-                'fcm_token_is_null': vishnulal.fcm_token is None,
-                'matches_fcm_query': vishnulal_matches,
-                'notifications_enabled': getattr(vishnulal, 'notifications_enabled', 'Field not found')
-            }
-        except User.DoesNotExist:
-            vishnulal_info = {'error': 'User with ID 16 not found'}
-        except Exception as e:
-            vishnulal_info = {'error': f'Error getting vishnulal: {str(e)}'}
-        
-        return Response({
-            'debug_results': {
-                'fcm_query_count': users_with_tokens.count(),
-                'fcm_query_sql': query_sql,
-                'total_users': all_users.count(),
-                'users_with_any_token': users_with_any_token.count(),
-                'users_with_empty_tokens': users_with_empty_tokens.count(),
-                'users_with_null_tokens': users_with_null_tokens.count(),
-                'extracted_tokens_count': len(tokens_list),
-                'tokens_preview': [token[:20] + '...' for token in tokens_list[:3]],
-                'vishnulal_analysis': vishnulal_info,
-                'all_users_sample': user_details
-            },
-            'recommendations': {
-                'issue_type': 'token_filtering' if users_with_any_token.count() > users_with_tokens.count() else 'no_tokens',
-                'next_steps': [
-                    'Check if fcm_token field contains empty strings instead of null',
-                    'Verify field names match exactly',
-                    'Check if User model has the expected fcm_token field'
-                ]
-            }
-        })
+            'message': 'Invalid JSON data'
+        }, status=400)
         
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"❌ Error in comprehensive debug: {e}")
-        print(f"📜 Full traceback: {error_details}")
-        
-        return Response({
-            'error': str(e),
-            'error_details': error_details,
-            'debug_info': 'Failed to run comprehensive FCM debug'
-        })
+        logger.error(f"❌ Error registering FCM token: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Internal server error'
+        }, status=500)
 
-# Add this URL to your urls.py:
-# path('debug/fcm-comprehensive/', views.debug_fcm_comprehensive, name='debug_fcm_comprehensive'),
+

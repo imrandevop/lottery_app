@@ -23,10 +23,8 @@ class Lottery(models.Model):
 
 
 class LotteryResult(models.Model):
-    # Unique UUID field
+    # ... your existing fields ...
     unique_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    
-    # Basic Information
     lottery = models.ForeignKey(Lottery, on_delete=models.CASCADE)
     date = models.DateField()
     draw_number = models.CharField(max_length=50)
@@ -38,16 +36,15 @@ class LotteryResult(models.Model):
         help_text="Send 'Results Ready' notification to users"
     )
     
+    # 🔥 ADD THIS NEW FIELD:
+    notification_sent = models.BooleanField(
+        default=False,
+        verbose_name="Notification Sent",
+        help_text="Whether notification has been sent to users"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
-    def __str__(self):
-        return f"{self.lottery.name} - Draw {self.draw_number} - {self.date}"
-    
-    class Meta:
-        verbose_name = "Add Result"
-        verbose_name_plural = "Add Results"
-        unique_together = ['lottery', 'draw_number', 'date']
 
 
 class PrizeEntry(models.Model):
@@ -329,49 +326,25 @@ class LiveVideo(models.Model):
             self.is_active
         )
     
-
-
-#<---------------NOTIFICATION SECTION---------------->
-
-
-class NotificationLog(models.Model):
-    """
-    Track sent notifications for analytics and debugging
-    """
-    NOTIFICATION_TYPES = [
-        ('result_started', 'Result Addition Started'),
-        ('result_completed', 'Result Addition Completed'),
-        ('test', 'Test Notification'),
-        ('custom', 'Custom Notification'),
-    ]
+#<-----------------------NOTIFICATION SECTION---------------->
+class FcmToken(models.Model):
+    """Simple model to store FCM tokens for push notifications"""
     
-    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
-    title = models.CharField(max_length=200)
-    body = models.TextField()
-    lottery_name = models.CharField(max_length=200, blank=True, null=True)
-    draw_number = models.CharField(max_length=50, blank=True, null=True)
-    
-    # FCM Response data
-    success_count = models.IntegerField(default=0)
-    failure_count = models.IntegerField(default=0)
-    total_tokens = models.IntegerField(default=0)
-    
-    # Timing
-    sent_at = models.DateTimeField(auto_now_add=True)
-    
-    # Additional data (JSON)
-    extra_data = models.JSONField(default=dict, blank=True)
+    phone_number = models.CharField(max_length=15, db_index=True)
+    name = models.CharField(max_length=100)
+    fcm_token = models.TextField(unique=True)
+    notifications_enabled = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(default=timezone.now)
     
     class Meta:
-        verbose_name = "Notification Log"
-        verbose_name_plural = "Notification Logs"
-        ordering = ['-sent_at']
+        db_table = 'fcm_tokens'
     
     def __str__(self):
-        return f"{self.get_notification_type_display()} - {self.sent_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.name} ({self.phone_number})"
     
-    @property
-    def success_rate(self):
-        if self.total_tokens == 0:
-            return 0
-        return (self.success_count / self.total_tokens) * 100
+
+
+
+

@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin, messages
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, NotificationLog
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -121,6 +121,11 @@ class LotteryResultForm(ModelForm):
             'lottery': Select(attrs={'class': 'form-control'}),
             'date': DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'is_published': CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_bumper': CheckboxInput(attrs={'class': 'form-check-input'}),
+            'results_ready_notification': CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'title': 'Send push notification to all users'
+            }),
         }
         
     def clean(self):
@@ -133,22 +138,52 @@ class LotteryResultForm(ModelForm):
 
 class LotteryResultAdmin(admin.ModelAdmin):
     form = LotteryResultForm
-    list_display = ['lottery', 'draw_number', 'date','is_bumper', 'is_published', 'created_at']
-    list_filter = ['lottery','is_bumper', 'is_published', 'date']
+    list_display = ['lottery', 'draw_number', 'date', 'is_bumper', 'is_published', 
+                   'results_ready_notification', 'notification_sent', 'created_at']
+    list_filter = ['lottery', 'is_bumper', 'is_published', 'results_ready_notification', 'notification_sent', 'date']
     search_fields = ['draw_number', 'lottery__name']
     inlines = [PrizeEntryInline]
+    
+    # Add notification field to fieldsets
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = [
+            ('Lottery Information', {
+                'fields': ('lottery', 'draw_number', 'date')
+            }),
+            ('Status & Notifications', {
+                'fields': ('is_published', 'is_bumper', 'results_ready_notification'),
+                'description': 'Check "Notify users" to send push notification when saving'
+            }),
+        ]
+        if obj:  # Edit mode - show notification status
+            fieldsets.append(
+                ('Notification Status', {
+                    'fields': ('notification_sent',),
+                    'classes': ('collapse',)
+                }),
+            )
+            fieldsets.append(
+                ('Timestamps', {
+                    'fields': ('created_at', 'updated_at'),
+                    'classes': ('collapse',)
+                }),
+            )
+        return fieldsets
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj:  # Edit mode
+            return ['notification_sent', 'created_at', 'updated_at']
+        return []
     
     class Media:
         js = ('results/js/no_spaces_admin.js',)
     
+    # Keep your existing URL overrides for custom add/edit views
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            # Override the default add and change URLs
             path('add/', self.admin_site.admin_view(self.redirect_to_custom_add), name='results_lotteryresult_add'),
             path('<path:object_id>/change/', self.admin_site.admin_view(self.redirect_to_custom_edit), name='results_lotteryresult_change'),
-            # Custom notification URL
-            path('send-notifications/', self.admin_site.admin_view(self.send_notifications_view), name='send-notifications'),
         ]
         return custom_urls + urls
     
@@ -158,45 +193,8 @@ class LotteryResultAdmin(admin.ModelAdmin):
     
     def redirect_to_custom_edit(self, request, object_id):
         """Redirect from the standard admin detail page to our custom edit view."""
-        # Extract just the numeric ID from the object_id path
         result_id = object_id.rstrip('/').split('/')[-1]
         return HttpResponseRedirect(f'/api/results/admin/edit-result/{result_id}/')
-    
-    def send_notifications_view(self, request):
-        """Custom admin view to send notifications"""
-        # Your existing notification view code...
-        if request.method == 'POST':
-            notification_type = request.POST.get('type')
-            lottery_name = request.POST.get('lottery_name', 'Kerala Lottery')
-            draw_number = request.POST.get('draw_number', 'Latest')
-            
-            try:
-                if notification_type == 'test':
-                    result = FCMService.test_notification()
-                    messages.success(request, f"Test notification sent! Success: {result['success_count']}, Failed: {result['failure_count']}")
-                
-                elif notification_type == 'started':
-                    result = FCMService.send_lottery_result_started(lottery_name)
-                    messages.success(request, f"Started notification sent for {lottery_name}! Success: {result['success_count']}, Failed: {result['failure_count']}")
-                
-                elif notification_type == 'completed':
-                    result = FCMService.send_lottery_result_completed(lottery_name, draw_number)
-                    messages.success(request, f"Completed notification sent for {lottery_name}! Success: {result['success_count']}, Failed: {result['failure_count']}")
-                
-            except Exception as e:
-                messages.error(request, f"Failed to send notification: {e}")
-            
-            return redirect('..')
-        
-        # Get lottery choices
-        from .models import Lottery
-        lotteries = Lottery.objects.all()
-        
-        context = {
-            'title': 'Send Push Notifications',
-            'lotteries': lotteries,
-        }
-        return render(request, 'admin/send_notifications.html', context)
 
 
 # Admin for PrizeEntry with no-space form

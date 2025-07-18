@@ -2,7 +2,7 @@
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view
 from . import views
-from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI
+from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token
 app_name = 'results'
 
 urlpatterns = [
@@ -29,17 +29,10 @@ urlpatterns = [
     path('lottery-percentage/', LotteryWinningPercentageAPI.as_view(), name='lottery-percentage'),
 
 
-    path('notifications/result-started/', views.send_result_started_notification, name='send_result_started'),
-    path('notifications/result-completed/', views.send_result_completed_notification, name='send_result_completed'),
-    path('notifications/test/', views.send_test_notification, name='send_test_notification'),
+    path('fcm/register/', register_fcm_token, name='fcm_register'),
 
-
-    # Add these debug endpoints
-    path('debug/firebase-status/', views.debug_firebase_status, name='debug_firebase_status'),
-    path('debug/send-to-token/', views.debug_send_to_specific_token, name='debug_send_to_token'),
-    path('debug/list-tokens/', views.debug_list_user_tokens, name='debug_list_tokens'),
-    path('debug/test-production/', views.debug_test_production_methods, name='debug_test_production'),
-     path('debug/fcm-comprehensive/', views.debug_fcm_comprehensive, name='debug_fcm_comprehensive'),
+    
+   
     # Get detailed result by ID
     # path('<int:pk>/', views.LotteryResultDetailView.as_view(), name='lottery-result-detail'),
     

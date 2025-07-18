@@ -4,7 +4,7 @@ from results.models import LotteryResult
 from results.utils.cache_utils import invalidate_prediction_cache
 import logging
 logger = logging.getLogger('lottery_app')
-from .models import LotteryResult, NotificationLog
+from .models import LotteryResult
 from .services.fcm_service import FCMService
 
 
@@ -25,76 +25,58 @@ def invalidate_cache_on_new_result(sender, instance, created, **kwargs):
 
 #<---------------------NOTIFICATIONS SECTION--------------------->
 
+# results/signals.py - Create this new file
 
 
-@receiver(pre_save, sender=LotteryResult)
-def lottery_result_pre_save(sender, instance, **kwargs):
-    """
-    Track when a lottery result is first created (started)
-    """
-    if instance.pk is None:  # New instance being created
-        # Store flag to send notification after save
-        instance._send_started_notification = True
+
+# 2. Create results/signals.py
+
+import logging
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from .models import LotteryResult
+from .services.fcm_service import FCMService
+
+logger = logging.getLogger('lottery_app')
 
 @receiver(post_save, sender=LotteryResult)
-def lottery_result_post_save(sender, instance, created, **kwargs):
-    """
-    Send notifications based on lottery result status
-    """
-    try:
-        # Send "started" notification when result is first created
-        if created and getattr(instance, '_send_started_notification', False):
-            logger.info(f"📱 Sending 'started' notification for {instance.lottery.name}")
-            
-            result = FCMService.send_lottery_result_started(instance.lottery.name)
-            
-            # Log the notification
-            NotificationLog.objects.create(
-                notification_type='result_started',
-                title="🎯 Kerala Lottery Results Loading...",
-                body=f"We're adding the latest {instance.lottery.name} results. Stay tuned!",
-                lottery_name=instance.lottery.name,
-                draw_number=instance.draw_number,
-                success_count=result['success_count'],
-                failure_count=result['failure_count'],
-                total_tokens=result['success_count'] + result['failure_count']
-            )
-        
-        # Send "completed" notification when result is published
-        if instance.is_published:
-            # Check if this is the first time being published
-            if created or (hasattr(instance, '_state') and 'is_published' in instance._state.fields_cache):
-                # Get previous state
-                try:
-                    if not created:
-                        old_instance = LotteryResult.objects.get(pk=instance.pk)
-                        was_published = old_instance.is_published
-                    else:
-                        was_published = False
-                    
-                    # Only send if newly published
-                    if not was_published and instance.is_published:
-                        logger.info(f"📱 Sending 'completed' notification for {instance.lottery.name}")
-                        
-                        result = FCMService.send_lottery_result_completed(
-                            instance.lottery.name, 
-                            instance.draw_number
-                        )
-                        
-                        # Log the notification
-                        NotificationLog.objects.create(
-                            notification_type='result_completed',
-                            title="🎉 Kerala Lottery Results Ready!",
-                            body=f"{instance.lottery.name} Draw {instance.draw_number} results are now available. Check if you won!",
-                            lottery_name=instance.lottery.name,
-                            draw_number=instance.draw_number,
-                            success_count=result['success_count'],
-                            failure_count=result['failure_count'],
-                            total_tokens=result['success_count'] + result['failure_count']
-                        )
-                        
-                except Exception as e:
-                    logger.error(f"❌ Error checking previous publish state: {e}")
+def handle_lottery_result_notifications(sender, instance, created, **kwargs):
+    """Handle notifications for lottery results"""
     
-    except Exception as e:
-        logger.error(f"❌ Error in lottery result signal: {e}")
+    # 1. Send notification when NEW result is created with is_published=True
+    if created and instance.is_published:
+        try:
+            result = FCMService.send_new_result_notification(instance.lottery.name)
+            logger.info(f"📱 New result notification triggered for {instance.lottery.name}: {result['message']}")
+            print(f"📱 NEW RESULT NOTIFICATION: {instance.lottery.name}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send new result notification: {e}")
+    
+    # 2. Send notification when results_ready_notification is checked and saved
+    elif not created and instance.results_ready_notification and not instance.notification_sent:
+        try:
+            result = FCMService.send_result_ready_notification(
+                instance.lottery.name, 
+                instance.draw_number
+            )
+            
+            # Mark notification as sent to prevent duplicate sends
+            instance.notification_sent = True
+            instance.save(update_fields=['notification_sent'])
+            
+            logger.info(f"📱 Result ready notification triggered for {instance.lottery.name} - {instance.draw_number}: {result['message']}")
+            print(f"📱 RESULT READY NOTIFICATION: {instance.lottery.name} - {instance.draw_number}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to send result ready notification: {e}")
+
+# 3. Update or create results/apps.py
+
+from django.apps import AppConfig
+
+class ResultsConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'results'
+    
+    def ready(self):
+        import results.signals  # Import signals when app is ready

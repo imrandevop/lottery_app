@@ -429,78 +429,60 @@ LOGGING = {
 
 
 
-# Add this to replace your current Firebase configuration in settings.py
+def get_firebase_credentials():
+    """Get Firebase credentials from environment variables"""
+    try:
+        # Option 1: Use service account file (development)
+        firebase_file = BASE_DIR / 'firebase-service-account-key.json'
+        if firebase_file.exists() and not ENVIRONMENT == 'production':
+            return firebase_file
+        
+        # Option 2: Use environment variables (production)
+        firebase_creds = {
+            "type": "service_account",
+            "project_id": os.environ.get('FIREBASE_PROJECT_ID', 'lotto-app-f3440'),
+            "private_key_id": os.environ.get('FIREBASE_PRIVATE_KEY_ID'),
+            "private_key": os.environ.get('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": os.environ.get('FIREBASE_CLIENT_EMAIL'),
+            "client_id": os.environ.get('FIREBASE_CLIENT_ID'),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get('FIREBASE_CLIENT_EMAIL')}"
+        }
+        
+        # Validate required fields
+        required_fields = ['private_key_id', 'private_key', 'client_email', 'client_id']
+        if all(firebase_creds.get(field) for field in required_fields):
+            return firebase_creds
+        else:
+            print("⚠️ Firebase credentials incomplete, falling back to test mode")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Firebase credential error: {e}")
+        return None
 
-import os
-import json
-from pathlib import Path
-import firebase_admin
-from firebase_admin import credentials
+# Set Firebase credentials
+FIREBASE_CREDENTIALS = get_firebase_credentials()
 
-def initialize_firebase():
-    """Initialize Firebase Admin SDK with proper error handling"""
-    if not firebase_admin._apps:
-        try:
-            # Try to get Firebase config from environment variable first
-            firebase_key = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY')
-            
-            if firebase_key:
-                # Parse JSON from environment variable
-                service_account_info = json.loads(firebase_key)
-                cred = credentials.Certificate(service_account_info)
-                print("✅ Using Firebase config from environment variable")
-            else:
-                # Fallback to file path
-                file_path = BASE_DIR / 'firebase-service-account.json'
-                if file_path.exists():
-                    cred = credentials.Certificate(str(file_path))
-                    print("✅ Using Firebase config from file")
-                else:
-                    print("❌ No Firebase configuration found")
-                    print("💡 Set FIREBASE_SERVICE_ACCOUNT_KEY environment variable or place firebase-service-account.json in project root")
-                    return False
-            
-            # IMPORTANT: Use the correct project ID from your Flutter app
-            firebase_admin.initialize_app(cred, {
-                'projectId': 'lotto-app-f3440',  # Match your Flutter firebase_options.dart
-            })
-            print("✅ Firebase Admin SDK initialized successfully!")
-            return True
-            
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid JSON in FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ Failed to initialize Firebase: {e}")
-            return False
+# If we have a file path, use that instead
+if isinstance(FIREBASE_CREDENTIALS, Path):
+    FIREBASE_CREDENTIALS_FILE = FIREBASE_CREDENTIALS
+
+# Production Security Settings
+if ENVIRONMENT == 'production':
+    # Security settings
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
-    print("✅ Firebase already initialized")
-    return True
-
-# Call initialization and store result
-FIREBASE_INITIALIZED = initialize_firebase()
-
-# Firebase settings
-FIREBASE_SETTINGS = {
-    'PROJECT_ID': 'lotto-app-f3440',
-    'INITIALIZED': FIREBASE_INITIALIZED,
-    'ENABLE_FCM': FIREBASE_INITIALIZED,
-    'FCM_SETTINGS': {
-        'DEFAULT_ANDROID_CHANNEL_ID': 'default_channel',
-        'DEFAULT_NOTIFICATION_ICON': 'ic_notification',
-        'DEFAULT_NOTIFICATION_COLOR': '#FF6B35',
-        'HIGH_PRIORITY': True,
-        'DEFAULT_SOUND': 'default',
-        'CLICK_ACTION': 'FLUTTER_NOTIFICATION_CLICK',
-        'AUTO_CLEANUP_INVALID_TOKENS': True,
-    }
-}
-
-# Add Firebase status to feature flags
-FEATURE_FLAGS['ENABLE_PUSH_NOTIFICATIONS'] = FIREBASE_INITIALIZED
-
-# Debug Firebase status
-if DEBUG:
-    print(f"🔥 Firebase Status: {'✅ Ready' if FIREBASE_INITIALIZED else '❌ Not Available'}")
-    if not FIREBASE_INITIALIZED:
-        print("💡 Push notifications will be disabled until Firebase is properly configured")
+    # Only allow production domains
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [
+        "sea-lion-app-begbw.ondigitalocean.app",  # Replace with your actual domain
+        "api.lottokeralalotteries.com",  # Replace with your actual domain
+    ]
