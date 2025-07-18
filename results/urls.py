@@ -2,7 +2,7 @@
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view
 from . import views
-from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, debug_firebase_status, debug_send_to_specific_token, debug_list_user_tokens, debug_test_production_methods, debug_fcm_comprehensive
+from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register
 app_name = 'results'
 
 urlpatterns = [
