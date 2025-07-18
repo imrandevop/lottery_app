@@ -483,6 +483,8 @@ if ENVIRONMENT == 'production':
     # Only allow production domains
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS = [
-        "sea-lion-app-begbw.ondigitalocean.app",  # Replace with your actual domain
-        "api.lottokeralalotteries.com",  # Replace with your actual domain
+        "https://sea-lion-app-begbw.ondigitalocean.app",
+        "https://api.lottokeralalotteries.com",
+        "https://lottokeralalotteries.com",
+        "https://www.lottokeralalotteries.com",  # Replace with your actual domain
     ]
