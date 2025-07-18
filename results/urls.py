@@ -38,7 +38,7 @@ urlpatterns = [
     path('debug/firebase-status/', views.debug_firebase_status, name='debug_firebase_status'),
     path('debug/send-to-token/', views.debug_send_to_specific_token, name='debug_send_to_token'),
     path('debug/list-tokens/', views.debug_list_user_tokens, name='debug_list_tokens'),
-
+    path('debug/test-production/', views.debug_test_production_methods, name='debug_test_production'),
 
     # Get detailed result by ID
     # path('<int:pk>/', views.LotteryResultDetailView.as_view(), name='lottery-result-detail'),

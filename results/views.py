@@ -2392,3 +2392,118 @@ def debug_user_model_fields(request):
         return Response({
             'error': str(e)
         })
+    
+
+
+
+# Add this to your views.py to test production methods
+
+from datetime import datetime
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def debug_test_production_methods(request):
+    """
+    Test the actual production FCM methods used in admin_views.py
+    """
+    test_type = request.data.get('test_type', 'result_completed')
+    
+    try:
+        if test_type == 'result_started':
+            # Test lottery result started notification (automatic on new result)
+            lottery_name = request.data.get('lottery_name', 'KARUNYA PLUS')
+            
+            print(f"🧪 Testing send_lottery_result_started with: {lottery_name}")
+            result = FCMService.send_lottery_result_started(lottery_name)
+            print(f"📱 FCM Result: {result}")
+            
+            return Response({
+                'status': 'success',
+                'test_type': test_type,
+                'lottery_name': lottery_name,
+                'fcm_result': result,
+                'message': f'send_lottery_result_started("{lottery_name}") executed'
+            })
+            
+        elif test_type == 'result_completed':
+            # Test lottery result completed notification (checkbox trigger)
+            lottery_name = request.data.get('lottery_name', 'KARUNYA PLUS')
+            draw_number = request.data.get('draw_number', 'KN-123')
+            result_unique_id = request.data.get('result_unique_id', 'test-result-456')
+            
+            print(f"🧪 Testing send_lottery_result_completed with: {lottery_name}, {draw_number}, {result_unique_id}")
+            result = FCMService.send_lottery_result_completed(
+                lottery_name=lottery_name,
+                draw_number=draw_number,
+                result_unique_id=result_unique_id
+            )
+            print(f"📱 FCM Result: {result}")
+            
+            return Response({
+                'status': 'success',
+                'test_type': test_type,
+                'lottery_name': lottery_name,
+                'draw_number': draw_number,
+                'result_unique_id': result_unique_id,
+                'fcm_result': result,
+                'message': f'send_lottery_result_completed executed'
+            })
+            
+        elif test_type == 'test_notification':
+            # Test the general test notification
+            print(f"🧪 Testing FCMService.test_notification()")
+            result = FCMService.test_notification()
+            print(f"📱 FCM Result: {result}")
+            
+            return Response({
+                'status': 'success',
+                'test_type': test_type,
+                'fcm_result': result,
+                'message': 'FCMService.test_notification() executed'
+            })
+            
+        elif test_type == 'send_to_all_users':
+            # Test sending to all users directly
+            title = request.data.get('title', '🧪 Direct All Users Test')
+            body = request.data.get('body', 'Testing send_to_all_users method directly')
+            
+            print(f"🧪 Testing send_to_all_users with: {title}, {body}")
+            result = FCMService.send_to_all_users(
+                title=title,
+                body=body,
+                data={
+                    'type': 'debug_all_users_test',
+                    'timestamp': str(int(datetime.now().timestamp()))
+                }
+            )
+            print(f"📱 FCM Result: {result}")
+            
+            return Response({
+                'status': 'success',
+                'test_type': test_type,
+                'title': title,
+                'body': body,
+                'fcm_result': result,
+                'message': 'send_to_all_users executed directly'
+            })
+            
+        else:
+            return Response({
+                'error': 'Invalid test_type. Options: result_started, result_completed, test_notification, send_to_all_users'
+            })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error in debug_test_production_methods: {e}")
+        print(f"📜 Full traceback: {error_details}")
+        
+        return Response({
+            'status': 'error',
+            'test_type': test_type,
+            'error': str(e),
+            'error_details': error_details,
+            'message': f'Production method {test_type} failed with exception'
+        })
+
+
