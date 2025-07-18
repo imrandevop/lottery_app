@@ -206,7 +206,7 @@ class FCMService:
             # Get all valid FCM tokens
             users_with_tokens = User.objects.filter(
                 fcm_token__isnull=False,
-                #notifications_enabled=True
+                notifications_enabled=True
             ).exclude(fcm_token='').values_list('fcm_token', flat=True)
             
             tokens = list(users_with_tokens)
