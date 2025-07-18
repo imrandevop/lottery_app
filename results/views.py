@@ -1976,3 +1976,73 @@ def register_fcm_token(request):
         }, status=500)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def debug_fcm_register(request):
+    """Debug version of FCM registration"""
+    try:
+        # Log the request
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request body: {request.body}")
+        logger.info(f"Content type: {request.content_type}")
+        
+        # Try to parse JSON
+        try:
+            data = json.loads(request.body)
+            logger.info(f"Parsed data: {data}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Invalid JSON: {str(e)}'
+            }, status=400)
+        
+        # Check required fields
+        fcm_token = data.get('fcm_token')
+        phone_number = data.get('phone_number')
+        name = data.get('name')
+        
+        logger.info(f"Fields - token: {bool(fcm_token)}, phone: {bool(phone_number)}, name: {bool(name)}")
+        
+        if not all([fcm_token, phone_number, name]):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Missing required fields: fcm_token, phone_number, name'
+            }, status=400)
+        
+        # Try to import model
+        try:
+            from .models import FcmToken
+            logger.info("FcmToken model imported successfully")
+        except ImportError as e:
+            logger.error(f"Model import error: {e}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Model import error: {str(e)}'
+            }, status=500)
+        
+        # Try simple database operation
+        try:
+            token_count = FcmToken.objects.count()
+            logger.info(f"Current token count: {token_count}")
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Database error: {str(e)}'
+            }, status=500)
+        
+        # If we get here, everything is working
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Debug successful - all systems working',
+            'data_received': data,
+            'current_tokens': token_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Unexpected error: {str(e)}'
+        }, status=500)
