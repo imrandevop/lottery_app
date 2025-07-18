@@ -2199,6 +2199,8 @@ def custom_lottery_admin_view(request, result_id=None):
 #<----------------DEBUG AREA---------------->
 # Add these views to your Django views.py
 
+# Fixed Django views.py - Replace the problematic views with these
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -2234,12 +2236,12 @@ def debug_firebase_status(request):
             notifications_enabled=True
         ).exclude(fcm_token='').values_list('fcm_token', flat=True)[:3])
         
-        # Recent users with tokens
+        # Recent users with tokens - using date_joined instead of created_at
         recent_users = User.objects.filter(
             fcm_token__isnull=False
         ).exclude(fcm_token='').order_by('-id')[:5].values(
             'id', 'name', 'phone_number', 'notifications_enabled', 
-            'created_at'
+            'date_joined'  # Changed from created_at
         )
         
         return Response({
@@ -2337,7 +2339,8 @@ def debug_list_user_tokens(request):
                 'notifications_enabled': user.notifications_enabled,
                 'token_preview': user.fcm_token[:20] + '...' if user.fcm_token else None,
                 'token_valid_format': FCMService.validate_fcm_token(user.fcm_token) if user.fcm_token else False,
-                'created_at': user.created_at
+                'date_joined': user.date_joined,  # Changed from created_at
+                'fcm_token_updated_at': getattr(user, 'fcm_token_updated_at', None)  # Added this field since it exists
             })
         
         return Response({
@@ -2345,6 +2348,44 @@ def debug_list_user_tokens(request):
                 fcm_token__isnull=False
             ).exclude(fcm_token='').count(),
             'users': user_list
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        })
+
+# Bonus: Add a simple model inspection endpoint to see available fields
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_user_model_fields(request):
+    """
+    Show available fields in the User model for debugging
+    """
+    try:
+        # Get all field names from the User model
+        field_names = [field.name for field in User._meta.get_fields()]
+        
+        # Get a sample user to show field types
+        sample_user = User.objects.first()
+        sample_data = {}
+        
+        if sample_user:
+            for field_name in field_names:
+                try:
+                    value = getattr(sample_user, field_name, 'N/A')
+                    # Don't show sensitive data
+                    if field_name in ['password', 'fcm_token']:
+                        sample_data[field_name] = f"<{type(value).__name__}>"
+                    else:
+                        sample_data[field_name] = str(value)[:50] + ('...' if len(str(value)) > 50 else '')
+                except Exception as e:
+                    sample_data[field_name] = f"Error: {str(e)}"
+        
+        return Response({
+            'available_fields': field_names,
+            'sample_user_data': sample_data,
+            'total_users': User.objects.count()
         })
         
     except Exception as e:
