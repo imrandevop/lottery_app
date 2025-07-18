@@ -2192,3 +2192,162 @@ def custom_lottery_admin_view(request, result_id=None):
     }
     
     return render(request, 'admin/lottery_result_form.html', context)
+
+
+
+
+#<----------------DEBUG AREA---------------->
+# Add these views to your Django views.py
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from results.services.fcm_service import FCMService
+import firebase_admin
+from firebase_admin import messaging
+from datetime import datetime
+
+User = get_user_model()
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_firebase_status(request):
+    """
+    Debug Firebase configuration and user token status
+    """
+    try:
+        # Check Firebase initialization
+        firebase_status = {
+            'initialized': bool(firebase_admin._apps),
+            'project_id': getattr(settings, 'FIREBASE_SETTINGS', {}).get('PROJECT_ID', 'Not set'),
+            'fcm_enabled': getattr(settings, 'FIREBASE_SETTINGS', {}).get('ENABLE_FCM', False),
+        }
+        
+        # Get user token statistics
+        user_stats = FCMService.get_user_token_stats()
+        
+        # Get sample tokens for testing
+        sample_tokens = list(User.objects.filter(
+            fcm_token__isnull=False,
+            notifications_enabled=True
+        ).exclude(fcm_token='').values_list('fcm_token', flat=True)[:3])
+        
+        # Recent users with tokens
+        recent_users = User.objects.filter(
+            fcm_token__isnull=False
+        ).exclude(fcm_token='').order_by('-id')[:5].values(
+            'id', 'name', 'phone_number', 'notifications_enabled', 
+            'created_at'
+        )
+        
+        return Response({
+            'firebase_status': firebase_status,
+            'user_stats': user_stats,
+            'sample_tokens': [token[:20] + '...' for token in sample_tokens],
+            'recent_users_with_tokens': list(recent_users),
+            'debug_info': {
+                'total_firebase_apps': len(firebase_admin._apps),
+                'settings_configured': hasattr(settings, 'FIREBASE_SETTINGS'),
+            }
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': str(e),
+            'firebase_initialized': bool(firebase_admin._apps) if 'firebase_admin' in globals() else False
+        })
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def debug_send_to_specific_token(request):
+    """
+    Send test notification to a specific token for debugging
+    
+    Body:
+    {
+        "fcm_token": "your_token_here",
+        "title": "Test Title",
+        "body": "Test Body"
+    }
+    """
+    fcm_token = request.data.get('fcm_token')
+    title = request.data.get('title', '🧪 Debug Test')
+    body = request.data.get('body', 'Direct token test from Django backend')
+    
+    if not fcm_token:
+        return Response({
+            'status': 'error',
+            'message': 'fcm_token is required'
+        })
+    
+    try:
+        # Validate token format
+        if not FCMService.validate_fcm_token(fcm_token):
+            return Response({
+                'status': 'error',
+                'message': 'Invalid FCM token format',
+                'token_preview': fcm_token[:20] + '...'
+            })
+        
+        # Send notification
+        success = FCMService.send_to_token(
+            token=fcm_token,
+            title=title,
+            body=body,
+            data={
+                'type': 'debug_test',
+                'timestamp': str(int(datetime.now().timestamp()))
+            }
+        )
+        
+        return Response({
+            'status': 'success' if success else 'failed',
+            'message': f'Notification {"sent successfully" if success else "failed to send"}',
+            'token_preview': fcm_token[:20] + '...',
+            'title': title,
+            'body': body
+        })
+        
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to send notification: {str(e)}',
+            'token_preview': fcm_token[:20] + '...'
+        })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_list_user_tokens(request):
+    """
+    List all users with FCM tokens for debugging
+    """
+    try:
+        users_with_tokens = User.objects.filter(
+            fcm_token__isnull=False
+        ).exclude(fcm_token='').order_by('-id')[:10]
+        
+        user_list = []
+        for user in users_with_tokens:
+            user_list.append({
+                'id': user.id,
+                'name': user.name,
+                'phone_number': user.phone_number,
+                'notifications_enabled': user.notifications_enabled,
+                'token_preview': user.fcm_token[:20] + '...' if user.fcm_token else None,
+                'token_valid_format': FCMService.validate_fcm_token(user.fcm_token) if user.fcm_token else False,
+                'created_at': user.created_at
+            })
+        
+        return Response({
+            'total_users_with_tokens': User.objects.filter(
+                fcm_token__isnull=False
+            ).exclude(fcm_token='').count(),
+            'users': user_list
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        })

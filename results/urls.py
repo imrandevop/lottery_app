@@ -34,6 +34,11 @@ urlpatterns = [
     path('notifications/test/', views.send_test_notification, name='send_test_notification'),
 
 
+    # Add these debug endpoints
+    path('debug/firebase-status/', views.debug_firebase_status, name='debug_firebase_status'),
+    path('debug/send-to-token/', views.debug_send_to_specific_token, name='debug_send_to_token'),
+    path('debug/list-tokens/', views.debug_list_user_tokens, name='debug_list_tokens'),
+
 
     # Get detailed result by ID
     # path('<int:pk>/', views.LotteryResultDetailView.as_view(), name='lottery-result-detail'),

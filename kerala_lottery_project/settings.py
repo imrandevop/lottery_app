@@ -429,17 +429,16 @@ LOGGING = {
 
 
 
-# Add these to your settings.py file
+# Add this to replace your current Firebase configuration in settings.py
 
-
-
-# Firebase settings
 import os
 import json
 from pathlib import Path
+import firebase_admin
+from firebase_admin import credentials
 
-# Firebase settings
 def initialize_firebase():
+    """Initialize Firebase Admin SDK with proper error handling"""
     if not firebase_admin._apps:
         try:
             # Try to get Firebase config from environment variable first
@@ -458,15 +457,50 @@ def initialize_firebase():
                     print("✅ Using Firebase config from file")
                 else:
                     print("❌ No Firebase configuration found")
-                    return
+                    print("💡 Set FIREBASE_SERVICE_ACCOUNT_KEY environment variable or place firebase-service-account.json in project root")
+                    return False
             
+            # IMPORTANT: Use the correct project ID from your Flutter app
             firebase_admin.initialize_app(cred, {
-                'projectId': 'lotto-app-f3440',
+                'projectId': 'lotto-app-f3440',  # Match your Flutter firebase_options.dart
             })
             print("✅ Firebase Admin SDK initialized successfully!")
+            return True
             
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON in FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
+            return False
         except Exception as e:
             print(f"❌ Failed to initialize Firebase: {e}")
+            return False
+    
+    print("✅ Firebase already initialized")
+    return True
 
-# Call initialization
-initialize_firebase()
+# Call initialization and store result
+FIREBASE_INITIALIZED = initialize_firebase()
+
+# Firebase settings
+FIREBASE_SETTINGS = {
+    'PROJECT_ID': 'lotto-app-f3440',
+    'INITIALIZED': FIREBASE_INITIALIZED,
+    'ENABLE_FCM': FIREBASE_INITIALIZED,
+    'FCM_SETTINGS': {
+        'DEFAULT_ANDROID_CHANNEL_ID': 'default_channel',
+        'DEFAULT_NOTIFICATION_ICON': 'ic_notification',
+        'DEFAULT_NOTIFICATION_COLOR': '#FF6B35',
+        'HIGH_PRIORITY': True,
+        'DEFAULT_SOUND': 'default',
+        'CLICK_ACTION': 'FLUTTER_NOTIFICATION_CLICK',
+        'AUTO_CLEANUP_INVALID_TOKENS': True,
+    }
+}
+
+# Add Firebase status to feature flags
+FEATURE_FLAGS['ENABLE_PUSH_NOTIFICATIONS'] = FIREBASE_INITIALIZED
+
+# Debug Firebase status
+if DEBUG:
+    print(f"🔥 Firebase Status: {'✅ Ready' if FIREBASE_INITIALIZED else '❌ Not Available'}")
+    if not FIREBASE_INITIALIZED:
+        print("💡 Push notifications will be disabled until Firebase is properly configured")
