@@ -2204,3 +2204,51 @@ def test_send_with_details(request):
             'status': 'error',
             'message': str(e)
         })
+
+@csrf_exempt
+def clear_test_tokens(request):
+    """Clear all test/fake FCM tokens"""
+    try:
+        from .models import FcmToken
+        
+        # Delete tokens that look like test tokens
+        test_patterns = ['fake_', 'test_', 'sample_', 'demo_']
+        
+        deleted_count = 0
+        deleted_details = []
+        
+        for pattern in test_patterns:
+            tokens_to_delete = FcmToken.objects.filter(fcm_token__startswith=pattern)
+            
+            # Log what we're deleting
+            for token in tokens_to_delete:
+                deleted_details.append({
+                    'id': token.id,
+                    'name': token.name,
+                    'phone_number': token.phone_number,
+                    'token_preview': token.fcm_token[:20] + '...',
+                    'pattern_matched': pattern
+                })
+            
+            # Delete tokens matching this pattern
+            deleted = tokens_to_delete.delete()
+            deleted_count += deleted[0]
+        
+        # Get remaining token count
+        remaining_count = FcmToken.objects.filter(is_active=True).count()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Successfully cleared {deleted_count} test tokens',
+            'deleted_count': deleted_count,
+            'remaining_tokens': remaining_count,
+            'deleted_details': deleted_details,
+            'patterns_searched': test_patterns
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing test tokens: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
