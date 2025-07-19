@@ -349,6 +349,23 @@ class FcmToken(models.Model):
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
+@receiver(pre_save, sender=LotteryResult)
+def lottery_result_pre_save_handler(sender, instance, **kwargs):
+    """
+    Store the original published state before save
+    """
+    if instance.pk:
+        try:
+            old_instance = LotteryResult.objects.get(pk=instance.pk)
+            instance._original_published = old_instance.is_published
+            instance._original_results_ready = old_instance.results_ready_notification
+        except LotteryResult.DoesNotExist:
+            instance._original_published = False
+            instance._original_results_ready = False
+    else:
+        instance._original_published = False
+        instance._original_results_ready = False
+
 @receiver(post_save, sender=LotteryResult)
 def lottery_result_notification_handler(sender, instance, created, **kwargs):
     """
