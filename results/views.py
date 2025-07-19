@@ -1,4 +1,5 @@
 # views.py
+import os
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -33,6 +34,7 @@ from django.views.decorators.http import require_http_methods
 from django.db import transaction
 import json
 from results.models import FcmToken
+
 
 
 
@@ -2075,3 +2077,28 @@ def test_send_notification(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+
+@csrf_exempt
+def firebase_status(request):
+    """Check Firebase initialization status"""
+    try:
+        import firebase_admin
+        
+        return JsonResponse({
+            'firebase_apps': len(firebase_admin._apps),
+            'firebase_initialized': bool(firebase_admin._apps),
+            'environment_vars': {
+                'FIREBASE_PROJECT_ID': bool(os.environ.get('FIREBASE_PROJECT_ID')),
+                'FIREBASE_PRIVATE_KEY_ID': bool(os.environ.get('FIREBASE_PRIVATE_KEY_ID')),
+                'FIREBASE_CLIENT_EMAIL': bool(os.environ.get('FIREBASE_CLIENT_EMAIL')),
+                'FIREBASE_PRIVATE_KEY': bool(os.environ.get('FIREBASE_PRIVATE_KEY')),
+            },
+            'firebase_service_test_mode': getattr(FCMService, '_test_mode', 'Unknown')
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
