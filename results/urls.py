@@ -2,7 +2,7 @@
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view
 from . import views
-from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, test_send_notification, firebase_status
+from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, test_send_notification, firebase_status, list_fcm_tokens
 app_name = 'results'
 
 urlpatterns = [
@@ -33,6 +33,7 @@ urlpatterns = [
     path('fcm/debug/', debug_fcm_register, name='fcm_debug'),
     path('fcm/test-send/', test_send_notification, name='fcm_test_send'),
     path('debug/firebase/', firebase_status, name='firebase_status'),
+    path('fcm/list-tokens/', list_fcm_tokens, name='list_fcm_tokens'),
 
     
    

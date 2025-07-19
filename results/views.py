@@ -2102,3 +2102,33 @@ def firebase_status(request):
             'status': 'error',
             'message': str(e)
         })
+
+@csrf_exempt
+def list_fcm_tokens(request):
+    """List all FCM tokens in database"""
+    try:
+        from .models import FcmToken
+        
+        tokens = FcmToken.objects.filter(is_active=True).values(
+            'id', 'name', 'phone_number', 'fcm_token', 'notifications_enabled', 'created_at'
+        )
+        
+        # Mask the tokens for security (show first 20 chars only)
+        masked_tokens = []
+        for token in tokens:
+            masked_token = dict(token)
+            if masked_token['fcm_token']:
+                masked_token['fcm_token'] = masked_token['fcm_token'][:20] + '...'
+            masked_tokens.append(masked_token)
+        
+        return JsonResponse({
+            'status': 'success',
+            'count': len(masked_tokens),
+            'tokens': masked_tokens
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
