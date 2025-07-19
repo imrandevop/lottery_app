@@ -360,35 +360,32 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
         
         logger = logging.getLogger('lottery_app')
         
-        # Only send notifications for published results
-        if not instance.is_published:
-            return
-        
-        # Check if this is a newly published result or an update
         if created:
-            # New result added and published
-            logger.info(f"📱 New lottery result created: {instance.lottery.name}")
-            result = FCMService.send_new_result_notification(
-                lottery_name=instance.lottery.name
-            )
-            logger.info(f"📤 New result notification sent: {result}")
-            
+            # New result created - send notification only if published
+            if instance.is_published:
+                logger.info(f"📱 New lottery result created and published: {instance.lottery.name}")
+                result = FCMService.send_new_result_notification(
+                    lottery_name=instance.lottery.name
+                )
+                logger.info(f"📤 New result notification sent: {result}")
         else:
-            # Existing result updated - check if it was just published
-            try:
-                # Get the previous state from database
-                old_instance = LotteryResult.objects.get(pk=instance.pk)
+            # Existing result updated - check if is_published changed from False to True
+            if (hasattr(instance, '_original_published') and 
+                not instance._original_published and 
+                instance.is_published):
                 
-                # If it wasn't published before but is now published
-                if not hasattr(old_instance, '_original_published'):
-                    # We'll handle this with pre_save signal
-                    pass
-                    
-            except LotteryResult.DoesNotExist:
-                pass
+                logger.info(f"📱 Lottery result published (False→True): {instance.lottery.name}")
+                result = FCMService.send_new_result_notification(
+                    lottery_name=instance.lottery.name
+                )
+                logger.info(f"📤 Publication notification sent: {result}")
         
-        # Check if results_ready_notification checkbox was ticked
-        if instance.results_ready_notification and not instance.notification_sent:
+        # Handle results_ready_notification independently
+        if (instance.results_ready_notification and 
+            not instance.notification_sent and
+            hasattr(instance, '_original_results_ready') and
+            not instance._original_results_ready):
+            
             logger.info(f"📱 Results ready notification triggered: {instance.lottery.name}")
             result = FCMService.send_result_ready_notification(
                 lottery_name=instance.lottery.name,
@@ -402,22 +399,3 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
             
     except Exception as e:
         logger.error(f"❌ Error in lottery notification handler: {e}")
-
-@receiver(pre_save, sender=LotteryResult)
-def lottery_result_pre_save_handler(sender, instance, **kwargs):
-    """
-    Store the original published state before save
-    """
-    if instance.pk:
-        try:
-            old_instance = LotteryResult.objects.get(pk=instance.pk)
-            instance._original_published = old_instance.is_published
-            instance._original_results_ready = old_instance.results_ready_notification
-        except LotteryResult.DoesNotExist:
-            instance._original_published = False
-            instance._original_results_ready = False
-    else:
-        instance._original_published = False
-        instance._original_results_ready = False
-
-
