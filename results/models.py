@@ -398,21 +398,31 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
                 logger.info(f"📤 Publication notification sent: {result}")
         
         # Handle results_ready_notification independently
-        if (instance.results_ready_notification and 
-            not instance.notification_sent and
-            hasattr(instance, '_original_results_ready') and
-            not instance._original_results_ready):
-            
-            logger.info(f"📱 Results ready notification triggered: {instance.lottery.name}")
-            result = FCMService.send_result_ready_notification(
-                lottery_name=instance.lottery.name,
-                draw_number=instance.draw_number
-            )
-            logger.info(f"📤 Results ready notification sent: {result}")
-            
-            # Mark notification as sent to avoid duplicates
-            instance.notification_sent = True
-            instance.save(update_fields=['notification_sent'])
+        if hasattr(instance, '_original_results_ready'):
+            if (instance.results_ready_notification and 
+                not instance._original_results_ready and
+                not instance.notification_sent):
+                
+                # Checkbox was just checked - send notification
+                logger.info(f"📱 Results ready notification triggered: {instance.lottery.name}")
+                result = FCMService.send_result_ready_notification(
+                    lottery_name=instance.lottery.name,
+                    draw_number=instance.draw_number
+                )
+                logger.info(f"📤 Results ready notification sent: {result}")
+                
+                # Mark notification as sent
+                instance.notification_sent = True
+                instance.save(update_fields=['notification_sent'])
+                
+            elif (not instance.results_ready_notification and 
+                  instance._original_results_ready and
+                  instance.notification_sent):
+                
+                # Checkbox was just unchecked - reset notification_sent
+                logger.info(f"🔄 Results ready notification reset: {instance.lottery.name}")
+                instance.notification_sent = False
+                instance.save(update_fields=['notification_sent'])
             
     except Exception as e:
         logger.error(f"❌ Error in lottery notification handler: {e}")
