@@ -2132,3 +2132,75 @@ def list_fcm_tokens(request):
             'status': 'error',
             'message': str(e)
         })
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def test_send_with_details(request):
+    """Test sending with detailed error reporting"""
+    try:
+        from firebase_admin import messaging
+        from .models import FcmToken
+        
+        data = json.loads(request.body)
+        title = data.get('title', 'Test Notification')
+        body = data.get('body', 'Testing detailed FCM sending')
+        
+        # Get all active tokens
+        tokens = list(FcmToken.objects.filter(
+            is_active=True,
+            notifications_enabled=True
+        ).values_list('fcm_token', flat=True))
+        
+        if not tokens:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No active tokens found'
+            })
+        
+        # Test each token individually to see specific errors
+        results = []
+        for i, token in enumerate(tokens):
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=title,
+                        body=body,
+                    ),
+                    token=token,
+                )
+                
+                response = messaging.send(message)
+                results.append({
+                    'token_index': i,
+                    'token_preview': token[:20] + '...',
+                    'status': 'success',
+                    'message_id': response
+                })
+                
+            except Exception as e:
+                results.append({
+                    'token_index': i,
+                    'token_preview': token[:20] + '...',
+                    'status': 'error',
+                    'error': str(e)
+                })
+        
+        success_count = sum(1 for r in results if r['status'] == 'success')
+        failure_count = len(results) - success_count
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Detailed test completed',
+            'summary': {
+                'total_tokens': len(tokens),
+                'success_count': success_count,
+                'failure_count': failure_count
+            },
+            'detailed_results': results
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
