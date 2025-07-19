@@ -2,7 +2,7 @@
  * Lottery Admin Enhancement Script
  * Path: results/static/results/js/lottery_admin.js
  * 
- * Clean production version - Admin functionality only
+ * Enhanced version only - Single initialization
  */
 
 // Store entry counters for each prize type
@@ -10,7 +10,7 @@ const entryCounters = {};
 let isDirty = false;
 
 /**
- * Initialize the lottery admin interface
+ * Initialize the lottery admin interface - ENHANCED VERSION ONLY
  */
 function initLotteryAdmin() {
     // Initialize prize type counters
@@ -37,8 +37,14 @@ function initLotteryAdmin() {
     // Check if we're in edit mode and load existing entries
     loadExistingPrizeEntries();
 
-    // Add form submission handler
-    document.getElementById('lotteryForm').addEventListener('submit', validateAndSubmit);
+    // Add ENHANCED form submission handler (only one)
+    const form = document.getElementById('lotteryForm');
+    if (form) {
+        form.addEventListener('submit', validateAndSubmitWithNotification);
+    }
+    
+    // Initialize notification checkbox behavior
+    initializeNotificationCheckbox();
     
     // Add beforeunload event to warn about unsaved changes
     window.addEventListener('beforeunload', function(e) {
@@ -52,6 +58,238 @@ function initLotteryAdmin() {
     // Initialize fixed bottom buttons
     initializeFixedButtons();
     initializePreviewState();
+}
+
+/**
+ * Enhanced form validation with notification support
+ */
+function validateAndSubmitWithNotification(e) {
+    e.preventDefault();
+    
+    // Basic validation
+    const lottery = document.querySelector('select[name="lottery"]').value;
+    const drawNumber = document.querySelector('input[name="draw_number"]').value;
+    const date = document.querySelector('input[name="date"]').value;
+    
+    if (!lottery || !drawNumber || !date) {
+        showNotification('Please fill in all required fields in the Lottery Draw Information section.', 'error');
+        return;
+    }
+    
+    // Check if at least one prize entry is filled
+    let hasEntries = false;
+    const prizeTypes = Object.keys(entryCounters);
+    
+    for (const prizeType of prizeTypes) {
+        const entriesContainer = document.getElementById(prizeType + '-entries');
+        if (!entriesContainer) continue;
+        
+        const entries = entriesContainer.querySelectorAll('.prize-entry');
+        
+        for (const entry of entries) {
+            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]');
+            const values = Array.from(inputs).map(input => input.value.trim());
+            
+            if (values.filter(v => v !== '').length >= 2) {
+                hasEntries = true;
+                break;
+            }
+        }
+        
+        if (hasEntries) break;
+    }
+    
+    if (!hasEntries) {
+        showNotification('Please add at least one prize entry.', 'error');
+        return;
+    }
+    
+    // Check if notification checkbox is checked
+    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
+    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
+    const willSendNotification = notifyCheckbox && notifyCheckbox.checked;
+    
+    // Auto-check published if notification is being sent
+    if (willSendNotification && isPublishedCheckbox && !isPublishedCheckbox.checked) {
+        isPublishedCheckbox.checked = true;
+        showNotification('Auto-enabled "Mark as declared" since notification is being sent.', 'info');
+    }
+    
+    // Show appropriate saving message
+    if (willSendNotification) {
+        showNotification('Saving results and sending notification to users...', 'info');
+    } else {
+        showNotification('Saving lottery results...', 'info');
+    }
+    
+    // Get the form and create FormData object
+    const form = document.getElementById('lotteryForm');
+    const formData = new FormData(form);
+    
+    // Get UI elements for status updates
+    const saveBtn = document.querySelector('.save-btn-bottom');
+    let iconSpan = null;
+    let textSpan = null;
+    
+    // Update UI to show loading state
+    if (saveBtn) {
+        iconSpan = saveBtn.querySelector('span:first-child');
+        textSpan = saveBtn.querySelector('span:last-child');
+        
+        saveBtn.classList.add('loading');
+        saveBtn.disabled = true;
+        
+        if (iconSpan) iconSpan.textContent = willSendNotification ? '📱' : '⏳';
+        if (textSpan) {
+            const isEditMode = form.querySelector('input[name="result_id"]');
+            if (willSendNotification) {
+                textSpan.textContent = isEditMode ? 'Updating & Notifying...' : 'Saving & Notifying...';
+            } else {
+                textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
+            }
+        }
+    }
+    
+    // Perform AJAX submission
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Server returned an error response: ' + response.status);
+        }
+        return response.text();
+    })
+    .then(html => {
+        // Success handling
+        isDirty = false;
+        
+        // Look for success messages in the response
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const successMsg = doc.querySelector('.messagelist .success');
+        const errorMsg = doc.querySelector('.messagelist .error');
+        
+        if (errorMsg) {
+            showNotification(errorMsg.textContent.trim(), 'error');
+        } else if (successMsg) {
+            let message = successMsg.textContent.trim();
+            
+            // Enhance message if notification was sent
+            if (willSendNotification) {
+                message = message + ' 📱 Users have been notified!';
+            }
+            
+            showNotification(message, 'success');
+        } else {
+            // Default success message
+            const defaultMsg = willSendNotification ? 
+                'Results saved and users notified! 📱' : 
+                'Lottery results saved successfully!';
+            showNotification(defaultMsg, 'success');
+        }
+        
+        // Update any necessary parts of the page
+        const resultId = doc.querySelector('input[name="result_id"]');
+        if (resultId && !form.querySelector('input[name="result_id"]')) {
+            // If this was a new entry that now has an ID, update the form
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'result_id';
+            hiddenInput.value = resultId.value;
+            form.appendChild(hiddenInput);
+            
+            // 🔥 UPDATE FORM ACTION URL TO EDIT ENDPOINT
+            form.action = `/api/results/admin/edit-result/${resultId.value}/`;
+            console.log('Form action updated to:', form.action);
+            
+            // Update page title to show we're in edit mode
+            const title = document.querySelector('.form-header');
+            if (title) {
+                title.textContent = 'Lottery Result Edit System';
+            }
+            
+            // Update browser URL without reload (optional - keeps URL in sync)
+            window.history.replaceState({}, '', `/api/results/admin/edit-result/${resultId.value}/`);
+            console.log('Browser URL updated to edit mode');
+        }
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting form:', error);
+        const errorMsg = willSendNotification ? 
+            'Error saving results and sending notification. Please try again.' :
+            'Error saving lottery results. Please try again.';
+        showNotification(errorMsg, 'error');
+        
+        // Reset UI loading state
+        if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.disabled = false;
+            
+            if (iconSpan) iconSpan.textContent = '💾';
+            if (textSpan) {
+                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
+                    'Update Lottery Results' : 'Save Lottery Results';
+            }
+        }
+    });
+}
+
+/**
+ * Enhanced notification checkbox behavior
+ */
+function initializeNotificationCheckbox() {
+    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
+    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
+    
+    if (notifyCheckbox) {
+        // Add change event listener
+        notifyCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // Show confirmation when checking
+                showNotification('Notification will be sent when you save the results.', 'info');
+                
+                // Auto-check published (but don't force it)
+                if (isPublishedCheckbox && !isPublishedCheckbox.checked) {
+                    isPublishedCheckbox.checked = true;
+                    showNotification('Auto-enabled "Mark as declared" for notification.', 'info');
+                }
+            } else {
+                showNotification('Notification will not be sent.', 'info');
+            }
+            
+            isDirty = true;
+            notifyPreviewUpdate();
+        });
+        
+        // Add visual feedback
+        notifyCheckbox.addEventListener('mouseenter', function() {
+            if (!this.checked) {
+                this.style.transform = 'scale(1.2)';
+                this.style.transition = 'transform 0.2s ease';
+            }
+        });
+        
+        notifyCheckbox.addEventListener('mouseleave', function() {
+            this.style.transform = 'scale(1.1)';
+        });
+    }
 }
 
 /**
@@ -118,7 +356,7 @@ function toggleBulkEntry(prizeType) {
 }
 
 /**
- * Process bulk entries with support for both formats - FIXED VERSION
+ * Process bulk entries with support for both formats
  */
 function processBulkEntries(prizeType) {
     const textarea = document.getElementById(prizeType + '-bulk-textarea');
@@ -249,10 +487,10 @@ function processBulkEntries(prizeType) {
     entryCounters[prizeType] = entriesContainer.children.length;
     isDirty = true;
     
-    // FIX: Reset the toggle switch to "Normal" position and hide bulk section
+    // Reset the toggle switch to "Normal" position and hide bulk section
     const toggleSwitch = document.querySelector(`#${prizeType}-section .toggle-switch input[type="checkbox"]`);
     if (toggleSwitch) {
-        toggleSwitch.checked = false; // Reset toggle to "Normal" position
+        toggleSwitch.checked = false;
     }
     
     // Hide the bulk section
@@ -273,168 +511,6 @@ function processBulkEntries(prizeType) {
     }
 
     notifyPreviewUpdate();
-}
-
-/**
- * Validate form and submit if valid - MODIFIED to remove confirmation
- */
-/**
- * Validate form and submit via AJAX
- */
-/**
- * Validate form and submit via AJAX - Customized for Django lottery admin
- */
-/**
- * Validate form and submit via AJAX without confirmation popup
- */
-function validateAndSubmit(e) {
-    e.preventDefault();
-    
-    // Basic validation
-    const lottery = document.querySelector('select[name="lottery"]').value;
-    const drawNumber = document.querySelector('input[name="draw_number"]').value;
-    const date = document.querySelector('input[name="date"]').value;
-    
-    if (!lottery || !drawNumber || !date) {
-        showNotification('Please fill in all required fields in the Lottery Draw Information section.', 'error');
-        return;
-    }
-    
-    // Check if at least one prize entry is filled
-    let hasEntries = false;
-    const prizeTypes = Object.keys(entryCounters);
-    
-    for (const prizeType of prizeTypes) {
-        const entriesContainer = document.getElementById(prizeType + '-entries');
-        if (!entriesContainer) continue;
-        
-        const entries = entriesContainer.querySelectorAll('.prize-entry');
-        
-        for (const entry of entries) {
-            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]');
-            const values = Array.from(inputs).map(input => input.value.trim());
-            
-            if (values.filter(v => v !== '').length >= 2) {
-                hasEntries = true;
-                break;
-            }
-        }
-        
-        if (hasEntries) break;
-    }
-    
-    if (!hasEntries) {
-        showNotification('Please add at least one prize entry.', 'error');
-        return;
-    }
-    
-    // Show saving notification
-    showNotification('Saving lottery results...', 'info');
-    
-    // Get the form and create FormData object
-    const form = document.getElementById('lotteryForm');
-    const formData = new FormData(form);
-    
-    // Get UI elements for status updates - declare these variables here so they're in scope for the promises
-    const saveBtn = document.querySelector('.save-btn-bottom');
-    let iconSpan = null;
-    let textSpan = null;
-    
-    // Update UI to show loading state
-    if (saveBtn) {
-        iconSpan = saveBtn.querySelector('span:first-child');
-        textSpan = saveBtn.querySelector('span:last-child');
-        
-        saveBtn.classList.add('loading');
-        saveBtn.disabled = true;
-        
-        if (iconSpan) iconSpan.textContent = '⏳';
-        if (textSpan) {
-            const isEditMode = form.querySelector('input[name="result_id"]');
-            textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
-        }
-    }
-    
-    // Perform AJAX submission
-    fetch(form.action || window.location.href, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Server returned an error response: ' + response.status);
-        }
-        return response.text();
-    })
-    .then(html => {
-        // Success handling
-        isDirty = false;
-        
-        // Look for success messages in the response
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const successMsg = doc.querySelector('.messagelist .success');
-        const errorMsg = doc.querySelector('.messagelist .error');
-        
-        if (errorMsg) {
-            // Show error message
-            showNotification(errorMsg.textContent.trim(), 'error');
-        } else if (successMsg) {
-            // Show success message
-            showNotification(successMsg.textContent.trim(), 'success');
-            
-            // Update any necessary parts of the page without reloading
-            const resultId = doc.querySelector('input[name="result_id"]');
-            if (resultId && !form.querySelector('input[name="result_id"]')) {
-                // If this was a new entry that now has an ID, update the form
-                const hiddenInput = document.createElement('input');
-                hiddenInput.type = 'hidden';
-                hiddenInput.name = 'result_id';
-                hiddenInput.value = resultId.value;
-                form.appendChild(hiddenInput);
-                
-                // Update page title to show we're in edit mode
-                const title = document.querySelector('.form-header');
-                if (title) {
-                    title.textContent = 'Lottery Result Edit System';
-                }
-            }
-        } else {
-            // Default success message
-            showNotification('Lottery results saved successfully!', 'success');
-        }
-        
-        // Reset UI loading state
-        if (saveBtn) {
-            saveBtn.classList.remove('loading');
-            saveBtn.disabled = false;
-            
-            if (iconSpan) iconSpan.textContent = '💾';
-            if (textSpan) {
-                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
-                    'Update Lottery Results' : 'Save Lottery Results';
-            }
-        }
-    })
-    .catch(error => {
-        console.error('Error submitting form:', error);
-        showNotification('Error saving lottery results. Please try again.', 'error');
-        
-        // Reset UI loading state
-        if (saveBtn) {
-            saveBtn.classList.remove('loading');
-            saveBtn.disabled = false;
-            
-            if (iconSpan) iconSpan.textContent = '💾';
-            if (textSpan) {
-                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
-                    'Update Lottery Results' : 'Save Lottery Results';
-            }
-        }
-    });
 }
 
 /**
@@ -602,10 +678,7 @@ function initializeFixedButtons() {
         previewBtn.addEventListener('click', handlePreviewToggle);
     }
     
-    const saveBtn = document.querySelector('.save-btn-bottom');
-    if (saveBtn) {
-        enhanceFixedSaveButton(saveBtn);
-    }
+    // REMOVED: enhanceFixedSaveButton() call to prevent duplicate listeners
     
     setupKeyboardShortcuts();
     initScrollBehavior();
@@ -614,15 +687,6 @@ function initializeFixedButtons() {
 
 /**
  * Handle preview toggle for fixed buttons
- */
-/**
- * Handle preview toggle for fixed buttons - FIXED VERSION
- */
-/**
- * Handle preview toggle for fixed buttons - COMPLETE FIX
- */
-/**
- * Handle preview toggle for fixed buttons - FIXED VERSION
  */
 function handlePreviewToggle() {
     console.log('=== Preview Toggle Called ===');
@@ -763,7 +827,7 @@ function handlePreviewToggle() {
 }
 
 /**
- * ENHANCED: Better basic preview generation with more robust error handling
+ * Better basic preview generation with more robust error handling
  */
 function generateBasicPreview() {
     console.log('Generating basic preview...');
@@ -917,7 +981,6 @@ function generateBasicPreview() {
 
 /**
  * Initialize preview synchronization with DOM state on page load
- * Call this function in the initLotteryAdmin function
  */
 function initializePreviewState() {
     const previewSection = document.getElementById('preview-section');
@@ -945,42 +1008,6 @@ function initializePreviewState() {
 }
 
 /**
- * Enhance fixed save button
- */
-function enhanceFixedSaveButton(saveBtn) {
-    const form = document.getElementById('lotteryForm');
-    if (!form) return;
-    
-    form.addEventListener('submit', function() {
-        saveBtn.classList.add('loading');
-        saveBtn.disabled = true;
-        
-        const iconSpan = saveBtn.querySelector('span:first-child');
-        const textSpan = saveBtn.querySelector('span:last-child');
-        
-        if (iconSpan) iconSpan.textContent = '⏳';
-        if (textSpan) {
-            const isEditMode = form.querySelector('input[name="result_id"]');
-            textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
-        }
-        
-        // showNotification('Saving lottery results...', 'info');
-        
-        setTimeout(() => {
-            if (saveBtn.classList.contains('loading')) {
-                saveBtn.classList.remove('loading');
-                saveBtn.disabled = false;
-                if (iconSpan) iconSpan.textContent = '💾';
-                if (textSpan) {
-                    const isEditMode = form.querySelector('input[name="result_id"]');
-                    textSpan.textContent = isEditMode ? 'Update Lottery Results' : 'Save Lottery Results';
-                }
-            }
-        }, 10000);
-    });
-}
-
-/**
  * Setup keyboard shortcuts
  */
 function setupKeyboardShortcuts() {
@@ -989,7 +1016,7 @@ function setupKeyboardShortcuts() {
             e.preventDefault();
             const saveBtn = document.querySelector('.save-btn-bottom');
             if (saveBtn && !saveBtn.disabled) {
-                document.getElementById('lotteryForm').submit();
+                document.getElementById('lotteryForm').dispatchEvent(new Event('submit'));
             }
         }
         
@@ -1069,7 +1096,9 @@ function notifyPreviewUpdate() {
     }, 300);
 }
 
-
+/**
+ * Apply no-spaces functionality to inputs
+ */
 function applyNoSpacesToInput(input) {
     if (!input) return;
     
@@ -1158,261 +1187,7 @@ function showSpaceNotification() {
     }, 1500);
 }
 
-
-// Add these functions to your existing lottery_admin.js file
-
-/**
- * Enhanced form validation with new notification checkbox
- */
-function validateAndSubmitWithNotification(e) {
-    e.preventDefault();
-    
-    // Basic validation
-    const lottery = document.querySelector('select[name="lottery"]').value;
-    const drawNumber = document.querySelector('input[name="draw_number"]').value;
-    const date = document.querySelector('input[name="date"]').value;
-    
-    if (!lottery || !drawNumber || !date) {
-        showNotification('Please fill in all required fields in the Lottery Draw Information section.', 'error');
-        return;
-    }
-    
-    // Check if at least one prize entry is filled
-    let hasEntries = false;
-    const prizeTypes = Object.keys(entryCounters);
-    
-    for (const prizeType of prizeTypes) {
-        const entriesContainer = document.getElementById(prizeType + '-entries');
-        if (!entriesContainer) continue;
-        
-        const entries = entriesContainer.querySelectorAll('.prize-entry');
-        
-        for (const entry of entries) {
-            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]');
-            const values = Array.from(inputs).map(input => input.value.trim());
-            
-            if (values.filter(v => v !== '').length >= 2) {
-                hasEntries = true;
-                break;
-            }
-        }
-        
-        if (hasEntries) break;
-    }
-    
-    if (!hasEntries) {
-        showNotification('Please add at least one prize entry.', 'error');
-        return;
-    }
-    
-    // Check if notification checkbox is checked
-    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
-    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
-    const willSendNotification = notifyCheckbox && notifyCheckbox.checked;
-    
-    // Auto-check published if notification is being sent
-    if (willSendNotification && isPublishedCheckbox && !isPublishedCheckbox.checked) {
-        isPublishedCheckbox.checked = true;
-        showNotification('Auto-enabled "Mark as declared" since notification is being sent.', 'info');
-    }
-    
-    // Show appropriate saving message
-    if (willSendNotification) {
-        showNotification('Saving results and sending notification to users...', 'info');
-    } else {
-        showNotification('Saving lottery results...', 'info');
-    }
-    
-    // Get the form and create FormData object
-    const form = document.getElementById('lotteryForm');
-    const formData = new FormData(form);
-    
-    // Get UI elements for status updates
-    const saveBtn = document.querySelector('.save-btn-bottom');
-    let iconSpan = null;
-    let textSpan = null;
-    
-    // Update UI to show loading state
-    if (saveBtn) {
-        iconSpan = saveBtn.querySelector('span:first-child');
-        textSpan = saveBtn.querySelector('span:last-child');
-        
-        saveBtn.classList.add('loading');
-        saveBtn.disabled = true;
-        
-        if (iconSpan) iconSpan.textContent = willSendNotification ? '📱' : '⏳';
-        if (textSpan) {
-            const isEditMode = form.querySelector('input[name="result_id"]');
-            if (willSendNotification) {
-                textSpan.textContent = isEditMode ? 'Updating & Notifying...' : 'Saving & Notifying...';
-            } else {
-                textSpan.textContent = isEditMode ? 'Updating...' : 'Saving...';
-            }
-        }
-    }
-    
-    // Perform AJAX submission
-    fetch(form.action || window.location.href, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Server returned an error response: ' + response.status);
-        }
-        return response.text();
-    })
-    .then(html => {
-        // Success handling
-        isDirty = false;
-        
-        // Look for success messages in the response
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const successMsg = doc.querySelector('.messagelist .success');
-        const errorMsg = doc.querySelector('.messagelist .error');
-        
-        if (errorMsg) {
-            showNotification(errorMsg.textContent.trim(), 'error');
-        } else if (successMsg) {
-            let message = successMsg.textContent.trim();
-            
-            // Enhance message if notification was sent
-            if (willSendNotification) {
-                message = message + ' 📱 Users have been notified!';
-            }
-            
-            showNotification(message, 'success');
-        } else {
-            // Default success message
-            const defaultMsg = willSendNotification ? 
-                'Results saved and users notified! 📱' : 
-                'Lottery results saved successfully!';
-            showNotification(defaultMsg, 'success');
-        }
-        
-        // Update any necessary parts of the page
-        const resultId = doc.querySelector('input[name="result_id"]');
-        if (resultId && !form.querySelector('input[name="result_id"]')) {
-            // If this was a new entry that now has an ID, update the form
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'result_id';
-            hiddenInput.value = resultId.value;
-            form.appendChild(hiddenInput);
-            
-            // Update page title to show we're in edit mode
-            const title = document.querySelector('.form-header');
-            if (title) {
-                title.textContent = 'Lottery Result Edit System';
-            }
-        }
-        
-        // Reset UI loading state
-        if (saveBtn) {
-            saveBtn.classList.remove('loading');
-            saveBtn.disabled = false;
-            
-            if (iconSpan) iconSpan.textContent = '💾';
-            if (textSpan) {
-                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
-                    'Update Lottery Results' : 'Save Lottery Results';
-            }
-        }
-    })
-    .catch(error => {
-        console.error('Error submitting form:', error);
-        const errorMsg = willSendNotification ? 
-            'Error saving results and sending notification. Please try again.' :
-            'Error saving lottery results. Please try again.';
-        showNotification(errorMsg, 'error');
-        
-        // Reset UI loading state
-        if (saveBtn) {
-            saveBtn.classList.remove('loading');
-            saveBtn.disabled = false;
-            
-            if (iconSpan) iconSpan.textContent = '💾';
-            if (textSpan) {
-                textSpan.textContent = form.querySelector('input[name="result_id"]') ? 
-                    'Update Lottery Results' : 'Save Lottery Results';
-            }
-        }
-    });
-}
-
-/**
- * Enhanced notification checkbox behavior
- */
-function initializeNotificationCheckbox() {
-    const notifyCheckbox = document.querySelector('input[name="results_ready_notification"]');
-    const isPublishedCheckbox = document.querySelector('input[name="is_published"]');
-    
-    if (notifyCheckbox) {
-        // Add change event listener
-        notifyCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                // Show confirmation when checking
-                showNotification('Notification will be sent when you save the results.', 'info');
-                
-                // Auto-check published (but don't force it)
-                if (isPublishedCheckbox && !isPublishedCheckbox.checked) {
-                    isPublishedCheckbox.checked = true;
-                    showNotification('Auto-enabled "Mark as declared" for notification.', 'info');
-                }
-            } else {
-                showNotification('Notification will not be sent.', 'info');
-            }
-            
-            isDirty = true;
-            notifyPreviewUpdate();
-        });
-        
-        // Add visual feedback
-        notifyCheckbox.addEventListener('mouseenter', function() {
-            if (!this.checked) {
-                this.style.transform = 'scale(1.2)';
-                this.style.transition = 'transform 0.2s ease';
-            }
-        });
-        
-        notifyCheckbox.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1.1)';
-        });
-    }
-}
-
-/**
- * Update the main initialization function
- */
-function initLotteryAdminEnhanced() {
-    // Call existing initialization
-    initLotteryAdmin();
-    
-    // Initialize new notification checkbox
-    initializeNotificationCheckbox();
-    
-    // Replace the form submission handler with the enhanced version
-    const form = document.getElementById('lotteryForm');
-    if (form) {
-        form.removeEventListener('submit', validateAndSubmit);
-        form.addEventListener('submit', validateAndSubmitWithNotification);
-    }
-}
-
-// Update the DOMContentLoaded event listener
-document.addEventListener('DOMContentLoaded', function() {
-    initLotteryAdminEnhanced();
-});
-
-
-
-
-
-// Initialize when DOM is loaded
+// Initialize when DOM is loaded - SINGLE INITIALIZATION
 document.addEventListener('DOMContentLoaded', function() {
     initLotteryAdmin();
 });
