@@ -345,6 +345,79 @@ class FcmToken(models.Model):
         return f"{self.name} ({self.phone_number})"
     
 
+# Add this to the end of your models.py file
+from django.db.models.signals import post_save, pre_save
+from django.dispatch import receiver
 
+@receiver(post_save, sender=LotteryResult)
+def lottery_result_notification_handler(sender, instance, created, **kwargs):
+    """
+    Automatically send notifications when lottery results are published
+    """
+    try:
+        from .services.fcm_service import FCMService
+        import logging
+        
+        logger = logging.getLogger('lottery_app')
+        
+        # Only send notifications for published results
+        if not instance.is_published:
+            return
+        
+        # Check if this is a newly published result or an update
+        if created:
+            # New result added and published
+            logger.info(f"📱 New lottery result created: {instance.lottery.name}")
+            result = FCMService.send_new_result_notification(
+                lottery_name=instance.lottery.name
+            )
+            logger.info(f"📤 New result notification sent: {result}")
+            
+        else:
+            # Existing result updated - check if it was just published
+            try:
+                # Get the previous state from database
+                old_instance = LotteryResult.objects.get(pk=instance.pk)
+                
+                # If it wasn't published before but is now published
+                if not hasattr(old_instance, '_original_published'):
+                    # We'll handle this with pre_save signal
+                    pass
+                    
+            except LotteryResult.DoesNotExist:
+                pass
+        
+        # Check if results_ready_notification checkbox was ticked
+        if instance.results_ready_notification and not instance.notification_sent:
+            logger.info(f"📱 Results ready notification triggered: {instance.lottery.name}")
+            result = FCMService.send_result_ready_notification(
+                lottery_name=instance.lottery.name,
+                draw_number=instance.draw_number
+            )
+            logger.info(f"📤 Results ready notification sent: {result}")
+            
+            # Mark notification as sent to avoid duplicates
+            instance.notification_sent = True
+            instance.save(update_fields=['notification_sent'])
+            
+    except Exception as e:
+        logger.error(f"❌ Error in lottery notification handler: {e}")
+
+@receiver(pre_save, sender=LotteryResult)
+def lottery_result_pre_save_handler(sender, instance, **kwargs):
+    """
+    Store the original published state before save
+    """
+    if instance.pk:
+        try:
+            old_instance = LotteryResult.objects.get(pk=instance.pk)
+            instance._original_published = old_instance.is_published
+            instance._original_results_ready = old_instance.results_ready_notification
+        except LotteryResult.DoesNotExist:
+            instance._original_published = False
+            instance._original_results_ready = False
+    else:
+        instance._original_published = False
+        instance._original_results_ready = False
 
 

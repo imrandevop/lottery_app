@@ -51,10 +51,15 @@ class FCMService:
     
     @classmethod
     def send_to_all_users(cls, title: str, body: str, data: Dict = None) -> Dict:
-        """Send notification to all active users"""
-        cls._initialize_firebase()
-        
+        """Send notification to all active users using working direct method"""
         try:
+            from firebase_admin import messaging
+            from results.models import FcmToken
+            from django.utils import timezone
+            import logging
+            
+            logger = logging.getLogger('lottery_app')
+            
             # Get all active FCM tokens
             active_tokens = list(FcmToken.objects.filter(
                 is_active=True,
@@ -65,42 +70,47 @@ class FCMService:
                 logger.warning("No active FCM tokens found")
                 return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
             
-            # Test mode (when Firebase is not available)
-            if cls._test_mode:
-                logger.info(f"TEST MODE - Would send notification:")
-                logger.info(f"Title: {title}")
-                logger.info(f"Body: {body}")
-                logger.info(f"To {len(active_tokens)} devices")
-                
-                # Update last_used for test
+            # Send using proven working direct method
+            success_count = 0
+            failure_count = 0
+            
+            for token in active_tokens:
+                try:
+                    message = messaging.Message(
+                        notification=messaging.Notification(
+                            title=title,
+                            body=body,
+                        ),
+                        data={k: str(v) for k, v in (data or {}).items()},
+                        token=token,
+                    )
+                    
+                    response = messaging.send(message)
+                    success_count += 1
+                    logger.info(f"✅ Notification sent: {response}")
+                    
+                except Exception as e:
+                    failure_count += 1
+                    logger.error(f"❌ Notification failed: {e}")
+                    
+                    # Deactivate invalid tokens
+                    if "not a valid FCM registration token" in str(e) or "Requested entity was not found" in str(e):
+                        FcmToken.objects.filter(fcm_token=token).update(is_active=False)
+                        logger.info(f"🗑️ Deactivated invalid token")
+            
+            # Update last_used for successful tokens
+            if success_count > 0:
                 FcmToken.objects.filter(
-                    is_active=True,
-                    notifications_enabled=True
+                    fcm_token__in=active_tokens,
+                    is_active=True
                 ).update(last_used=timezone.now())
-                
-                return {
-                    'success_count': len(active_tokens),
-                    'failure_count': 0,
-                    'message': f'TEST: Would send to {len(active_tokens)} devices'
-                }
             
-            # Real Firebase sending
-            total_success = 0
-            total_failure = 0
-            
-            # Send in batches of 500 (FCM limit)
-            for i in range(0, len(active_tokens), 500):
-                batch_tokens = active_tokens[i:i + 500]
-                success, failure = cls._send_multicast(batch_tokens, title, body, data)
-                total_success += success
-                total_failure += failure
-            
-            logger.info(f"📱 Real notification sent: {total_success} success, {total_failure} failed")
+            logger.info(f"📱 Notification summary: {success_count} success, {failure_count} failed")
             
             return {
-                'success_count': total_success,
-                'failure_count': total_failure,
-                'message': f'Sent to {total_success}/{len(active_tokens)} devices'
+                'success_count': success_count,
+                'failure_count': failure_count,
+                'message': f'Sent to {success_count}/{len(active_tokens)} devices'
             }
             
         except Exception as e:
@@ -191,3 +201,33 @@ class FCMService:
         }
         
         return cls.send_to_all_users(title, body, data)
+
+
+@classmethod
+def send_new_result_notification(cls, lottery_name: str) -> Dict:
+    """Send notification when new result is added"""
+    title = "🎯 New Kerala Lottery Results!"
+    body = f"Fresh {lottery_name} results are being added. Check them out now!"
+    
+    data = {
+        'type': 'new_result',
+        'lottery_name': lottery_name,
+        'click_action': 'OPEN_RESULTS'
+    }
+    
+    return cls.send_to_all_users(title, body, data)
+
+@classmethod
+def send_result_ready_notification(cls, lottery_name: str, draw_number: str) -> Dict:
+    """Send notification when result is ready (checkbox ticked)"""
+    title = "🎉 Lottery Results Ready!"
+    body = f"{lottery_name} Draw {draw_number} results are now available. Check if you won!"
+    
+    data = {
+        'type': 'result_ready',
+        'lottery_name': lottery_name,
+        'draw_number': draw_number,
+        'click_action': 'OPEN_RESULTS'
+    }
+    
+    return cls.send_to_all_users(title, body, data)
