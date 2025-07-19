@@ -488,3 +488,34 @@ if ENVIRONMENT == 'production':
         "https://lottokeralalotteries.com",
         "https://www.lottokeralalotteries.com",  # Replace with your actual domain
     ]
+
+# Initialize Firebase when Django starts
+def initialize_firebase():
+    """Initialize Firebase Admin SDK"""
+    if firebase_admin._apps:
+        return  # Already initialized
+    
+    try:
+        firebase_creds = get_firebase_credentials()
+        
+        if firebase_creds is None:
+            print("⚠️ Firebase not initialized - credentials missing")
+            return
+        
+        if isinstance(firebase_creds, Path):
+            # Using service account file (development)
+            cred = credentials.Certificate(str(firebase_creds))
+            print("🔥 Using Firebase service account file")
+        else:
+            # Using environment variables (production)
+            cred = credentials.Certificate(firebase_creds)
+            print("🔥 Using Firebase environment variables")
+        
+        firebase_admin.initialize_app(cred)
+        print("✅ Firebase initialized successfully")
+        
+    except Exception as e:
+        print(f"❌ Firebase initialization failed: {e}")
+
+# Initialize Firebase when settings load
+initialize_firebase()
