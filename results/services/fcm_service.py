@@ -176,8 +176,8 @@ class FCMService:
     @classmethod
     def send_new_result_notification(cls, lottery_name: str) -> Dict:
         """Send notification when new result is added"""
-        title = "🎯 New Kerala Lottery Results!"
-        body = f"Fresh {lottery_name} results are being added. Check them out now!"
+        title = f"{lottery_name} Results Live"
+        body = "Results are being announced. Check now!"
         
         data = {
             'type': 'new_result',
@@ -190,8 +190,8 @@ class FCMService:
     @classmethod
     def send_result_ready_notification(cls, lottery_name: str, draw_number: str) -> Dict:
         """Send notification when result is ready (checkbox ticked)"""
-        title = "🎉 Lottery Results Ready!"
-        body = f"{lottery_name} Draw {draw_number} results are now available. Check if you won!"
+        title = f"{lottery_name} Results Published"
+        body = "Results are now completed. Check your numbers!"
         
         data = {
             'type': 'result_ready',
