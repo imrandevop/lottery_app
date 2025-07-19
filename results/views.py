@@ -2046,3 +2046,32 @@ def debug_fcm_register(request):
             'status': 'error',
             'message': f'Unexpected error: {str(e)}'
         }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def test_send_notification(request):
+    """Test sending notifications to all users"""
+    try:
+        data = json.loads(request.body)
+        title = data.get('title', 'Test Notification')
+        body = data.get('body', 'This is a test notification from your lottery app!')
+        
+        # Import your FCM service
+        from .services.fcm_service import FCMService
+        
+        # Send to all users
+        result = FCMService.send_to_all_users(title, body)
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Test notification sent',
+            'result': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error sending test notification: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
