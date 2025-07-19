@@ -2252,3 +2252,65 @@ def clear_test_tokens(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def test_send_direct(request):
+    """Test sending using direct Firebase messaging (like the working detailed test)"""
+    try:
+        from firebase_admin import messaging
+        from .models import FcmToken
+        
+        data = json.loads(request.body)
+        title = data.get('title', 'Direct Test Notification')
+        body = data.get('body', 'Testing direct Firebase messaging!')
+        
+        # Get active tokens (same as detailed test)
+        tokens = list(FcmToken.objects.filter(
+            is_active=True,
+            notifications_enabled=True
+        ).values_list('fcm_token', flat=True))
+        
+        if not tokens:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No active tokens found'
+            })
+        
+        # Use the same logic as the working detailed test
+        success_count = 0
+        failure_count = 0
+        
+        for token in tokens:
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=title,
+                        body=body,
+                    ),
+                    token=token,
+                )
+                
+                response = messaging.send(message)
+                success_count += 1
+                logger.info(f"✅ Notification sent: {response}")
+                
+            except Exception as e:
+                failure_count += 1
+                logger.error(f"❌ Notification failed: {e}")
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Direct test notification sent',
+            'result': {
+                'success_count': success_count,
+                'failure_count': failure_count,
+                'message': f'Sent to {success_count}/{len(tokens)} devices'
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
