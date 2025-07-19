@@ -2053,22 +2053,61 @@ def debug_fcm_register(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def test_send_notification(request):
-    """Test sending notifications to all users"""
+    """Test sending notifications using working direct method"""
     try:
+        from firebase_admin import messaging
+        from .models import FcmToken
+        
         data = json.loads(request.body)
         title = data.get('title', 'Test Notification')
         body = data.get('body', 'This is a test notification from your lottery app!')
         
-        # Import your FCM service
-        from .services.fcm_service import FCMService
+        # Get active tokens
+        tokens = list(FcmToken.objects.filter(
+            is_active=True,
+            notifications_enabled=True
+        ).values_list('fcm_token', flat=True))
         
-        # Send to all users
-        result = FCMService.send_to_all_users(title, body)
+        if not tokens:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No active tokens found'
+            })
+        
+        # Send using proven working method
+        success_count = 0
+        failure_count = 0
+        
+        for token in tokens:
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=title,
+                        body=body,
+                    ),
+                    data={
+                        'type': 'test_notification',
+                        'timestamp': str(timezone.now())
+                    },
+                    token=token,
+                )
+                
+                response = messaging.send(message)
+                success_count += 1
+                logger.info(f"✅ Notification sent successfully: {response}")
+                
+            except Exception as e:
+                failure_count += 1
+                logger.error(f"❌ Notification failed for token: {e}")
         
         return JsonResponse({
             'status': 'success',
             'message': 'Test notification sent',
-            'result': result
+            'result': {
+                'success_count': success_count,
+                'failure_count': failure_count,
+                'message': f'Sent to {success_count}/{len(tokens)} devices'
+            }
         })
         
     except Exception as e:
