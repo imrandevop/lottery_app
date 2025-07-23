@@ -11,9 +11,9 @@ from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
-from .models import PrizeEntry, LiveVideo
-from django.db.models import Q
-from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
+from .models import PrizeEntry, LiveVideo, DailyPoints
+from django.db.models import Q, Sum
+from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer, UserPointsSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer, NewsSerializer
 from .prediction_engine import LotteryPredictionEngine
@@ -2436,3 +2436,108 @@ def test_send_direct(request):
             'status': 'error',
             'message': str(e)
         })
+
+
+
+
+#<---------------POINT HISTORY SECTION ---------------->
+#<---------------POINT HISTORY SECTION ---------------->
+class UserPointsAPIView(APIView):
+    """
+    API endpoint to get user's total points and history
+    """
+    
+    def post(self, request):
+        serializer = UserPointsSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            response = {
+                "status": "fail",
+                "message": "Invalid data provided",
+                "data": {}
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+        
+        phone_number = serializer.validated_data['phone_number']
+        
+        try:
+            # Get user's total points
+            total_points = DailyPoints.objects.filter(
+                phone_number=phone_number
+            ).aggregate(total=Sum('points_awarded'))['total'] or 0
+            
+            # Get user's points history (last 30 entries, newest first)
+            points_history = DailyPoints.objects.filter(
+                phone_number=phone_number
+            ).select_related('lottery_code').order_by('-created_at')[:30]
+            
+            if not points_history.exists():
+                # User has no points history
+                response = {
+                    "status": "success",
+                    "message": "No point history",
+                    "data": {
+                        "user_id": phone_number,
+                        "total_points": 0,
+                        "history": []
+                    }
+                }
+                return Response(response, status=status.HTTP_200_OK)
+            
+            # Build history array
+            history_list = []
+            for point_entry in points_history:
+                try:
+                    # Get lottery name and draw number for this entry
+                    lottery = Lottery.objects.get(code=point_entry.lottery_code)
+                    
+                    # Find the lottery result for this date and lottery
+                    lottery_result = LotteryResult.objects.filter(
+                        lottery=lottery,
+                        date=point_entry.date_awarded,
+                        is_published=True
+                    ).first()
+                    
+                    if lottery_result:
+                        lottery_name_with_draw = f"{lottery.name} {lottery_result.draw_number}"
+                    else:
+                        # Fallback to just lottery name if no result found
+                        lottery_name_with_draw = lottery.name
+                    
+                    history_item = {
+                        "lottery_name": lottery_name_with_draw,
+                        "date": str(point_entry.date_awarded),
+                        "points_earned": point_entry.points_awarded
+                    }
+                    history_list.append(history_item)
+                    
+                except Lottery.DoesNotExist:
+                    # If lottery doesn't exist, skip this entry or use fallback
+                    logger.warning(f"Lottery with code {point_entry.lottery_code} not found for points entry {point_entry.id}")
+                    continue
+                except Exception as e:
+                    # Log error but continue processing other entries
+                    logger.error(f"Error processing points history entry {point_entry.id}: {e}")
+                    continue
+            
+            # Successful response
+            response = {
+                "status": "success",
+                "message": "Points history fetched successfully",
+                "data": {
+                    "user_id": phone_number,
+                    "total_points": total_points,
+                    "history": history_list
+                }
+            }
+            
+            return Response(response, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error fetching points for phone_number {phone_number}: {e}")
+            response = {
+                "status": "fail",
+                "message": "An error occurred while fetching points history",
+                "data": {}
+            }
+            return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

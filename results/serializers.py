@@ -353,4 +353,25 @@ class LotteryPercentageRequestSerializer(serializers.Serializer):
         return value
     
 
-#<---------------NOTIFICATION SECTION ---------------->
+#<---------------POINT HISTORY SECTION ---------------->
+class UserPointsSerializer(serializers.Serializer):
+    """Serializer for user points request"""
+    phone_number = serializers.CharField(
+        max_length=15,
+        help_text="Phone number of the user"
+    )
+    
+    def validate_phone_number(self, value):
+        """Validate phone number format"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required")
+        
+        # Remove any whitespace
+        value = value.strip()
+        
+        # Basic phone number format validation
+        clean_phone = value.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+        if not clean_phone.isdigit():
+            raise serializers.ValidationError("Phone number must contain only digits and allowed characters (+, -, spaces, parentheses)")
+        
+        return value
