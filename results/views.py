@@ -331,7 +331,7 @@ def lottery_results_by_code(request, lottery_code):
 
 class TicketCheckView(APIView):
     """
-    Enhanced API endpoint to check Kerala lottery tickets with standardized response format
+    Enhanced API endpoint to check Kerala lottery tickets with points system
     """
     
     # Kerala Lottery day mapping
@@ -349,15 +349,14 @@ class TicketCheckView(APIView):
         """Get expected day for lottery code"""
         return self.LOTTERY_DAYS.get(lottery_code.upper())
 
-
-
-    def create_standard_response(self, status_code, status, result_status, message, data):
-        """Create standardized response format"""
+    def create_standard_response(self, status_code, status, result_status, message, points, data):
+        """Create standardized response format with points"""
         return {
             "statusCode": status_code,
             "status": status,
             "resultStatus": result_status,
             "message": message,
+            "points": points,
             "data": data
         }
 
@@ -466,6 +465,72 @@ class TicketCheckView(APIView):
             'prize_details': prize_details
         }
 
+    def calculate_points(self, phone_number, ticket_number, lottery_code, check_date, won_prize, is_today, current_time):
+        """
+        Calculate points for the user based on points system rules
+        Returns: points (int) or None
+        """
+        # Import models inside the method to avoid circular imports
+        from .models import DailyPoints, DailyPointsPool
+        
+        # Rule 1: Points only for non-winners
+        if won_prize:
+            return None
+        
+        # Rule 2: Points only for today's lottery
+        if not is_today:
+            return None
+        
+        # Rule 3: Points only after 3:00 PM IST
+        result_publish_time = time(15, 0)  # 3:00 PM IST
+        if current_time < result_publish_time:
+            return None
+        
+        # Rule 4: Each user can receive points only once per day
+        today = date.today()
+        existing_points = DailyPoints.objects.filter(
+            phone_number=phone_number,
+            date_awarded=today
+        ).first()
+        
+        if existing_points:
+            return None  # User already received points today
+        
+        # Rule 5: Check if daily pool has points remaining
+        today_pool = DailyPointsPool.get_or_create_today_pool()
+        if today_pool.remaining_points <= 0:
+            return None  # Pool exhausted
+        
+        # Rule 6: Generate random points (1-50)
+        points_to_award = random.randint(1, 50)
+        
+        # Ensure we don't exceed the remaining pool
+        if points_to_award > today_pool.remaining_points:
+            points_to_award = today_pool.remaining_points
+        
+        # Award points with database transaction
+        try:
+            with transaction.atomic():
+                # Create points record
+                DailyPoints.objects.create(
+                    phone_number=phone_number,
+                    points_awarded=points_to_award,
+                    date_awarded=today,
+                    lottery_code=lottery_code,
+                    ticket_number=ticket_number
+                )
+                
+                # Update pool
+                today_pool.total_points_distributed += points_to_award
+                today_pool.remaining_points -= points_to_award
+                today_pool.save()
+                
+            return points_to_award
+            
+        except Exception as e:
+            # If any error occurs (like duplicate entry), return None
+            return None
+
     def post(self, request):
         serializer = TicketCheckSerializer(data=request.data)
 
@@ -475,7 +540,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "Validation Error", 
-                "Invalid data provided", error_data
+                "Invalid data provided", None, error_data
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -489,7 +554,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "Invalid Ticket", 
-                "Invalid ticket number format", error_data
+                "Invalid ticket number format", None, error_data
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -502,7 +567,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "Invalid Lottery Code", 
-                f"Invalid lottery code: {lottery_code}", error_data
+                f"Invalid lottery code: {lottery_code}", None, error_data
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -514,7 +579,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "Lottery Not Found", 
-                f'Lottery with code "{lottery_code}" not found', error_data
+                f'Lottery with code "{lottery_code}" not found', None, error_data
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -542,7 +607,10 @@ class TicketCheckView(APIView):
             )
             
             # Result exists for requested date - show that result
-            return self.handle_exact_date_result(lottery, ticket_number, check_date, lottery_result, is_today)
+            return self.handle_exact_date_result(
+                lottery, ticket_number, phone_number, check_date, 
+                lottery_result, is_today, current_time
+            )
             
         except LotteryResult.DoesNotExist:
             # No result for requested date
@@ -551,15 +619,21 @@ class TicketCheckView(APIView):
                 # Special case: Today's lottery with no result yet
                 if current_time < result_publish_time:
                     # Before 3 PM IST - result not published yet
-                    return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
+                    return self.handle_result_not_published_same_day(
+                        lottery, ticket_number, phone_number, check_date
+                    )
                 else:
                     # After 3 PM IST but no result - still not published
-                    return self.handle_result_not_published_same_day(lottery, ticket_number, check_date)
+                    return self.handle_result_not_published_same_day(
+                        lottery, ticket_number, phone_number, check_date
+                    )
             else:
                 # Show most recent result of this lottery type
-                return self.handle_different_day_result(lottery, ticket_number, check_date)
+                return self.handle_different_day_result(
+                    lottery, ticket_number, phone_number, check_date
+                )
 
-    def handle_result_not_published_same_day(self, lottery, ticket_number, check_date):
+    def handle_result_not_published_same_day(self, lottery, ticket_number, phone_number, check_date):
         """Handle case when result is not published yet (before 3 PM on correct lottery day)"""
         # Get the correct day name for the lottery
         lottery_day = self.get_expected_lottery_day(ticket_number[0].upper())
@@ -573,14 +647,22 @@ class TicketCheckView(APIView):
         
         response = self.create_standard_response(
             200, "success", "Result is not published", 
-            message, data
+            message, None, data  # No points when result not published
         )
         return Response(response, status=status.HTTP_200_OK)
 
-    def handle_exact_date_result(self, lottery, ticket_number, check_date, lottery_result, is_today):
+    def handle_exact_date_result(self, lottery, ticket_number, phone_number, check_date, lottery_result, is_today, current_time):
         """Handle case when result exists for the exact requested date"""
         # Check if ticket won
         prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
+        won_prize = bool(prize_data)
+        
+        # Calculate points
+        lottery_code = ticket_number[0].upper()
+        points = self.calculate_points(
+            phone_number, ticket_number, lottery_code, 
+            check_date, won_prize, is_today, current_time
+        )
         
         if prize_data:
             # Won prize on requested date
@@ -596,7 +678,7 @@ class TicketCheckView(APIView):
                 True, True, False, lottery_result, prize_data
             )
             response = self.create_standard_response(
-                200, "success", result_status, message, data
+                200, "success", result_status, message, points, data
             )
         else:
             # No prize on requested date
@@ -612,12 +694,12 @@ class TicketCheckView(APIView):
                 False, True, False, lottery_result, None
             )
             response = self.create_standard_response(
-                200, "success", result_status, message, data
+                200, "success", result_status, message, points, data
             )
         
         return Response(response, status=status.HTTP_200_OK)
 
-    def handle_different_day_result(self, lottery, ticket_number, check_date):
+    def handle_different_day_result(self, lottery, ticket_number, phone_number, check_date):
         """Handle checking lottery on wrong day - always show most recent result with isPreviousResult: true"""
         # Find the most recent published result for this lottery
         previous_result = LotteryResult.objects.filter(
@@ -633,7 +715,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "No Previous data", 
-                "No result data found on database", data
+                "No result data found on database", None, data  # No points for previous results
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -648,7 +730,7 @@ class TicketCheckView(APIView):
             )
             message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in the latest {lottery.name} draw."
             response = self.create_standard_response(
-                200, "success", "Previous Result", message, data
+                200, "success", "Previous Result", message, None, data  # No points for previous results
             )
         else:
             # No prize in most recent result
@@ -658,7 +740,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 200, "success", "Previous Result no price", 
-                "Better luck next time", data
+                "Better luck next time", None, data  # No points for previous results
             )
         
         return Response(response, status=status.HTTP_200_OK)

@@ -426,3 +426,60 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
             
     except Exception as e:
         logger.error(f"❌ Error in lottery notification handler: {e}")
+
+
+#<---------------POINTS SYSTEM SECTION---------------->
+
+class DailyPointsPool(models.Model):
+    """Track daily points pool and distribution"""
+    date = models.DateField(unique=True)
+    total_points_distributed = models.IntegerField(default=0)
+    remaining_points = models.IntegerField(default=10000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Daily Points Pool"
+        verbose_name_plural = "Daily Points Pools"
+        ordering = ['-date']
+    
+    def __str__(self):
+        return f"Points Pool {self.date} - Distributed: {self.total_points_distributed}/10000"
+    
+    @classmethod
+    def get_or_create_today_pool(cls):
+        """Get or create today's points pool"""
+        from datetime import date
+        today = date.today()
+        pool, created = cls.objects.get_or_create(
+            date=today,
+            defaults={
+                'total_points_distributed': 0,
+                'remaining_points': 10000
+            }
+        )
+        return pool
+
+
+class DailyPoints(models.Model):
+    """Track points awarded to users"""
+    phone_number = models.CharField(max_length=15, db_index=True)
+    points_awarded = models.IntegerField()
+    date_awarded = models.DateField(db_index=True)
+    lottery_code = models.CharField(max_length=1)
+    ticket_number = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Daily Points"
+        verbose_name_plural = "Daily Points"
+        ordering = ['-created_at']
+        # Ensure one award per user per day
+        unique_together = ['phone_number', 'date_awarded']
+        indexes = [
+            models.Index(fields=['phone_number', 'date_awarded']),
+            models.Index(fields=['date_awarded']),
+        ]
+    
+    def __str__(self):
+        return f"{self.phone_number} - {self.points_awarded} points on {self.date_awarded}"
