@@ -2450,10 +2450,6 @@ def test_send_direct(request):
 #<---------------POINT HISTORY SECTION ---------------->
 #<---------------POINT HISTORY SECTION ---------------->
 class UserPointsAPIView(APIView):
-    """
-    API endpoint to get user's total points and history
-    """
-    
     def post(self, request):
         serializer = UserPointsSerializer(data=request.data)
         
@@ -2473,13 +2469,30 @@ class UserPointsAPIView(APIView):
                 phone_number=phone_number
             ).aggregate(total=Sum('points_awarded'))['total'] or 0
             
-            # Get user's points history with optimized query (1 DB call instead of 31)
-            points_history = DailyPoints.objects.filter(
-                phone_number=phone_number
-            ).select_related('lottery').order_by('-created_at')[:30]
+            # TEMPORARY FIX: Use raw query or different approach
+            from django.db import connection
+            cursor = connection.cursor()
+            
+            # Check if lottery_id or lottery_code exists
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'results_dailypoints' 
+                AND column_name IN ('lottery_id', 'lottery_code')
+            """)
+            available_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'lottery_id' in available_columns:
+                # New schema - use select_related
+                points_history = DailyPoints.objects.filter(
+                    phone_number=phone_number
+                ).select_related('lottery').order_by('-created_at')[:30]
+            else:
+                # Old schema - don't use select_related
+                points_history = DailyPoints.objects.filter(
+                    phone_number=phone_number
+                ).order_by('-created_at')[:30]
             
             if not points_history.exists():
-                # User has no points history
                 response = {
                     "status": "success",
                     "message": "No point history",
@@ -2491,12 +2504,18 @@ class UserPointsAPIView(APIView):
                 }
                 return Response(response, status=status.HTTP_200_OK)
             
-            # Build history array - much more efficient now!
+            # Build history array
             history_list = []
             for point_entry in points_history:
                 try:
-                    # Lottery is already loaded via select_related - no additional DB call!
-                    lottery = point_entry.lottery
+                    if 'lottery_id' in available_columns:
+                        # New schema
+                        lottery = point_entry.lottery
+                        lottery_code = lottery.code
+                    else:
+                        # Old schema
+                        lottery_code = point_entry.lottery_code
+                        lottery = Lottery.objects.get(code=lottery_code)
                     
                     # Find the lottery result for this date and lottery
                     lottery_result = LotteryResult.objects.filter(
@@ -2508,7 +2527,6 @@ class UserPointsAPIView(APIView):
                     if lottery_result:
                         lottery_name_with_draw = f"{lottery.name} {lottery_result.draw_number}"
                     else:
-                        # Fallback to just lottery name if no result found
                         lottery_name_with_draw = lottery.name
                     
                     history_item = {
@@ -2519,11 +2537,9 @@ class UserPointsAPIView(APIView):
                     history_list.append(history_item)
                     
                 except Exception as e:
-                    # Log error but continue processing other entries
                     logger.error(f"Error processing points history entry {point_entry.id}: {e}")
                     continue
             
-            # Successful response
             response = {
                 "status": "success",
                 "message": "Points history fetched successfully",
