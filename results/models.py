@@ -430,18 +430,23 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
 
 #<---------------POINTS SYSTEM SECTION---------------->
 
-class DailyPointsPool(models.Model):
-    """Track daily points pool and distribution"""
-    date = models.DateField(unique=True)
-    total_points_distributed = models.IntegerField(default=0)
-    remaining_points = models.IntegerField(default=10000)
+class DailyPoints(models.Model):
+    phone_number = models.CharField(max_length=15, db_index=True)
+    points_awarded = models.IntegerField()
+    date_awarded = models.DateField(db_index=True)
+    lottery = models.ForeignKey(Lottery, on_delete=models.CASCADE)  # Changed this line
+    ticket_number = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name = "Daily Points Pool"
-        verbose_name_plural = "Daily Points Pools"
-        ordering = ['-date']
+        verbose_name = "Daily Points"
+        verbose_name_plural = "Daily Points"
+        ordering = ['-created_at']
+        unique_together = ['phone_number', 'date_awarded']
+        indexes = [
+            models.Index(fields=['phone_number', 'date_awarded']),
+            models.Index(fields=['date_awarded']),
+        ]
     
     def __str__(self):
         return f"Points Pool {self.date} - Distributed: {self.total_points_distributed}/10000"

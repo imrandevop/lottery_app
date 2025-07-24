@@ -2466,10 +2466,10 @@ class UserPointsAPIView(APIView):
                 phone_number=phone_number
             ).aggregate(total=Sum('points_awarded'))['total'] or 0
             
-            # Get user's points history (last 30 entries, newest first)
+            # Get user's points history with optimized query (1 DB call instead of 31)
             points_history = DailyPoints.objects.filter(
                 phone_number=phone_number
-            ).select_related('lottery_code').order_by('-created_at')[:30]
+            ).select_related('lottery').order_by('-created_at')[:30]
             
             if not points_history.exists():
                 # User has no points history
@@ -2484,12 +2484,12 @@ class UserPointsAPIView(APIView):
                 }
                 return Response(response, status=status.HTTP_200_OK)
             
-            # Build history array
+            # Build history array - much more efficient now!
             history_list = []
             for point_entry in points_history:
                 try:
-                    # Get lottery name and draw number for this entry
-                    lottery = Lottery.objects.get(code=point_entry.lottery_code)
+                    # Lottery is already loaded via select_related - no additional DB call!
+                    lottery = point_entry.lottery
                     
                     # Find the lottery result for this date and lottery
                     lottery_result = LotteryResult.objects.filter(
@@ -2511,10 +2511,6 @@ class UserPointsAPIView(APIView):
                     }
                     history_list.append(history_item)
                     
-                except Lottery.DoesNotExist:
-                    # If lottery doesn't exist, skip this entry or use fallback
-                    logger.warning(f"Lottery with code {point_entry.lottery_code} not found for points entry {point_entry.id}")
-                    continue
                 except Exception as e:
                     # Log error but continue processing other entries
                     logger.error(f"Error processing points history entry {point_entry.id}: {e}")
