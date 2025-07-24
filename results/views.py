@@ -424,6 +424,8 @@ class TicketCheckView(APIView):
 
     def check_ticket_prizes(self, ticket_number, lottery_result):
         """Check if ticket won any prizes in the given result"""
+        from .models import PrizeEntry
+        
         last_4_digits = ticket_number[-4:] if len(ticket_number) >= 4 else ticket_number
 
         # Get full ticket matches
@@ -466,7 +468,7 @@ class TicketCheckView(APIView):
             'prize_details': prize_details
         }
 
-    def calculate_points(self, phone_number, ticket_number, lottery_code, check_date, won_prize, is_today, current_time):
+    def calculate_points(self, phone_number, ticket_number, lottery, check_date, won_prize, is_today, current_time):
         """
         Calculate points for the user based on points system rules
         Returns: points (int) or None
@@ -512,12 +514,12 @@ class TicketCheckView(APIView):
         # Award points with database transaction
         try:
             with transaction.atomic():
-                # Create points record
+                # Create points record with ForeignKey
                 DailyPoints.objects.create(
                     phone_number=phone_number,
                     points_awarded=points_to_award,
                     date_awarded=today,
-                    lottery_code=lottery_code,
+                    lottery=lottery,  # Now using ForeignKey instead of lottery_code
                     ticket_number=ticket_number
                 )
                 
@@ -530,9 +532,13 @@ class TicketCheckView(APIView):
             
         except Exception as e:
             # If any error occurs (like duplicate entry), return None
+            logger.error(f"Error awarding points: {e}")
             return None
 
     def post(self, request):
+        from .serializers import TicketCheckSerializer
+        from .models import Lottery, LotteryResult
+        
         serializer = TicketCheckSerializer(data=request.data)
 
         if not serializer.is_valid():
@@ -658,10 +664,9 @@ class TicketCheckView(APIView):
         prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
         won_prize = bool(prize_data)
         
-        # Calculate points
-        lottery_code = ticket_number[0].upper()
+        # Calculate points - pass lottery object instead of lottery_code
         points = self.calculate_points(
-            phone_number, ticket_number, lottery_code, 
+            phone_number, ticket_number, lottery, 
             check_date, won_prize, is_today, current_time
         )
         
@@ -702,6 +707,8 @@ class TicketCheckView(APIView):
 
     def handle_different_day_result(self, lottery, ticket_number, phone_number, check_date):
         """Handle checking lottery on wrong day - always show most recent result with isPreviousResult: true"""
+        from .models import LotteryResult
+        
         # Find the most recent published result for this lottery
         previous_result = LotteryResult.objects.filter(
             lottery=lottery,
