@@ -5,6 +5,9 @@ from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 import re
 import pytz
+from datetime import date
+import random
+from django.db import transaction
 
 
 class Lottery(models.Model):
@@ -453,3 +456,78 @@ class DailyPoints(models.Model):
         return f"{self.phone_number} - {self.points_awarded} points on {self.date_awarded}"
 
 
+class DailyPointsPool(models.Model):
+    """
+    Manages daily points distribution pool to control total points given per day
+    """
+    date = models.DateField(unique=True, default=date.today, db_index=True)
+    total_daily_budget = models.IntegerField(
+        default=10000, 
+        help_text="Maximum points that can be distributed today"
+    )
+    total_points_distributed = models.IntegerField(
+        default=0,
+        help_text="Total points already distributed today"
+    )
+    remaining_points = models.IntegerField(
+        default=10000,
+        help_text="Points remaining to be distributed today"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Daily Points Pool"
+        verbose_name_plural = "Daily Points Pools"
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['date']),
+        ]
+    
+    def __str__(self):
+        return f"Points Pool {self.date} - {self.remaining_points}/{self.total_daily_budget} remaining"
+    
+    @classmethod
+    def get_or_create_today_pool(cls):
+        """
+        Get today's points pool or create one if it doesn't exist
+        Returns the pool instance for today
+        """
+        today = date.today()
+        pool, created = cls.objects.get_or_create(
+            date=today,
+            defaults={
+                'total_daily_budget': 10000,
+                'total_points_distributed': 0,
+                'remaining_points': 10000
+            }
+        )
+        
+        if created:
+            from django.utils import timezone
+            import logging
+            logger = logging.getLogger('lottery_app')
+            logger.info(f"🎯 Created new daily points pool for {today} with budget {pool.total_daily_budget}")
+        
+        return pool
+    
+    @classmethod
+    def reset_daily_pool(cls, new_budget=10000):
+        """
+        Reset today's pool (useful for testing or admin purposes)
+        """
+        today = date.today()
+        pool, created = cls.objects.update_or_create(
+            date=today,
+            defaults={
+                'total_daily_budget': new_budget,
+                'total_points_distributed': 0,
+                'remaining_points': new_budget
+            }
+        )
+        return pool
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure remaining_points is calculated correctly"""
+        self.remaining_points = self.total_daily_budget - self.total_points_distributed
+        super().save(*args, **kwargs)
