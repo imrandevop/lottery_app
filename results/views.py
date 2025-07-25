@@ -473,66 +473,107 @@ class TicketCheckView(APIView):
         Calculate points for the user based on points system rules
         Returns: points (int) or None
         """
-        # Import models inside the method to avoid circular imports
-        from .models import DailyPoints, DailyPointsPool
+        logger.info(f"🔍 CALCULATE_POINTS START for {phone_number}")
+        logger.info(f"Input parameters:")
+        logger.info(f"  - phone_number: {phone_number}")
+        logger.info(f"  - lottery: {lottery} (type: {type(lottery)})")
+        logger.info(f"  - won_prize: {won_prize}")
+        logger.info(f"  - is_today: {is_today}")
+        logger.info(f"  - current_time: {current_time} (type: {type(current_time)})")
         
-        # Rule 1: Points only for non-winners
-        if won_prize:
-            return None
-        
-        # Rule 2: Points only for today's lottery
-        if not is_today:
-            return None
-        
-        # Rule 3: Points only after 3:00 PM IST
-        result_publish_time = time(15, 0)  # 3:00 PM IST
-        if current_time < result_publish_time:
-            return None
-        
-        # Rule 4: Each user can receive points only once per day
-        today = date.today()
-        existing_points = DailyPoints.objects.filter(
-            phone_number=phone_number,
-            date_awarded=today
-        ).first()
-        
-        if existing_points:
-            return None  # User already received points today
-        
-        # Rule 5: Check if daily pool has points remaining
-        today_pool = DailyPointsPool.get_or_create_today_pool()
-        if today_pool.remaining_points <= 0:
-            return None  # Pool exhausted
-        
-        # Rule 6: Generate random points (1-50)
-        points_to_award = random.randint(1, 50)
-        
-        # Ensure we don't exceed the remaining pool
-        if points_to_award > today_pool.remaining_points:
-            points_to_award = today_pool.remaining_points
-        
-        # Award points with database transaction
         try:
-            with transaction.atomic():
-                # Create points record with ForeignKey
-                DailyPoints.objects.create(
-                    phone_number=phone_number,
-                    points_awarded=points_to_award,
-                    date_awarded=today,
-                    lottery=lottery,  # Now using ForeignKey instead of lottery_code
-                    ticket_number=ticket_number
-                )
-                
-                # Update pool
-                today_pool.total_points_distributed += points_to_award
-                today_pool.remaining_points -= points_to_award
-                today_pool.save()
-                
-            return points_to_award
+            # Import models inside the method to avoid circular imports
+            from .models import DailyPoints, DailyPointsPool
             
+            # Rule 1: Points only for non-winners
+            if won_prize:
+                logger.info("❌ RULE 1 FAILED: User won prize - no points awarded")
+                return None
+            logger.info("✅ RULE 1 PASSED: User did not win prize")
+            
+            # Rule 2: Points only for today's lottery
+            if not is_today:
+                logger.info("❌ RULE 2 FAILED: Not today's lottery - no points awarded")
+                return None
+            logger.info("✅ RULE 2 PASSED: This is today's lottery")
+            
+            # Rule 3: Points only after 3:00 PM IST
+            result_publish_time = time(15, 0)  # 3:00 PM IST
+            logger.info(f"🔍 RULE 3 CHECK: current_time={current_time} vs result_publish_time={result_publish_time}")
+            if current_time < result_publish_time:
+                logger.info("❌ RULE 3 FAILED: Before 3:00 PM - no points awarded")
+                return None
+            logger.info("✅ RULE 3 PASSED: After 3:00 PM")
+            
+            # Rule 4: Each user can receive points only once per day
+            today = date.today()
+            logger.info(f"🔍 RULE 4 CHECK: Checking existing points for {phone_number} on {today}")
+            
+            existing_points = DailyPoints.objects.filter(
+                phone_number=phone_number,
+                date_awarded=today
+            ).first()
+            
+            if existing_points:
+                logger.info(f"❌ RULE 4 FAILED: User already received {existing_points.points_awarded} points today")
+                return None
+            logger.info("✅ RULE 4 PASSED: User has not received points today")
+            
+            # Rule 5: Check if daily pool has points remaining
+            logger.info(f"🔍 RULE 5 CHECK: Getting daily points pool for {today}")
+            today_pool = DailyPointsPool.get_or_create_today_pool()
+            logger.info(f"🔍 Pool status: {today_pool.remaining_points}/{today_pool.total_daily_budget} remaining")
+            
+            if today_pool.remaining_points <= 0:
+                logger.info("❌ RULE 5 FAILED: Daily points pool exhausted")
+                return None
+            logger.info("✅ RULE 5 PASSED: Pool has remaining points")
+            
+            # Rule 6: Generate random points (1-50)
+            points_to_award = random.randint(1, 50)
+            logger.info(f"🔍 RULE 6: Generated random points: {points_to_award}")
+            
+            # Ensure we don't exceed the remaining pool
+            if points_to_award > today_pool.remaining_points:
+                points_to_award = today_pool.remaining_points
+                logger.info(f"🔍 Adjusted points to pool limit: {points_to_award}")
+            
+            # Award points with database transaction
+            logger.info(f"🔍 Starting database transaction to award {points_to_award} points")
+            try:
+                with transaction.atomic():
+                    logger.info(f"🔍 Creating DailyPoints record...")
+                    # Create points record with ForeignKey
+                    daily_points = DailyPoints.objects.create(
+                        phone_number=phone_number,
+                        points_awarded=points_to_award,
+                        date_awarded=today,
+                        lottery=lottery,  # Now using ForeignKey instead of lottery_code
+                        ticket_number=ticket_number
+                    )
+                    logger.info(f"✅ DailyPoints record created with ID: {daily_points.id}")
+                    
+                    # Update pool
+                    logger.info(f"🔍 Updating points pool...")
+                    today_pool.total_points_distributed += points_to_award
+                    today_pool.remaining_points -= points_to_award
+                    today_pool.save()
+                    logger.info(f"✅ Pool updated: distributed={today_pool.total_points_distributed}, remaining={today_pool.remaining_points}")
+                    
+                logger.info(f"✅ TRANSACTION COMPLETED: Successfully awarded {points_to_award} points to {phone_number}")
+                return points_to_award
+                
+            except Exception as e:
+                # If any error occurs (like duplicate entry), return None
+                logger.error(f"❌ DATABASE ERROR in transaction: {e}")
+                import traceback
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                return None
+                
         except Exception as e:
-            # If any error occurs (like duplicate entry), return None
-            logger.error(f"Error awarding points: {e}")
+            logger.error(f"❌ GENERAL ERROR in calculate_points: {e}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             return None
 
     def post(self, request):
