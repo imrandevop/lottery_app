@@ -2469,28 +2469,10 @@ class UserPointsAPIView(APIView):
                 phone_number=phone_number
             ).aggregate(total=Sum('points_awarded'))['total'] or 0
             
-            # TEMPORARY FIX: Use raw query or different approach
-            from django.db import connection
-            cursor = connection.cursor()
-            
-            # Check if lottery_id or lottery_code exists
-            cursor.execute("""
-                SELECT column_name FROM information_schema.columns 
-                WHERE table_name = 'results_dailypoints' 
-                AND column_name IN ('lottery_id', 'lottery_code')
-            """)
-            available_columns = [row[0] for row in cursor.fetchall()]
-            
-            if 'lottery_id' in available_columns:
-                # New schema - use select_related
-                points_history = DailyPoints.objects.filter(
-                    phone_number=phone_number
-                ).select_related('lottery').order_by('-created_at')[:30]
-            else:
-                # Old schema - don't use select_related
-                points_history = DailyPoints.objects.filter(
-                    phone_number=phone_number
-                ).order_by('-created_at')[:30]
+            # Get points history with lottery information
+            points_history = DailyPoints.objects.filter(
+                phone_number=phone_number
+            ).select_related('lottery').order_by('-created_at')[:30]
             
             if not points_history.exists():
                 response = {
@@ -2508,14 +2490,7 @@ class UserPointsAPIView(APIView):
             history_list = []
             for point_entry in points_history:
                 try:
-                    if 'lottery_id' in available_columns:
-                        # New schema
-                        lottery = point_entry.lottery
-                        lottery_code = lottery.code
-                    else:
-                        # Old schema
-                        lottery_code = point_entry.lottery_code
-                        lottery = Lottery.objects.get(code=lottery_code)
+                    lottery = point_entry.lottery
                     
                     # Find the lottery result for this date and lottery
                     lottery_result = LotteryResult.objects.filter(
@@ -2554,9 +2529,15 @@ class UserPointsAPIView(APIView):
             
         except Exception as e:
             logger.error(f"Error fetching points for phone_number {phone_number}: {e}")
+            
+            # Return proper error response instead of 500
             response = {
                 "status": "fail",
                 "message": "An error occurred while fetching points history",
-                "data": {}
+                "data": {
+                    "user_id": phone_number,
+                    "total_points": 0,
+                    "history": []
+                }
             }
-            return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(response, status=status.HTTP_200_OK)  # Return 200 with error message
