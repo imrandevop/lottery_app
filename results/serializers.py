@@ -342,3 +342,37 @@ class LotteryPercentageRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("Lottery number cannot exceed 4 digits")
         
         return value
+
+
+
+#<------------------POINT HISTORY API----------->
+# Add this to your serializers.py file
+
+class UserPointsHistorySerializer(serializers.Serializer):
+    """Serializer for user points history request"""
+    phone_number = serializers.CharField(
+        max_length=15,
+        help_text="Phone number of the user"
+    )
+    limit = serializers.IntegerField(
+        default=50,
+        min_value=1,
+        max_value=100,
+        required=False,
+        help_text="Number of history records to return (default: 50, max: 100)"
+    )
+    
+    def validate_phone_number(self, value):
+        """Validate and normalize phone number format"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required")
+        
+        # Remove any spaces or special characters except + and digits
+        import re
+        cleaned_value = re.sub(r'[^\d+]', '', str(value))
+        
+        # Basic validation - should start with + or digit and be 10-15 characters
+        if not re.match(r'^[\+]?[\d]{10,15}$', cleaned_value):
+            raise serializers.ValidationError("Invalid phone number format")
+        
+        return cleaned_value

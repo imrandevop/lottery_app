@@ -28,6 +28,9 @@ urlpatterns = [
 
     path('lottery-percentage/', LotteryWinningPercentageAPI.as_view(), name='lottery-percentage'),
 
+    path('user-points/', views.UserPointsHistoryView.as_view(), name='user-points'),
+
+
     # FCM Notification endpoints
     path('fcm/register/', register_fcm_token, name='fcm_register'),
     path('fcm/debug/', debug_fcm_register, name='fcm_debug'),

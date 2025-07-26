@@ -2515,3 +2515,156 @@ def test_send_direct(request):
             'status': 'error',
             'message': str(e)
         })
+
+
+
+#!<--------------POINT HISTORY SECTION--------->
+# Add this to your views.py file
+
+class UserPointsHistoryView(APIView):
+    """
+    API endpoint to get user's points balance and transaction history
+    """
+    
+    def normalize_phone_number(self, phone_number):
+        """Normalize phone number to consistent format (+91XXXXXXXXXX)"""
+        import re
+        # Remove all non-digit characters except +
+        cleaned = re.sub(r'[^\d+]', '', str(phone_number))
+        
+        # If it starts with +91, keep as is
+        if cleaned.startswith('+91'):
+            return cleaned
+        
+        # If it starts with 91, add +
+        if cleaned.startswith('91') and len(cleaned) == 12:
+            return '+' + cleaned
+        
+        # If it's 10 digits, assume Indian number and add +91
+        if len(cleaned) == 10 and cleaned.isdigit():
+            return '+91' + cleaned
+        
+        # Return as is if we can't normalize
+        return cleaned
+
+    def create_success_response(self, user_id, total_points, history):
+        """Create standardized success response"""
+        return {
+            "status": True,
+            "message": "Points history fetched successfully",
+            "data": {
+                "user_id": user_id,
+                "total_points": total_points,
+                "history": history
+            }
+        }
+
+    def create_error_response(self, message, status_code=400):
+        """Create standardized error response"""
+        return {
+            "status": False,
+            "message": message,
+            "data": None
+        }
+
+    def get_enhanced_lottery_name(self, transaction):
+        """Get enhanced lottery name with draw number like 'Akshaya AK 620'"""
+        from .models import LotteryResult
+        
+        try:
+            # Try to find the lottery result for this transaction
+            if transaction.check_date and transaction.lottery_name:
+                # Look for lottery result on the check date
+                lottery_result = LotteryResult.objects.filter(
+                    lottery__name=transaction.lottery_name,
+                    date=transaction.check_date,
+                    is_published=True
+                ).first()
+                
+                if lottery_result and lottery_result.draw_number:
+                    # Create enhanced name: "Lottery Name DRAW_NUMBER"
+                    return f"{transaction.lottery_name} {lottery_result.draw_number}"
+            
+            # Fallback to original lottery name if no draw number found
+            return transaction.lottery_name
+            
+        except Exception as e:
+            # Fallback to original name if any error occurs
+            logger.warning(f"⚠️ Could not enhance lottery name: {e}")
+            return transaction.lottery_name
+
+    def post(self, request):
+        """Get user points and history"""
+        from .serializers import UserPointsHistorySerializer
+        from .models import UserPointsBalance, PointsTransaction
+        
+        try:
+            # Validate request data
+            serializer = UserPointsHistorySerializer(data=request.data)
+            
+            if not serializer.is_valid():
+                error_response = self.create_error_response(
+                    f"Invalid data: {serializer.errors}"
+                )
+                return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get validated data
+            phone_number = serializer.validated_data['phone_number']
+            limit = serializer.validated_data.get('limit', 50)
+            
+            # Normalize phone number
+            normalized_phone = self.normalize_phone_number(phone_number)
+            
+            # Get user points balance
+            try:
+                user_balance = UserPointsBalance.objects.get(phone_number=normalized_phone)
+                total_points = user_balance.total_points
+                user_id = normalized_phone  # Using phone as user_id as per your example
+            except UserPointsBalance.DoesNotExist:
+                # User not found - return empty but valid response
+                empty_response = self.create_success_response(
+                    user_id=normalized_phone,
+                    total_points=0,
+                    history=[]
+                )
+                return Response(empty_response, status=status.HTTP_200_OK)
+            
+            # Get transaction history (only lottery check rewards)
+            transactions = PointsTransaction.objects.filter(
+                phone_number=normalized_phone,
+                transaction_type='lottery_check',  # Only lottery check rewards
+                points_amount__gt=0  # Only positive point earnings
+            ).order_by('-created_at')[:limit]
+            
+            # Format history with enhanced lottery names
+            history = []
+            for transaction in transactions:
+                # Get enhanced lottery name with draw number
+                enhanced_lottery_name = self.get_enhanced_lottery_name(transaction)
+                
+                history_item = {
+                    "lottery_name": enhanced_lottery_name,
+                    "date": str(transaction.check_date) if transaction.check_date else str(transaction.created_at.date()),
+                    "points_earned": transaction.points_amount
+                }
+                history.append(history_item)
+            
+            # Create success response
+            response_data = self.create_success_response(
+                user_id=user_id,
+                total_points=total_points,
+                history=history
+            )
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            # Log the error for debugging
+            logger.error(f"❌ Error in UserPointsHistoryView: {e}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            
+            error_response = self.create_error_response(
+                "An unexpected error occurred. Please try again later."
+            )
+            return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
