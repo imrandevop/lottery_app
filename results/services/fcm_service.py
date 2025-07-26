@@ -120,24 +120,30 @@ class FCMService:
             
             for token in active_tokens:
                 try:
-                    # Create notification with image support
+                    # Create base notification without image (to ensure proper icon display)
                     notification = messaging.Notification(
                         title=title,
-                        body=body,
-                        image=image_url  # Big picture when expanded
+                        body=body
+                        # Don't set image here - it affects the small icon
                     )
                     
-                    # Android-specific configuration
+                    # Android-specific configuration with proper icon/image separation
                     android_config = messaging.AndroidConfig(
                         priority='high',
                         notification=messaging.AndroidNotification(
                             channel_id='default_channel',
                             sound='default',
-                            icon='ic_notification',  # App icon (small)
+                            icon='ic_notification',  # Your app's small icon on left
                             color='#FF6B6B',
-                            image=image_url,  # Big picture style
-                            click_action='OPEN_RESULTS'
+                            image=image_url,  # Big picture ONLY when expanded
+                            click_action='OPEN_RESULTS',
+                            tag='lottery_notification'
                         ),
+                        # Add image as data for better control
+                        data={
+                            'image_url': image_url,
+                            'big_picture': 'true'
+                        }
                     )
                     
                     # iOS-specific configuration
@@ -160,7 +166,11 @@ class FCMService:
                     
                     message = messaging.Message(
                         notification=notification,
-                        data={k: str(v) for k, v in (data or {}).items()},
+                        data={
+                            **{k: str(v) for k, v in (data or {}).items()},
+                            'image_url': image_url,  # Pass image as data
+                            'notification_icon': cls.NOTIFICATION_ICON
+                        },
                         token=token,
                         android=android_config,
                         apns=apns_config
@@ -210,20 +220,25 @@ class FCMService:
             message = messaging.MulticastMessage(
                 notification=messaging.Notification(
                     title=title, 
-                    body=body,
-                    image=image_url
+                    body=body
+                    # No image here to avoid affecting small icon
                 ),
-                data={k: str(v) for k, v in (data or {}).items()},
+                data={
+                    **{k: str(v) for k, v in (data or {}).items()},
+                    'image_url': image_url,
+                    'notification_icon': cls.NOTIFICATION_ICON
+                },
                 tokens=tokens,
                 android=messaging.AndroidConfig(
                     priority='high',
                     notification=messaging.AndroidNotification(
                         channel_id='default_channel',
                         sound='default',
-                        icon='ic_notification',
+                        icon='ic_notification',  # App icon on left
                         color='#FF6B6B',
-                        image=image_url,
-                        click_action='OPEN_RESULTS'
+                        image=image_url,  # Big picture when expanded
+                        click_action='OPEN_RESULTS',
+                        tag='lottery_notification'
                     ),
                 ),
                 apns=messaging.APNSConfig(
