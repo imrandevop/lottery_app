@@ -70,13 +70,3 @@ def handle_lottery_result_notifications(sender, instance, created, **kwargs):
         except Exception as e:
             logger.error(f"❌ Failed to send result ready notification: {e}")
 
-# 3. Update or create results/apps.py
-
-from django.apps import AppConfig
-
-class ResultsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'results'
-    
-    def ready(self):
-        import results.signals  # Import signals when app is ready

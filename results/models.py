@@ -434,7 +434,7 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
         logger.error(f"❌ Error in lottery notification handler: {e}")
 
 
-
+#<---------------------POINTS SECTION--------------------->
 # Add these models to your existing models.py file
 
 class DailyPointsPool(models.Model):
