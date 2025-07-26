@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin, messages
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken, DailyPointsPool, DailyPoints
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -407,162 +407,6 @@ class LiveVideoAdmin(admin.ModelAdmin):
         return super().formfield_for_choice_field(db_field, request, **kwargs)
 
 
-
-
-
-@admin.register(DailyPointsPool)
-class DailyPointsPoolAdmin(admin.ModelAdmin):
-    list_display = ['date', 'total_daily_budget', 'total_points_distributed', 'remaining_points', 'created_at']
-    list_filter = ['date', 'created_at']
-    search_fields = ['date']
-    readonly_fields = ['remaining_points', 'created_at', 'updated_at']
-    ordering = ['-date']
-    
-    fieldsets = (
-        ('Pool Information', {
-            'fields': ('date', 'total_daily_budget'),
-            'description': 'Set the date and total budget for this pool'
-        }),
-        ('Distribution Tracking', {
-            'fields': ('total_points_distributed', 'remaining_points'),
-            'description': 'Remaining points are calculated automatically'
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    actions = ['reset_pool_to_default', 'reset_pool_to_zero']
-    
-    def reset_pool_to_default(self, request, queryset):
-        """Reset selected pools to default budget (10,000 points)"""
-        updated = 0
-        for pool in queryset:
-            pool.total_daily_budget = 10000
-            pool.total_points_distributed = 0
-            pool.remaining_points = 10000
-            pool.save()
-            updated += 1
-        
-        self.message_user(
-            request,
-            f'{updated} pool(s) reset to default budget (10,000 points).',
-            messages.SUCCESS
-        )
-    reset_pool_to_default.short_description = 'Reset to default budget (10,000 points)'
-    
-    def reset_pool_to_zero(self, request, queryset):
-        """Reset selected pools to zero (stop point distribution)"""
-        updated = 0
-        for pool in queryset:
-            pool.total_points_distributed = pool.total_daily_budget
-            pool.remaining_points = 0
-            pool.save()
-            updated += 1
-        
-        self.message_user(
-            request,
-            f'{updated} pool(s) exhausted (no more points to distribute).',
-            messages.WARNING
-        )
-    reset_pool_to_zero.short_description = 'Exhaust pool (stop point distribution)'
-    
-    def has_delete_permission(self, request, obj=None):
-        # Prevent accidental deletion of pool records
-        return request.user.is_superuser
-
-@admin.register(DailyPoints)
-class DailyPointsAdmin(admin.ModelAdmin):
-    list_display = ['phone_number', 'points_awarded', 'lottery', 'date_awarded', 'ticket_number', 'created_at']
-    list_filter = ['date_awarded', 'lottery', 'points_awarded', 'created_at']
-    search_fields = ['phone_number', 'ticket_number', 'lottery__name']
-    readonly_fields = ['created_at']
-    ordering = ['-created_at']
-    date_hierarchy = 'date_awarded'
-    
-    fieldsets = (
-        ('User Information', {
-            'fields': ('phone_number', 'ticket_number'),
-            'description': 'User details and checked ticket'
-        }),
-        ('Points Details', {
-            'fields': ('points_awarded', 'lottery', 'date_awarded'),
-            'description': 'Points awarded and lottery information'
-        }),
-        ('System Information', {
-            'fields': ('created_at',),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    # Custom display methods
-    def get_queryset(self, request):
-        # Optimize queries with select_related
-        return super().get_queryset(request).select_related('lottery')
-    
-    # Add summary statistics
-    def changelist_view(self, request, extra_context=None):
-        # Add some statistics to the change list
-        from django.db.models import Sum, Count, Avg
-        from datetime import date, timedelta
-        
-        # Get stats for extra context
-        today = date.today()
-        yesterday = today - timedelta(days=1)
-        
-        stats = {
-            'total_points_today': DailyPoints.objects.filter(
-                date_awarded=today
-            ).aggregate(total=Sum('points_awarded'))['total'] or 0,
-            
-            'total_users_today': DailyPoints.objects.filter(
-                date_awarded=today
-            ).values('phone_number').distinct().count(),
-            
-            'avg_points_today': DailyPoints.objects.filter(
-                date_awarded=today
-            ).aggregate(avg=Avg('points_awarded'))['avg'] or 0,
-            
-            'total_points_yesterday': DailyPoints.objects.filter(
-                date_awarded=yesterday
-            ).aggregate(total=Sum('points_awarded'))['total'] or 0,
-        }
-        
-        extra_context = extra_context or {}
-        extra_context['stats'] = stats
-        
-        return super().changelist_view(request, extra_context=extra_context)
-    
-    # Actions
-    actions = ['export_user_summary']
-    
-    def export_user_summary(self, request, queryset):
-        """Export summary of selected points"""
-        from django.db.models import Sum
-        
-        # Group by phone number
-        summary = queryset.values('phone_number').annotate(
-            total_points=Sum('points_awarded'),
-            total_entries=Count('id')
-        ).order_by('-total_points')
-        
-        # Create simple response (you can enhance this to export CSV/Excel)
-        summary_text = "User Points Summary:\n"
-        for item in summary:
-            summary_text += f"Phone: {item['phone_number']} - Points: {item['total_points']} - Entries: {item['total_entries']}\n"
-        
-        self.message_user(
-            request,
-            f"Summary generated for {len(summary)} users. Check logs for details.",
-            messages.INFO
-        )
-        
-        # You could also log this or create a file download
-        print(summary_text)  # For now, just print to console
-        
-    export_user_summary.short_description = 'Export user points summary'
-
 #<---------------FCM TOKEN ADMIN---------------->
 @admin.register(FcmToken)
 class FcmTokenAdmin(admin.ModelAdmin):
@@ -632,10 +476,6 @@ class FcmTokenAdmin(admin.ModelAdmin):
         self.message_user(request, f'{count} token(s) deactivated.', messages.SUCCESS)
     
     deactivate_tokens.short_description = 'Deactivate selected tokens'
-
-
-
-
 
 
 # Register the admin

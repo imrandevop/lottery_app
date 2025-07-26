@@ -11,9 +11,9 @@ from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
-from .models import PrizeEntry, LiveVideo, DailyPoints
+from .models import PrizeEntry, LiveVideo
 from django.db.models import Q, Sum
-from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer, UserPointsSerializer
+from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer, NewsSerializer
 from .prediction_engine import LotteryPredictionEngine
@@ -32,10 +32,9 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.db import transaction
+from django.db import transaction, IntegrityError
 import json
 from results.models import FcmToken
-
 
 
 
@@ -74,7 +73,7 @@ class LotteryResultListView(generics.ListAPIView):
         return Response({
             'status': 'success',
             'count': queryset.count(),
-            'total_points': 1250,
+            'total_points': 1250,  # Static value since points system removed
             'updates': {
                 "image1": {
                     "image_url": image_settings.update_image1,
@@ -332,7 +331,7 @@ def lottery_results_by_code(request, lottery_code):
 
 class TicketCheckView(APIView):
     """
-    Enhanced API endpoint to check Kerala lottery tickets with points system
+    Enhanced API endpoint to check Kerala lottery tickets
     """
     
     # Kerala Lottery day mapping
@@ -351,13 +350,13 @@ class TicketCheckView(APIView):
         return self.LOTTERY_DAYS.get(lottery_code.upper())
 
     def create_standard_response(self, status_code, status, result_status, message, points, data):
-        """Create standardized response format with points"""
+        """Create standardized response format (points removed but API structure maintained)"""
         return {
             "statusCode": status_code,
             "status": status,
             "resultStatus": result_status,
             "message": message,
-            "points": points,
+            "points": None,  # Always None since points system removed
             "data": data
         }
 
@@ -468,218 +467,105 @@ class TicketCheckView(APIView):
             'prize_details': prize_details
         }
 
-    def calculate_points(self, phone_number, ticket_number, lottery, check_date, won_prize, is_today, current_time):
-        """
-        Calculate points for the user based on points system rules
-        Returns: points (int) or None
-        """
-        logger.info(f"🔍 CALCULATE_POINTS START for {phone_number}")
-        logger.info(f"Input parameters:")
-        logger.info(f"  - phone_number: {phone_number}")
-        logger.info(f"  - lottery: {lottery} (type: {type(lottery)})")
-        logger.info(f"  - won_prize: {won_prize}")
-        logger.info(f"  - is_today: {is_today}")
-        logger.info(f"  - current_time: {current_time} (type: {type(current_time)})")
-        
-        try:
-            # Import models inside the method to avoid circular imports
-            from .models import DailyPoints, DailyPointsPool
-            
-            # Rule 1: Points only for non-winners
-            if won_prize:
-                logger.info("❌ RULE 1 FAILED: User won prize - no points awarded")
-                return None
-            logger.info("✅ RULE 1 PASSED: User did not win prize")
-            
-            # Rule 2: Points only for today's lottery
-            if not is_today:
-                logger.info("❌ RULE 2 FAILED: Not today's lottery - no points awarded")
-                return None
-            logger.info("✅ RULE 2 PASSED: This is today's lottery")
-            
-            # Rule 3: Points only after 3:00 PM IST
-            result_publish_time = time(15, 0)  # 3:00 PM IST
-            logger.info(f"🔍 RULE 3 CHECK: current_time={current_time} vs result_publish_time={result_publish_time}")
-            if current_time < result_publish_time:
-                logger.info("❌ RULE 3 FAILED: Before 3:00 PM - no points awarded")
-                return None
-            logger.info("✅ RULE 3 PASSED: After 3:00 PM")
-            
-            # Rule 4: Each user can receive points only once per day
-            today = date.today()
-            logger.info(f"🔍 RULE 4 CHECK: Checking existing points for {phone_number} on {today}")
-            
-            existing_points = DailyPoints.objects.filter(
-                phone_number=phone_number,
-                date_awarded=today
-            ).first()
-            
-            if existing_points:
-                logger.info(f"❌ RULE 4 FAILED: User already received {existing_points.points_awarded} points today")
-                return None
-            logger.info("✅ RULE 4 PASSED: User has not received points today")
-            
-            # Rule 5: Check if daily pool has points remaining
-            logger.info(f"🔍 RULE 5 CHECK: Getting daily points pool for {today}")
-            today_pool = DailyPointsPool.get_or_create_today_pool()
-            logger.info(f"🔍 Pool status: {today_pool.remaining_points}/{today_pool.total_daily_budget} remaining")
-            
-            if today_pool.remaining_points <= 0:
-                logger.info("❌ RULE 5 FAILED: Daily points pool exhausted")
-                return None
-            logger.info("✅ RULE 5 PASSED: Pool has remaining points")
-            
-            # Rule 6: Generate random points (1-50)
-            points_to_award = random.randint(1, 50)
-            logger.info(f"🔍 RULE 6: Generated random points: {points_to_award}")
-            
-            # Ensure we don't exceed the remaining pool
-            if points_to_award > today_pool.remaining_points:
-                points_to_award = today_pool.remaining_points
-                logger.info(f"🔍 Adjusted points to pool limit: {points_to_award}")
-            
-            # Award points with database transaction
-            logger.info(f"🔍 Starting database transaction to award {points_to_award} points")
-            try:
-                with transaction.atomic():
-                    logger.info(f"🔍 Creating DailyPoints record...")
-                    # Create points record with ForeignKey
-                    daily_points = DailyPoints.objects.create(
-                        phone_number=phone_number,
-                        points_awarded=points_to_award,
-                        date_awarded=today,
-                        lottery=lottery,  # Now using ForeignKey instead of lottery_code
-                        ticket_number=ticket_number
-                    )
-                    logger.info(f"✅ DailyPoints record created with ID: {daily_points.id}")
-                    
-                    # Update pool
-                    logger.info(f"🔍 Updating points pool...")
-                    today_pool.total_points_distributed += points_to_award
-                    today_pool.remaining_points -= points_to_award
-                    today_pool.save()
-                    logger.info(f"✅ Pool updated: distributed={today_pool.total_points_distributed}, remaining={today_pool.remaining_points}")
-                    
-                logger.info(f"✅ TRANSACTION COMPLETED: Successfully awarded {points_to_award} points to {phone_number}")
-                return points_to_award
-                
-            except Exception as e:
-                # If any error occurs (like duplicate entry), return None
-                logger.error(f"❌ DATABASE ERROR in transaction: {e}")
-                import traceback
-                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ GENERAL ERROR in calculate_points: {e}")
-            import traceback
-            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-            return None
-
     def post(self, request):
+        """Enhanced post method with basic phone validation"""
         from .serializers import TicketCheckSerializer
         from .models import Lottery, LotteryResult
         
-        serializer = TicketCheckSerializer(data=request.data)
-
-        if not serializer.is_valid():
-            error_data = self.create_data_structure(
-                "", "", "", False, False, False
-            )
-            response = self.create_standard_response(
-                400, "fail", "Validation Error", 
-                "Invalid data provided", None, error_data
-            )
-            return Response(response, status=status.HTTP_400_BAD_REQUEST)
-
-        ticket_number = serializer.validated_data['ticket_number']
-        phone_number = serializer.validated_data['phone_number']
-        check_date = serializer.validated_data['date']
-
-        if len(ticket_number) < 1:
-            error_data = self.create_data_structure(
-                ticket_number, "", str(check_date), False, False, False
-            )
-            response = self.create_standard_response(
-                400, "fail", "Invalid Ticket", 
-                "Invalid ticket number format", None, error_data
-            )
-            return Response(response, status=status.HTTP_400_BAD_REQUEST)
-
-        lottery_code = ticket_number[0].upper()
-
-        # Validate lottery code exists
-        if not self.get_expected_lottery_day(lottery_code):
-            error_data = self.create_data_structure(
-                ticket_number, "", str(check_date), False, False, False
-            )
-            response = self.create_standard_response(
-                400, "fail", "Invalid Lottery Code", 
-                f"Invalid lottery code: {lottery_code}", None, error_data
-            )
-            return Response(response, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            lottery = Lottery.objects.get(code=lottery_code)
-        except Lottery.DoesNotExist:
-            error_data = self.create_data_structure(
-                ticket_number, "", str(check_date), False, False, False
-            )
-            response = self.create_standard_response(
-                400, "fail", "Lottery Not Found", 
-                f'Lottery with code "{lottery_code}" not found', None, error_data
-            )
-            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+            serializer = TicketCheckSerializer(data=request.data)
 
-        # Time and date logic (India timezone - IST)
-        india_tz = pytz.timezone('Asia/Kolkata')
-        current_datetime = now().astimezone(india_tz)
-        current_date = current_datetime.date()
-        current_time = current_datetime.time()
-        result_publish_time = time(15, 0)  # 3:00 PM IST
+            if not serializer.is_valid():
+                error_data = self.create_data_structure("", "", "", False, False, False)
+                response = self.create_standard_response(
+                    400, "fail", "Validation Error", 
+                    f"Invalid data: {serializer.errors}", None, error_data
+                )
+                return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check if the requested date matches the lottery's scheduled day
-        requested_day = check_date.strftime('%A').lower()
-        lottery_day = self.get_expected_lottery_day(lottery_code)
-        is_lottery_day_match = (requested_day == lottery_day)
-        
-        # Check if requested date is today's date in India
-        is_today = (check_date == current_date)
-        
-        # PRIORITY 1: Check if result exists for the exact requested date first
-        try:
-            lottery_result = LotteryResult.objects.get(
+            # Get validated data
+            ticket_number = serializer.validated_data['ticket_number']
+            phone_number = serializer.validated_data['phone_number']  # Basic validation in serializer
+            check_date = serializer.validated_data['date']
+
+            if len(ticket_number) < 1:
+                error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
+                response = self.create_standard_response(
+                    400, "fail", "Invalid Ticket", 
+                    "Invalid ticket number format", None, error_data
+                )
+                return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+            lottery_code = ticket_number[0].upper()
+
+            # Validate lottery code
+            if not self.get_expected_lottery_day(lottery_code):
+                error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
+                response = self.create_standard_response(
+                    400, "fail", "Invalid Lottery Code", 
+                    f"Invalid lottery code: {lottery_code}", None, error_data
+                )
+                return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                lottery = Lottery.objects.get(code=lottery_code)
+            except Lottery.DoesNotExist:
+                error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
+                response = self.create_standard_response(
+                    400, "fail", "Lottery Not Found", 
+                    f'Lottery with code "{lottery_code}" not found', None, error_data
+                )
+                return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+            # Use basic timezone (no India-specific utils needed)
+            current_date = date.today()
+            current_time = timezone.now().time()
+            result_publish_time = time(15, 0)  # 3:00 PM
+
+            # Check if requested date matches lottery's scheduled day
+            requested_day = check_date.strftime('%A').lower()
+            lottery_day = self.get_expected_lottery_day(lottery_code)
+            is_lottery_day_match = (requested_day == lottery_day)
+            is_today = (check_date == current_date)
+
+            # Look for exact date result first
+            exact_result = LotteryResult.objects.filter(
                 lottery=lottery,
                 date=check_date,
                 is_published=True
-            )
+            ).first()
+
+            if exact_result:
+                # Result exists for the exact requested date
+                return self.handle_exact_date_result(
+                    lottery, ticket_number, phone_number, check_date, 
+                    exact_result, is_today, current_time
+                )
             
-            # Result exists for requested date - show that result
-            return self.handle_exact_date_result(
-                lottery, ticket_number, phone_number, check_date, 
-                lottery_result, is_today, current_time
-            )
+            elif is_lottery_day_match and is_today and current_time < result_publish_time:
+                # Correct lottery day but before 3 PM - result not published yet
+                return self.handle_result_not_published_same_day(
+                    lottery, ticket_number, phone_number, check_date
+                )
             
-        except LotteryResult.DoesNotExist:
-            # No result for requested date
-            
-            if is_lottery_day_match and is_today:
-                # Special case: Today's lottery with no result yet
-                if current_time < result_publish_time:
-                    # Before 3 PM IST - result not published yet
-                    return self.handle_result_not_published_same_day(
-                        lottery, ticket_number, phone_number, check_date
-                    )
-                else:
-                    # After 3 PM IST but no result - still not published
-                    return self.handle_result_not_published_same_day(
-                        lottery, ticket_number, phone_number, check_date
-                    )
             else:
-                # Show most recent result of this lottery type
+                # Different day or no result for requested date - show most recent result
                 return self.handle_different_day_result(
                     lottery, ticket_number, phone_number, check_date
                 )
+
+        except Exception as e:
+            # PROPER ERROR HANDLING: Return 500 for unexpected errors
+            logger.error(f"❌ Unexpected error in TicketCheckView: {e}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            
+            error_data = self.create_data_structure("", "", "", False, False, False)
+            response = self.create_standard_response(
+                500, "error", "Internal Server Error", 
+                "An unexpected error occurred. Please try again later.", None, error_data
+            )
+            return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def handle_result_not_published_same_day(self, lottery, ticket_number, phone_number, check_date):
         """Handle case when result is not published yet (before 3 PM on correct lottery day)"""
@@ -705,11 +591,8 @@ class TicketCheckView(APIView):
         prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
         won_prize = bool(prize_data)
         
-        # Calculate points - pass lottery object instead of lottery_code
-        points = self.calculate_points(
-            phone_number, ticket_number, lottery, 
-            check_date, won_prize, is_today, current_time
-        )
+        # No points calculation since points system removed
+        points = None
         
         if prize_data:
             # Won prize on requested date
@@ -2484,101 +2367,3 @@ def test_send_direct(request):
             'status': 'error',
             'message': str(e)
         })
-
-
-
-
-#<---------------POINT HISTORY SECTION ---------------->
-#<---------------POINT HISTORY SECTION ---------------->
-class UserPointsAPIView(APIView):
-    def post(self, request):
-        serializer = UserPointsSerializer(data=request.data)
-        
-        if not serializer.is_valid():
-            response = {
-                "status": "fail",
-                "message": "Invalid data provided",
-                "data": {}
-            }
-            return Response(response, status=status.HTTP_400_BAD_REQUEST)
-        
-        phone_number = serializer.validated_data['phone_number']
-        
-        try:
-            # Get user's total points
-            total_points = DailyPoints.objects.filter(
-                phone_number=phone_number
-            ).aggregate(total=Sum('points_awarded'))['total'] or 0
-            
-            # Get points history with lottery information
-            points_history = DailyPoints.objects.filter(
-                phone_number=phone_number
-            ).select_related('lottery').order_by('-created_at')[:30]
-            
-            if not points_history.exists():
-                response = {
-                    "status": "success",
-                    "message": "No point history",
-                    "data": {
-                        "user_id": phone_number,
-                        "total_points": 0,
-                        "history": []
-                    }
-                }
-                return Response(response, status=status.HTTP_200_OK)
-            
-            # Build history array
-            history_list = []
-            for point_entry in points_history:
-                try:
-                    lottery = point_entry.lottery
-                    
-                    # Find the lottery result for this date and lottery
-                    lottery_result = LotteryResult.objects.filter(
-                        lottery=lottery,
-                        date=point_entry.date_awarded,
-                        is_published=True
-                    ).first()
-                    
-                    if lottery_result:
-                        lottery_name_with_draw = f"{lottery.name} {lottery_result.draw_number}"
-                    else:
-                        lottery_name_with_draw = lottery.name
-                    
-                    history_item = {
-                        "lottery_name": lottery_name_with_draw,
-                        "date": str(point_entry.date_awarded),
-                        "points_earned": point_entry.points_awarded
-                    }
-                    history_list.append(history_item)
-                    
-                except Exception as e:
-                    logger.error(f"Error processing points history entry {point_entry.id}: {e}")
-                    continue
-            
-            response = {
-                "status": "success",
-                "message": "Points history fetched successfully",
-                "data": {
-                    "user_id": phone_number,
-                    "total_points": total_points,
-                    "history": history_list
-                }
-            }
-            
-            return Response(response, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Error fetching points for phone_number {phone_number}: {e}")
-            
-            # Return proper error response instead of 500
-            response = {
-                "status": "fail",
-                "message": "An error occurred while fetching points history",
-                "data": {
-                    "user_id": phone_number,
-                    "total_points": 0,
-                    "history": []
-                }
-            }
-            return Response(response, status=status.HTTP_200_OK)  # Return 200 with error message

@@ -1,5 +1,6 @@
 # serializers.py
 from rest_framework import serializers
+from django.core.exceptions import ValidationError
 from .models import Lottery, LotteryResult, PrizeEntry, News, LiveVideo
 from collections import defaultdict
 
@@ -204,28 +205,19 @@ class TicketCheckSerializer(serializers.Serializer):
         return value
     
     def validate_phone_number(self, value):
-        """Validate phone number format and user existence"""
+        """Validate phone number format - basic validation since normalize function removed"""
         if not value:
             raise serializers.ValidationError("Phone number is required")
         
-        # Remove any whitespace
-        value = value.strip()
+        # Remove any spaces or special characters except + and digits
+        import re
+        cleaned_value = re.sub(r'[^\d+]', '', str(value))
         
-        # Basic phone number format validation
-        clean_phone = value.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
-        if not clean_phone.isdigit():
-            raise serializers.ValidationError("Phone number must contain only digits and allowed characters (+, -, spaces, parentheses)")
+        # Basic validation - should start with + or digit and be 10-15 characters
+        if not re.match(r'^[\+]?[\d]{10,15}$', cleaned_value):
+            raise serializers.ValidationError("Invalid phone number format")
         
-        # Check if user exists with this phone number
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        
-        try:
-            User.objects.get(phone_number=value)
-        except User.DoesNotExist:
-            raise serializers.ValidationError("User with this phone number does not exist")
-        
-        return value
+        return cleaned_value
     
     def validate_date(self, value):
         """Validate date is not in the future beyond reasonable limits"""
@@ -308,7 +300,6 @@ class LotteryPredictionResponseSerializer(serializers.Serializer):
 # serializers.py
 
 
-
 class LiveVideoSerializer(serializers.ModelSerializer):
     """Serializer for LiveVideo model"""
     
@@ -349,29 +340,5 @@ class LotteryPercentageRequestSerializer(serializers.Serializer):
         
         if len(value) > 4:
             raise serializers.ValidationError("Lottery number cannot exceed 4 digits")
-        
-        return value
-    
-
-#<---------------POINT HISTORY SECTION ---------------->
-class UserPointsSerializer(serializers.Serializer):
-    """Serializer for user points request"""
-    phone_number = serializers.CharField(
-        max_length=15,
-        help_text="Phone number of the user"
-    )
-    
-    def validate_phone_number(self, value):
-        """Validate phone number format"""
-        if not value:
-            raise serializers.ValidationError("Phone number is required")
-        
-        # Remove any whitespace
-        value = value.strip()
-        
-        # Basic phone number format validation
-        clean_phone = value.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
-        if not clean_phone.isdigit():
-            raise serializers.ValidationError("Phone number must contain only digits and allowed characters (+, -, spaces, parentheses)")
         
         return value
