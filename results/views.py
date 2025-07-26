@@ -2521,6 +2521,8 @@ def test_send_direct(request):
 #!<--------------POINT HISTORY SECTION--------->
 # Add this to your views.py file
 
+# Add this to your views.py file
+
 class UserPointsHistoryView(APIView):
     """
     API endpoint to get user's points balance and transaction history
@@ -2549,11 +2551,14 @@ class UserPointsHistoryView(APIView):
 
     def create_success_response(self, user_id, total_points, history):
         """Create standardized success response"""
+        # Remove +91 prefix from user_id for display
+        display_user_id = user_id.replace('+91', '') if user_id.startswith('+91') else user_id
+        
         return {
-            "status": True,
+            "status": "success",  # Changed from True to "success"
             "message": "Points history fetched successfully",
             "data": {
-                "user_id": user_id,
+                "user_id": display_user_id,  # Phone number without +91
                 "total_points": total_points,
                 "history": history
             }
@@ -2562,7 +2567,7 @@ class UserPointsHistoryView(APIView):
     def create_error_response(self, message, status_code=400):
         """Create standardized error response"""
         return {
-            "status": False,
+            "status": "error",  # Changed from False to "error" for consistency
             "message": message,
             "data": None
         }
