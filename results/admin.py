@@ -494,8 +494,8 @@ class DailyPointsPoolAdmin(admin.ModelAdmin):
             percentage = (obj.distributed_points / obj.total_budget) * 100
             color = 'green' if percentage < 70 else 'orange' if percentage < 90 else 'red'
             return format_html(
-                '<span style="color: {};">{:.1f}%</span>',
-                color, percentage
+                '<span style="color: {};">{}</span>',
+                color, f"{percentage:.1f}%"
             )
         return "0%"
     usage_percentage.short_description = "Usage %"
