@@ -1,6 +1,7 @@
 # admin.py
 from django.contrib import admin, messages
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken
+from .models import DailyPointsPool, UserPointsBalance, PointsTransaction, DailyPointsAwarded
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -476,6 +477,126 @@ class FcmTokenAdmin(admin.ModelAdmin):
         self.message_user(request, f'{count} token(s) deactivated.', messages.SUCCESS)
     
     deactivate_tokens.short_description = 'Deactivate selected tokens'
+
+
+#<---------------POINT SYSTEM SECTION---------------->
+
+@admin.register(DailyPointsPool)
+class DailyPointsPoolAdmin(admin.ModelAdmin):
+    list_display = ['date', 'total_budget', 'distributed_points', 'remaining_points', 'usage_percentage', 'created_at']
+    list_filter = ['date', 'created_at']
+    search_fields = ['date']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-date']
+    
+    def usage_percentage(self, obj):
+        if obj.total_budget > 0:
+            percentage = (obj.distributed_points / obj.total_budget) * 100
+            color = 'green' if percentage < 70 else 'orange' if percentage < 90 else 'red'
+            return format_html(
+                '<span style="color: {};">{:.1f}%</span>',
+                color, percentage
+            )
+        return "0%"
+    usage_percentage.short_description = "Usage %"
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make distributed_points and remaining_points readonly if object exists
+        if obj:
+            return self.readonly_fields + ['distributed_points', 'remaining_points']
+        return self.readonly_fields
+
+
+@admin.register(UserPointsBalance)
+class UserPointsBalanceAdmin(admin.ModelAdmin):
+    list_display = ['phone_number', 'total_points', 'lifetime_earned', 'efficiency_ratio', 'created_at']
+    list_filter = ['created_at', 'updated_at']
+    search_fields = ['phone_number']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-total_points']
+    
+    def efficiency_ratio(self, obj):
+        """Show current balance vs lifetime earned ratio"""
+        if obj.lifetime_earned > 0:
+            ratio = (obj.total_points / obj.lifetime_earned) * 100
+            return f"{ratio:.1f}%"
+        return "N/A"
+    efficiency_ratio.short_description = "Balance/Earned %"
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make points readonly - they should only be changed through transactions
+        if obj:
+            return self.readonly_fields + ['total_points', 'lifetime_earned']
+        return self.readonly_fields
+
+
+@admin.register(PointsTransaction)
+class PointsTransactionAdmin(admin.ModelAdmin):
+    list_display = ['phone_number', 'transaction_type', 'points_amount', 'balance_after', 'lottery_name', 'created_at']
+    list_filter = ['transaction_type', 'created_at', 'daily_pool_date']
+    search_fields = ['phone_number', 'ticket_number', 'lottery_name']
+    readonly_fields = ['created_at']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Transaction Info', {
+            'fields': ('phone_number', 'transaction_type', 'points_amount', 'balance_before', 'balance_after')
+        }),
+        ('Lottery Details', {
+            'fields': ('ticket_number', 'lottery_name', 'check_date'),
+            'classes': ('collapse',)
+        }),
+        ('System Info', {
+            'fields': ('daily_pool_date', 'description', 'created_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_readonly_fields(self, request, obj=None):
+        # All fields should be readonly after creation
+        if obj:
+            return [field.name for field in self.model._meta.fields]
+        return self.readonly_fields
+
+
+@admin.register(DailyPointsAwarded)
+class DailyPointsAwardedAdmin(admin.ModelAdmin):
+    list_display = ['phone_number', 'award_date', 'points_awarded', 'lottery_name', 'ticket_number', 'awarded_at']
+    list_filter = ['award_date', 'lottery_name', 'awarded_at']
+    search_fields = ['phone_number', 'ticket_number', 'lottery_name']
+    readonly_fields = ['awarded_at']
+    ordering = ['-award_date', '-awarded_at']
+    
+    def get_readonly_fields(self, request, obj=None):
+        # All fields should be readonly after creation to maintain audit trail
+        if obj:
+            return [field.name for field in self.model._meta.fields]
+        return self.readonly_fields
+    
+    def has_add_permission(self, request):
+        # Prevent manual creation - should only be created through API
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        # Prevent editing - this is an audit table
+        return False
+
+
+# Custom admin actions
+def reset_daily_pool(modeladmin, request, queryset):
+    """Custom admin action to reset selected daily pools"""
+    for pool in queryset:
+        pool.distributed_points = 0
+        pool.remaining_points = pool.total_budget
+        pool.save(update_fields=['distributed_points', 'remaining_points'])
+    
+    count = queryset.count()
+    modeladmin.message_user(request, f"Successfully reset {count} daily pools.")
+
+reset_daily_pool.short_description = "Reset selected pools to full budget"
+
+# Add the action to DailyPointsPoolAdmin
+DailyPointsPoolAdmin.actions = [reset_daily_pool]
 
 
 # Register the admin

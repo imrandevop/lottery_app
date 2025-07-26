@@ -432,3 +432,171 @@ def lottery_result_notification_handler(sender, instance, created, **kwargs):
             
     except Exception as e:
         logger.error(f"❌ Error in lottery notification handler: {e}")
+
+
+
+# Add these models to your existing models.py file
+
+class DailyPointsPool(models.Model):
+    """Manages daily points pool with 10K budget that resets at midnight IST"""
+    date = models.DateField(unique=True, db_index=True)
+    total_budget = models.IntegerField(default=10000)
+    distributed_points = models.IntegerField(default=0)
+    remaining_points = models.IntegerField(default=10000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Daily Points Pool"
+        verbose_name_plural = "Daily Points Pools"
+        ordering = ['-date']
+    
+    def __str__(self):
+        return f"Pool {self.date}: {self.remaining_points}/{self.total_budget} remaining"
+    
+    @classmethod
+    def get_today_pool(cls):
+        """Get or create today's points pool (IST timezone)"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        pool, created = cls.objects.get_or_create(
+            date=today_ist,
+            defaults={
+                'total_budget': 10000,
+                'distributed_points': 0,
+                'remaining_points': 10000
+            }
+        )
+        return pool
+    
+    def can_award_points(self, points_amount):
+        """Check if pool has enough points to award"""
+        return self.remaining_points >= points_amount
+    
+    def award_points(self, points_amount):
+        """Award points and update pool (with database transaction)"""
+        with transaction.atomic():
+            # Refresh from database to prevent race conditions
+            pool = DailyPointsPool.objects.select_for_update().get(id=self.id)
+            
+            if pool.remaining_points >= points_amount:
+                pool.distributed_points += points_amount
+                pool.remaining_points -= points_amount
+                pool.save(update_fields=['distributed_points', 'remaining_points', 'updated_at'])
+                return True
+            return False
+
+
+class UserPointsBalance(models.Model):
+    """Track total points balance for each user (phone number)"""
+    phone_number = models.CharField(max_length=15, unique=True, db_index=True)
+    total_points = models.IntegerField(default=0)
+    lifetime_earned = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "User Points Balance"
+        verbose_name_plural = "User Points Balances"
+    
+    def __str__(self):
+        return f"{self.phone_number}: {self.total_points} points"
+    
+    @classmethod
+    def get_or_create_user(cls, phone_number):
+        """Get or create user balance record"""
+        user, created = cls.objects.get_or_create(
+            phone_number=phone_number,
+            defaults={'total_points': 0, 'lifetime_earned': 0}
+        )
+        return user
+    
+    def add_points(self, points_amount):
+        """Add points to user balance"""
+        self.total_points += points_amount
+        self.lifetime_earned += points_amount
+        self.save(update_fields=['total_points', 'lifetime_earned', 'updated_at'])
+
+
+class PointsTransaction(models.Model):
+    """Track all points transactions for audit and user history"""
+    TRANSACTION_TYPES = [
+        ('lottery_check', 'Lottery Check Reward'),
+        ('bonus', 'Bonus Points'),
+        ('redemption', 'Points Redemption'),
+        ('adjustment', 'Manual Adjustment'),
+    ]
+    
+    phone_number = models.CharField(max_length=15, db_index=True)
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    points_amount = models.IntegerField()
+    balance_before = models.IntegerField()
+    balance_after = models.IntegerField()
+    
+    # Lottery check specific fields
+    ticket_number = models.CharField(max_length=50, blank=True)
+    lottery_name = models.CharField(max_length=200, blank=True)
+    check_date = models.DateField(null=True, blank=True)
+    
+    # Pool tracking
+    daily_pool_date = models.DateField(null=True, blank=True)
+    
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Points Transaction"
+        verbose_name_plural = "Points Transactions"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['phone_number', '-created_at']),
+            models.Index(fields=['daily_pool_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.phone_number}: {self.points_amount} pts ({self.get_transaction_type_display()})"
+
+
+class DailyPointsAwarded(models.Model):
+    """Track which users have received points today (prevents multiple awards per day)"""
+    phone_number = models.CharField(max_length=15, db_index=True)
+    award_date = models.DateField(db_index=True)
+    points_awarded = models.IntegerField()
+    ticket_number = models.CharField(max_length=50)
+    lottery_name = models.CharField(max_length=200)
+    awarded_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Daily Points Awarded"
+        verbose_name_plural = "Daily Points Awarded"
+        unique_together = ('phone_number', 'award_date')  # One award per user per day
+        ordering = ['-award_date', '-awarded_at']
+    
+    def __str__(self):
+        return f"{self.phone_number}: {self.points_awarded} pts on {self.award_date}"
+    
+    @classmethod
+    def has_received_points_today(cls, phone_number):
+        """Check if user has already received points today (IST)"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        return cls.objects.filter(
+            phone_number=phone_number,
+            award_date=today_ist
+        ).exists()
+    
+    @classmethod
+    def record_points_award(cls, phone_number, points_amount, ticket_number, lottery_name):
+        """Record that user received points today"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        return cls.objects.create(
+            phone_number=phone_number,
+            award_date=today_ist,
+            points_awarded=points_amount,
+            ticket_number=ticket_number,
+            lottery_name=lottery_name
+        )
