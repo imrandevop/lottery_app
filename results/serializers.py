@@ -326,21 +326,50 @@ class LiveVideoSerializer(serializers.ModelSerializer):
 
 class LotteryPercentageRequestSerializer(serializers.Serializer):
     """Serializer for lottery percentage request"""
-    lottery_name = serializers.CharField(max_length=200, required=True, help_text="Name of the lottery")
-    lottery_number = serializers.CharField(max_length=4, required=True, help_text="4-digit lottery number")
+    lottery_name = serializers.CharField(
+        max_length=200, 
+        required=True, 
+        help_text="Name of the lottery (e.g., Karunya, Akshaya)"
+    )
+    lottery_number = serializers.CharField(
+        max_length=8, 
+        min_length=8,
+        required=True, 
+        help_text="8-character lottery number format: AB123456 (2 alphabets + 6 digits)"
+    )
     
     def validate_lottery_number(self, value):
-        """Validate lottery number format"""
-        # Remove any spaces and validate
-        value = str(value).strip()
+        """Validate lottery number format (AB123456)"""
+        # Remove any spaces and convert to uppercase
+        value = str(value).strip().upper()
         
-        # Check if it's a valid number (1-4 digits)
-        if not value.isdigit():
-            raise serializers.ValidationError("Lottery number must contain only digits")
+        # Check exact length
+        if len(value) != 8:
+            raise serializers.ValidationError(
+                "Lottery number must be exactly 8 characters long (format: AB123456)"
+            )
         
-        if len(value) > 4:
-            raise serializers.ValidationError("Lottery number cannot exceed 4 digits")
+        # Check format: first 2 characters must be alphabets
+        prefix = value[:2]
+        if not prefix.isalpha():
+            raise serializers.ValidationError(
+                "First 2 characters must be alphabets (e.g., AB, KC, WN)"
+            )
         
+        # Check format: last 6 characters must be digits
+        numeric_part = value[2:]
+        if not numeric_part.isdigit():
+            raise serializers.ValidationError(
+                "Last 6 characters must be digits (e.g., 123456)"
+            )
+        
+        return value
+    
+    def validate_lottery_name(self, value):
+        """Validate lottery name"""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Lottery name cannot be empty")
         return value
 
 
