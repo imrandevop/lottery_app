@@ -1503,14 +1503,13 @@ logger = logging.getLogger(__name__)
 
 class LotteryWinningPercentageAPI(APIView):
     """
-    Simple frequency-based lottery percentage API
+    Prediction-based lottery percentage API with wide fluctuation
     """
     permission_classes = [AllowAny]
     
     def __init__(self):
         super().__init__()
         self.number_pattern = re.compile(r'^[A-Z]{2}\d{6}$')
-        self.base_percentage = 10.0  # Base percentage for any number
     
     def get_consistency_seed(self, lottery_name, lottery_number):
         """Generate consistent seed that changes only when new results are published"""
@@ -1539,14 +1538,14 @@ class LotteryWinningPercentageAPI(APIView):
     def get_all_winning_numbers(self):
         """Get ALL winning numbers from ALL lotteries"""
         try:
-            # Get all winning numbers from all lotteries (last 2 years for performance)
+            # Get all winning numbers from all lotteries (last 2 years)
             two_years_ago = timezone.now().date() - timedelta(days=730)
             
             all_winners = PrizeEntry.objects.filter(
                 lottery_result__is_published=True,
                 lottery_result__date__gte=two_years_ago,
                 prize_type__in=['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
-            ).values('ticket_number')
+            ).values('ticket_number', 'lottery_result__date').order_by('-lottery_result__date')
             
             return list(all_winners)
             
@@ -1554,93 +1553,166 @@ class LotteryWinningPercentageAPI(APIView):
             logger.error(f"Error fetching all winning numbers: {e}")
             return []
     
-    def calculate_frequency_percentage(self, lottery_name, lottery_number, all_winning_numbers):
-        """Calculate percentage based on last 4 digits frequency"""
+    def predict_winning_percentage(self, lottery_name, lottery_number, all_winning_numbers):
+        """Predict winning percentage using multiple prediction factors"""
         try:
             if not self.number_pattern.match(lottery_number):
-                return self.base_percentage
+                return 25.0
             
-            # Get last 4 digits of target number
-            target_last_4 = lottery_number[4:]  # Last 4 digits (positions 4,5,6,7)
-            
-            # Count how many times these last 4 digits appeared
-            frequency_count = 0
-            total_valid_numbers = 0
-            
-            for entry in all_winning_numbers:
-                ticket_num = str(entry['ticket_number']).upper().strip()
-                
-                # Check if it's valid 8-character format
-                if self.number_pattern.match(ticket_num):
-                    total_valid_numbers += 1
-                    
-                    # Check if last 4 digits match
-                    if ticket_num[4:] == target_last_4:
-                        frequency_count += 1
-            
-            if total_valid_numbers == 0:
-                return self.base_percentage
-            
-            # Calculate frequency percentage
-            frequency_rate = frequency_count / total_valid_numbers
-            
-            # Convert to percentage with boost
-            # Base percentage + frequency boost (scaled appropriately)
-            frequency_boost = frequency_rate * 1000  # Scale up the frequency
-            
-            final_percentage = self.base_percentage + frequency_boost
-            
-            # Apply consistency seed for same results
+            # Use consistent seed for same results
             seed = self.get_consistency_seed(lottery_name, lottery_number)
             import random
             random.seed(seed)
             
-            # Add small consistent variation (±5%) to avoid identical percentages
-            variation = random.uniform(-5, 5)
-            final_percentage += variation
+            target_last_4 = lottery_number[4:]  # Last 4 digits
+            target_digits = [int(d) for d in lottery_number[2:]]  # All 6 digits
             
-            # Ensure reasonable range (1-95%)
-            final_percentage = max(1.0, min(final_percentage, 95.0))
+            prediction_score = 0
+            
+            # PREDICTION METHOD 1: Historical Frequency Analysis
+            frequency_count = 0
+            total_numbers = len(all_winning_numbers)
+            
+            if total_numbers > 0:
+                for entry in all_winning_numbers:
+                    ticket_num = str(entry['ticket_number']).upper().strip()
+                    if self.number_pattern.match(ticket_num) and ticket_num[4:] == target_last_4:
+                        frequency_count += 1
+                
+                # Convert frequency to prediction score (amplified)
+                frequency_rate = frequency_count / total_numbers
+                frequency_prediction = frequency_rate * 2000  # Amplify for higher scores
+                prediction_score += frequency_prediction
+            
+            # PREDICTION METHOD 2: Recent Trend Analysis  
+            recent_count = 0
+            recent_numbers = all_winning_numbers[:100]  # Last 100 results
+            
+            for entry in recent_numbers:
+                ticket_num = str(entry['ticket_number']).upper().strip()
+                if self.number_pattern.match(ticket_num) and ticket_num[4:] == target_last_4:
+                    recent_count += 1
+            
+            # Recent trend gives higher weight
+            if len(recent_numbers) > 0:
+                recent_trend = (recent_count / len(recent_numbers)) * 3000  # Higher amplification
+                prediction_score += recent_trend
+            
+            # PREDICTION METHOD 3: Number Pattern Prediction
+            digit_sum = sum(target_digits)
+            
+            # Predict based on digit sum patterns
+            if digit_sum <= 15:  # Low sum numbers
+                sum_prediction = random.randint(20, 60)
+            elif digit_sum >= 35:  # High sum numbers
+                sum_prediction = random.randint(25, 65)
+            else:  # Medium sum numbers (most common)
+                sum_prediction = random.randint(30, 70)
+            
+            prediction_score += sum_prediction
+            
+            # PREDICTION METHOD 4: Gap Analysis Prediction
+            # Check how long since last 4 digits appeared
+            days_since_last = 0
+            found_recent = False
+            
+            for entry in all_winning_numbers:
+                ticket_num = str(entry['ticket_number']).upper().strip()
+                if self.number_pattern.match(ticket_num) and ticket_num[4:] == target_last_4:
+                    found_recent = True
+                    break
+                days_since_last += 1
+            
+            # Longer gap = higher chance prediction (gambler's fallacy for entertainment)
+            if not found_recent:
+                gap_prediction = random.randint(15, 40)  # Never appeared = moderate boost
+            elif days_since_last > 50:
+                gap_prediction = random.randint(25, 50)  # Long gap = higher boost
+            elif days_since_last > 20:
+                gap_prediction = random.randint(15, 35)  # Medium gap = moderate boost
+            else:
+                gap_prediction = random.randint(5, 25)   # Recent = lower boost
+            
+            prediction_score += gap_prediction
+            
+            # PREDICTION METHOD 5: Lucky Number Prediction
+            lucky_boost = 0
+            
+            # Repeated digits are "lucky"
+            if len(set(target_digits)) <= 3:
+                lucky_boost += random.randint(10, 30)
+            
+            # Sequential patterns are "lucky"
+            if target_digits == sorted(target_digits) or target_digits == sorted(target_digits, reverse=True):
+                lucky_boost += random.randint(15, 35)
+            
+            # Palindrome last 4 digits are "lucky"
+            if target_last_4 == target_last_4[::-1]:
+                lucky_boost += random.randint(12, 28)
+            
+            prediction_score += lucky_boost
+            
+            # PREDICTION METHOD 6: Random Prediction Factor (for wide fluctuation)
+            # This ensures numbers can get very high or very low percentages
+            random_factor = random.randint(-20, 80)  # Can be negative or very high
+            prediction_score += random_factor
+            
+            # FINAL PREDICTION ADJUSTMENT
+            # Apply final randomization for entertainment and wide fluctuation
+            final_adjustment = random.randint(-15, 45)
+            prediction_score += final_adjustment
+            
+            # Ensure wide fluctuation (1-95%) - NO RANGE RESTRICTION
+            final_percentage = max(1.0, min(prediction_score, 95.0))
             
             return final_percentage
             
         except Exception as e:
-            logger.error(f"Error calculating frequency percentage: {e}")
-            return self.base_percentage
+            logger.error(f"Error in prediction calculation: {e}")
+            # Fallback prediction
+            seed = hash(f"{lottery_name}{lottery_number}") % 1000000
+            random.seed(seed)
+            return float(random.randint(15, 85))
     
     def generate_message(self, percentage, lottery_number):
-        """Generate message based on percentage"""
+        """Generate prediction-based messages"""
         last_4 = lottery_number[4:]
         
-        if percentage >= 80:
+        if percentage >= 85:
             messages = [
-                f"🎯 Excellent! Last 4 digits '{last_4}' have appeared frequently in winners!",
-                f"🔥 Hot digits! '{last_4}' shows high winning frequency!",
-                f"⭐ Great choice! '{last_4}' has strong historical performance!"
+                f"🚀 PREDICTION: {last_4} shows EXCEPTIONAL winning potential! Strong indicators detected!",
+                f"⭐ HIGHLY PREDICTED! {last_4} has outstanding winning signals! Great choice!",
+                f"🎯 STRONG PREDICTION! {last_4} demonstrates exceptional promise for success!"
             ]
-        elif percentage >= 60:
+        elif percentage >= 70:
             messages = [
-                f"👍 Good! Last 4 digits '{last_4}' have good winning history!",
-                f"✨ Nice! '{last_4}' shows decent frequency in winners!",
-                f"🎯 Promising! '{last_4}' has appeared multiple times!"
+                f"🔥 GOOD PREDICTION! {last_4} shows strong winning potential!",
+                f"💎 PROMISING! Our analysis predicts {last_4} has high success chances!",
+                f"✨ POSITIVE SIGNALS! {last_4} is predicted to have good winning probability!"
+            ]
+        elif percentage >= 55:
+            messages = [
+                f"👍 MODERATE PREDICTION! {last_4} shows decent winning potential!",
+                f"📈 FAIR CHANCE! Our prediction shows {last_4} has reasonable prospects!",
+                f"🎲 BALANCED PREDICTION! {last_4} demonstrates moderate success indicators!"
             ]
         elif percentage >= 40:
             messages = [
-                f"⚖️ Moderate! '{last_4}' has average appearance frequency.",
-                f"📊 Fair chance! '{last_4}' shows moderate winning history.",
-                f"🤔 Average! '{last_4}' has appeared occasionally in winners."
+                f"⚖️ MIXED SIGNALS! {last_4} shows average prediction indicators.",
+                f"🤔 MODERATE OUTLOOK! {last_4} has mixed prediction signals.",
+                f"📊 AVERAGE PREDICTION! {last_4} shows standard probability patterns."
             ]
-        elif percentage >= 20:
+        elif percentage >= 25:
             messages = [
-                f"📉 Below average! '{last_4}' has low frequency in winners.",
-                f"⚠️ Limited! '{last_4}' rarely appears in winning numbers.",
-                f"🔍 Low frequency! '{last_4}' has minimal winning history."
+                f"📉 LOWER PREDICTION! {last_4} shows below-average winning signals.",
+                f"⚠️ WEAK INDICATORS! Our prediction suggests {last_4} has limited potential.",
+                f"🔍 CAUTIOUS PREDICTION! {last_4} shows minimal success indicators."
             ]
         else:
             messages = [
-                f"❌ Very low! '{last_4}' rarely appears in winning numbers.",
-                f"🚫 Poor frequency! '{last_4}' has very limited winning history.",
-                f"💭 Consider other options! '{last_4}' shows low frequency."
+                f"❌ LOW PREDICTION! {last_4} shows poor winning indicators in our analysis.",
+                f"🚫 WEAK SIGNALS! {last_4} has unfavorable prediction patterns.",
+                f"💭 CONSIDER ALTERNATIVES! {last_4} shows limited success potential."
             ]
         
         # Use consistent message selection
@@ -1689,7 +1761,7 @@ class LotteryWinningPercentageAPI(APIView):
                     'status': 'error'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Check if lottery exists (for response, but we check ALL lotteries for data)
+            # Check if lottery exists
             lottery = Lottery.objects.filter(
                 Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
             ).first()
@@ -1706,17 +1778,8 @@ class LotteryWinningPercentageAPI(APIView):
             # Get ALL winning numbers from ALL lotteries
             all_winning_numbers = self.get_all_winning_numbers()
             
-            if not all_winning_numbers:
-                return Response({
-                    'lottery_number': lottery_number,
-                    'lottery_name': lottery.name,
-                    'percentage': self.base_percentage,
-                    'message': f'No historical data available. Showing base probability.',
-                    'status': 'success'
-                })
-            
-            # Calculate frequency-based percentage
-            percentage = self.calculate_frequency_percentage(
+            # Calculate prediction-based percentage
+            percentage = self.predict_winning_percentage(
                 lottery_name, lottery_number, all_winning_numbers
             )
             
