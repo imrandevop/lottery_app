@@ -1488,524 +1488,215 @@ class LiveVideoListView(generics.ListAPIView):
             'data': serializer.data,            
         })
     
+import hashlib
+import re
+from datetime import timedelta
+from django.utils import timezone
+from django.db.models import Q
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+import logging
+
+logger = logging.getLogger(__name__)
+
 class LotteryWinningPercentageAPI(APIView):
     """
-    API to calculate winning percentage with adjusted scaling for 1-95% range
+    Simplified entertainment-focused lottery percentage API
     """
     permission_classes = [AllowAny]
     
     def __init__(self):
         super().__init__()
-        self.base_probability = 1.0  # Increased from 0.01 to 1%
         self.number_pattern = re.compile(r'^[A-Z]{2}\d{6}$')
     
-    def extract_number_features(self, number_str):
-        """Extract mathematical features from a lottery number (format: AB123456)"""
+    def get_consistency_seed(self, lottery_name, lottery_number):
+        """Generate consistent seed that changes only when new results are published"""
         try:
-            number_str = str(number_str).upper().strip()
+            # Get the latest result date for this lottery
+            lottery = Lottery.objects.filter(
+                Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
+            ).first()
             
-            if not self.number_pattern.match(number_str):
-                return None
+            if not lottery:
+                # Use current week if lottery not found
+                current_week = timezone.now().strftime("%Y-%U")
+                seed_string = f"{lottery_name}_{lottery_number}_{current_week}"
+            else:
+                # Get the most recent published result
+                latest_result = LotteryResult.objects.filter(
+                    lottery=lottery,
+                    is_published=True
+                ).order_by('-date').first()
                 
-            prefix = number_str[:2]
-            numeric_part = number_str[2:]
-            digits = [int(d) for d in numeric_part]
+                if latest_result:
+                    # Use the latest result date as consistency anchor
+                    seed_string = f"{lottery.name}_{lottery_number}_{latest_result.date}"
+                else:
+                    # Fallback to current week
+                    current_week = timezone.now().strftime("%Y-%U")
+                    seed_string = f"{lottery_name}_{lottery_number}_{current_week}"
             
-            features = {
-                'full_number': number_str,
-                'prefix': prefix,
-                'numeric_part': numeric_part,
-                'digits': digits,
-                'sum': sum(digits),
-                'product': np.prod(digits) if 0 not in digits else 0,
-                'range': max(digits) - min(digits),
-                'std_dev': np.std(digits),
-                'unique_count': len(set(digits)),
-                'is_ascending': all(digits[i] <= digits[i+1] for i in range(5)),
-                'is_descending': all(digits[i] >= digits[i+1] for i in range(5)),
-                'has_repeats': len(set(digits)) < 6,
-                'even_count': sum(1 for d in digits if d % 2 == 0),
-                'odd_count': sum(1 for d in digits if d % 2 == 1),
-                'consecutive_pairs': sum(1 for i in range(5) if abs(digits[i] - digits[i+1]) == 1),
-                'first_half_sum': sum(digits[:3]),
-                'second_half_sum': sum(digits[3:]),
-                'alternating_sum': sum(digits[::2]) - sum(digits[1::2]),
-                'last_4_digits': digits[-4:],
-                'first_2_digits': digits[:2],
-                'middle_2_digits': digits[2:4]
-            }
-            
-            return features
-        except Exception as e:
-            logger.error(f"Error extracting features: {e}")
-            return None
-    
-    def _calculate_frequency_boost(self, actual_freq, expected_freq):
-        """Calculate boost factor based on frequency deviation from expected"""
-        if actual_freq == 0:
-            return 0.5  # Small penalty for no matches
-        
-        ratio = actual_freq / expected_freq
-        if ratio > 1.0:
-            # Higher than expected frequency = boost
-            return min(ratio * 2, 4.0)  # Cap at 4x boost
-        else:
-            # Lower than expected = proportional score
-            return ratio
-    
-    def frequency_analysis(self, lottery_name, target_number, historical_data):
-        """Enhanced frequency analysis with improved scaling"""
-        try:
-            target_number = str(target_number).upper().strip()
-            
-            if not self.number_pattern.match(target_number):
-                return 5.0  # Base score instead of 0
-            
-            target_prefix = target_number[:2]
-            target_numeric = target_number[2:]
-            target_last_4 = target_numeric[-4:]
-            
-            # Analysis counters
-            exact_matches = 0
-            prefix_matches = 0
-            numeric_matches = 0
-            last_4_matches = 0
-            
-            # Pattern matches
-            digit_frequencies = Counter()
-            position_frequencies = [Counter() for _ in range(6)]
-            prefix_frequencies = Counter()
-            
-            for entry in historical_data:
-                ticket_num = str(entry['ticket_number']).upper().strip()
-                
-                if not self.number_pattern.match(ticket_num):
-                    continue
-                
-                entry_prefix = ticket_num[:2]
-                entry_numeric = ticket_num[2:]
-                entry_last_4 = entry_numeric[-4:]
-                
-                # Exact match
-                if ticket_num == target_number:
-                    exact_matches += 1
-                
-                # Prefix match
-                if entry_prefix == target_prefix:
-                    prefix_matches += 1
-                
-                # Numeric part match
-                if entry_numeric == target_numeric:
-                    numeric_matches += 1
-                
-                # Last 4 digits match
-                if entry_last_4 == target_last_4:
-                    last_4_matches += 1
-                
-                # Frequency analysis
-                prefix_frequencies[entry_prefix] += 1
-                for i, digit in enumerate(entry_numeric):
-                    digit_frequencies[digit] += 1
-                    position_frequencies[i][digit] += 1
-            
-            total_entries = len(historical_data)
-            if total_entries == 0:
-                return 5.0
-            
-            # Calculate frequency score with enhanced scaling
-            frequency_score = 0.0
-            
-            # Exact match frequency (massive boost if found)
-            exact_freq = exact_matches / total_entries
-            if exact_matches > 0:
-                frequency_score += min(exact_freq * 5000, 40.0)  # Major boost for exact matches
-            
-            # Prefix frequency (enhanced scaling)
-            prefix_freq = prefix_matches / total_entries
-            prefix_boost = self._calculate_frequency_boost(prefix_freq, 0.05)  # 5% expected frequency
-            frequency_score += prefix_boost * 20  # Increased weight
-            
-            # Last 4 digits frequency (enhanced scaling)
-            last_4_freq = last_4_matches / total_entries
-            last_4_boost = self._calculate_frequency_boost(last_4_freq, 0.01)  # 1% expected frequency
-            frequency_score += last_4_boost * 25  # Increased weight
-            
-            # Digit pattern frequency with position bonuses
-            digit_pattern_score = 0.0
-            for i, digit in enumerate(target_numeric):
-                position_freq = position_frequencies[i].get(digit, 0) / total_entries
-                expected_freq = 0.1  # 10% expected for each digit
-                position_boost = self._calculate_frequency_boost(position_freq, expected_freq)
-                digit_pattern_score += position_boost
-            
-            frequency_score += (digit_pattern_score / 6) * 20  # Increased weight
-            
-            # Add randomization factor for variety (±2.5%)
-            randomization = np.random.uniform(-2.5, 2.5)
-            frequency_score += randomization
-            
-            # Enhanced scaling: 5-90% range
-            final_score = max(5.0, min(frequency_score, 90.0))
-            
-            return final_score
+            # Generate consistent hash
+            return int(hashlib.md5(seed_string.encode()).hexdigest()[:8], 16)
             
         except Exception as e:
-            logger.error(f"Error in frequency analysis: {e}")
-            return 5.0
+            logger.error(f"Error generating consistency seed: {e}")
+            # Fallback seed
+            fallback = f"{lottery_name}_{lottery_number}_{timezone.now().strftime('%Y-%U')}"
+            return int(hashlib.md5(fallback.encode()).hexdigest()[:8], 16)
     
-    def _apply_sigmoid_scaling(self, value, midpoint=0.5, steepness=5):
-        """Apply sigmoid function for non-linear score distribution"""
+    def analyze_number_patterns(self, lottery_number):
+        """Basic pattern analysis for entertainment"""
         try:
-            # Sigmoid function: 1 / (1 + e^(-steepness * (value - midpoint)))
-            sigmoid_value = 1 / (1 + np.exp(-steepness * (value - midpoint)))
-            return sigmoid_value
-        except:
-            return 0.5  # Default middle value
-    
-    def pattern_analysis(self, target_number, historical_data):
-        """Enhanced pattern analysis with better score distribution"""
-        try:
-            target_features = self.extract_number_features(target_number)
-            if not target_features:
-                return 10.0  # Base score
+            if not self.number_pattern.match(lottery_number):
+                return 0
             
-            pattern_scores = []
+            prefix = lottery_number[:2]
+            digits = [int(d) for d in lottery_number[2:]]
             
-            for entry in historical_data:
-                entry_features = self.extract_number_features(str(entry['ticket_number']).upper().strip())
-                if not entry_features:
-                    continue
-                
-                # Enhanced similarity calculation
-                similarity = 0.0
-                
-                # Sum similarity with better scaling
-                sum_diff = abs(target_features['sum'] - entry_features['sum'])
-                sum_similarity = max(0, 1 - (sum_diff / 54))
-                similarity += sum_similarity * 0.15
-                
-                # Range similarity
-                range_diff = abs(target_features['range'] - entry_features['range'])
-                range_similarity = max(0, 1 - (range_diff / 9))
-                similarity += range_similarity * 0.1
-                
-                # Unique count similarity
-                unique_similarity = 1 if target_features['unique_count'] == entry_features['unique_count'] else 0.3
-                similarity += unique_similarity * 0.1
-                
-                # Prefix similarity (high impact)
-                prefix_similarity = 1 if target_features['prefix'] == entry_features['prefix'] else 0.1
-                similarity += prefix_similarity * 0.3
-                
-                # Last 4 digits pattern similarity
-                last_4_target = target_features['last_4_digits']
-                last_4_entry = entry_features['last_4_digits']
-                last_4_similarity = sum(1 for i, d in enumerate(last_4_target) 
-                                      if i < len(last_4_entry) and d == last_4_entry[i]) / 4
-                similarity += last_4_similarity * 0.25
-                
-                # Enhanced pattern type similarity
-                pattern_similarity = 0.2  # Base similarity
-                if target_features['is_ascending'] and entry_features['is_ascending']:
-                    pattern_similarity = 0.9
-                elif target_features['is_descending'] and entry_features['is_descending']:
-                    pattern_similarity = 0.9
-                elif target_features['has_repeats'] and entry_features['has_repeats']:
-                    pattern_similarity = 0.7
-                
-                # Additional pattern bonuses
-                if target_features['first_half_sum'] == entry_features['first_half_sum']:
-                    pattern_similarity += 0.3
-                if target_features['second_half_sum'] == entry_features['second_half_sum']:
-                    pattern_similarity += 0.3
-                
-                pattern_similarity = min(pattern_similarity, 1.0)
-                similarity += pattern_similarity * 0.1
-                
-                pattern_scores.append(similarity)
+            pattern_score = 0
             
-            if not pattern_scores:
-                return 10.0
+            # Repeated digits bonus (more repeats = higher score)
+            unique_digits = len(set(digits))
+            if unique_digits <= 2:  # Like 111111, 121212
+                pattern_score += 25
+            elif unique_digits <= 3:  # Like 111222
+                pattern_score += 15
+            elif unique_digits <= 4:  # Like 112233
+                pattern_score += 8
             
-            # Enhanced scoring with percentile ranking
-            target_pattern_score = sum(pattern_scores) / len(pattern_scores)
+            # Sequential patterns
+            if digits == sorted(digits):  # Ascending like 123456
+                pattern_score += 20
+            elif digits == sorted(digits, reverse=True):  # Descending like 654321
+                pattern_score += 20
             
-            # Apply non-linear scaling for better distribution
-            scaled_score = self._apply_sigmoid_scaling(target_pattern_score, midpoint=0.4, steepness=8)
+            # Same consecutive digits
+            consecutive_count = 0
+            for i in range(len(digits) - 1):
+                if digits[i] == digits[i + 1]:
+                    consecutive_count += 1
+            pattern_score += consecutive_count * 3
             
-            # Scale to 8-88% range
-            final_score = 8 + (scaled_score * 80)
+            # Alternating patterns like 121212
+            is_alternating = True
+            if len(set(digits[::2])) == 1 and len(set(digits[1::2])) == 1:
+                pattern_score += 15
             
-            return min(final_score, 88.0)
+            # Mirror patterns like 123321
+            if digits == digits[::-1]:
+                pattern_score += 18
+            
+            # Sum-based patterns
+            digit_sum = sum(digits)
+            if digit_sum % 10 == 0:  # Sum ends in 0
+                pattern_score += 5
+            elif digit_sum in [7, 11, 21, 33]:  # "Lucky" sums
+                pattern_score += 8
+            
+            # All even or all odd
+            if all(d % 2 == 0 for d in digits):  # All even
+                pattern_score += 10
+            elif all(d % 2 == 1 for d in digits):  # All odd  
+                pattern_score += 10
+            
+            return min(pattern_score, 50)  # Cap pattern bonus at 50
             
         except Exception as e:
             logger.error(f"Error in pattern analysis: {e}")
-            return 10.0
+            return 0
     
-    def chaos_theory_analysis(self, target_number, historical_data):
-        """Enhanced chaos theory analysis with better scaling"""
-        try:
-            if len(historical_data) < 10:
-                return 12.0  # Base score
-            
-            # Convert to numerical sequence
-            sequence = []
-            for entry in historical_data:
-                try:
-                    ticket_num = str(entry['ticket_number']).upper().strip()
-                    if self.number_pattern.match(ticket_num):
-                        num = int(ticket_num[2:])
-                        sequence.append(num)
-                except:
-                    continue
-            
-            if len(sequence) < 10:
-                return 12.0
-            
-            target_str = str(target_number).upper().strip()
-            if not self.number_pattern.match(target_str):
-                return 12.0
-            
-            target_num = int(target_str[2:])
-            
-            # Enhanced phase space reconstruction
-            embedding_dim = 3
-            delay = 1
-            
-            embedded = []
-            for i in range(len(sequence) - (embedding_dim - 1) * delay):
-                point = [sequence[i + j * delay] for j in range(embedding_dim)]
-                embedded.append(point)
-            
-            if len(embedded) < 5:
-                return 12.0
-            
-            embedded = np.array(embedded)
-            
-            # Enhanced distance calculation
-            target_point = np.array([target_num] * embedding_dim)
-            distances = [np.linalg.norm(point - target_point) for point in embedded]
-            
-            min_distance = min(distances)
-            max_distance = max(distances)
-            
-            if max_distance == min_distance:
-                return 12.0
-            
-            # Enhanced proximity score with non-linear scaling
-            proximity_score = 1 - (min_distance / max_distance)
-            
-            # Apply sigmoid scaling for better distribution
-            scaled_score = self._apply_sigmoid_scaling(proximity_score, midpoint=0.5, steepness=6)
-            
-            # Scale to 5-85% range
-            final_score = 5 + (scaled_score * 80)
-            
-            return min(final_score, 85.0)
-            
-        except Exception as e:
-            logger.error(f"Error in chaos analysis: {e}")
-            return 12.0
-    
-    def quantum_inspired_analysis(self, target_number, historical_data):
-        """Enhanced quantum-inspired analysis with better score distribution"""
-        try:
-            target_str = str(target_number).upper().strip()
-            if not self.number_pattern.match(target_str):
-                return 15.0  # Base score
-            
-            target_digits = [int(d) for d in target_str[2:]]
-            
-            # Create quantum-like state vectors
-            quantum_states = []
-            for entry in historical_data:
-                ticket_num = str(entry['ticket_number']).upper().strip()
-                if self.number_pattern.match(ticket_num):
-                    digits = [int(d) for d in ticket_num[2:]]
-                    if sum(digits) > 0:
-                        amplitudes = np.array(digits) / np.linalg.norm(digits)
-                        quantum_states.append(amplitudes)
-            
-            if not quantum_states:
-                return 15.0
-            
-            # Target quantum state
-            if sum(target_digits) == 0:
-                return 15.0
-            
-            target_amplitudes = np.array(target_digits) / np.linalg.norm(target_digits)
-            
-            # Enhanced quantum correlations
-            correlations = []
-            for state in quantum_states:
-                # Enhanced quantum overlap calculation
-                overlap = np.abs(np.dot(target_amplitudes, state)) ** 2
-                
-                # Add quantum interference effects
-                phase_factor = np.exp(1j * np.sum(target_amplitudes * state))
-                interference = np.abs(phase_factor) * overlap
-                
-                correlations.append(interference)
-            
-            # Enhanced statistical analysis
-            mean_correlation = np.mean(correlations)
-            max_correlation = np.max(correlations)
-            std_correlation = np.std(correlations)
-            
-            # Combine metrics for richer scoring
-            quantum_score = (mean_correlation * 0.6 + max_correlation * 0.3 + 
-                           (1 - std_correlation) * 0.1)
-            
-            # Apply enhanced scaling
-            scaled_score = self._apply_sigmoid_scaling(quantum_score, midpoint=0.6, steepness=5)
-            
-            # Scale to 10-88% range
-            final_score = 10 + (scaled_score * 78)
-            
-            return min(final_score, 88.0)
-            
-        except Exception as e:
-            logger.error(f"Error in quantum analysis: {e}")
-            return 15.0
-    
-    def fractal_analysis(self, target_number, historical_data):
-        """Enhanced fractal analysis with improved scaling"""
-        try:
-            if len(historical_data) < 20:
-                return 8.0  # Base score
-            
-            # Extract digit sequences
-            all_digits = []
-            for entry in historical_data:
-                ticket_num = str(entry['ticket_number']).upper().strip()
-                if self.number_pattern.match(ticket_num):
-                    digits = [int(d) for d in ticket_num[2:]]
-                    all_digits.extend(digits)
-            
-            target_str = str(target_number).upper().strip()
-            if not self.number_pattern.match(target_str):
-                return 8.0
-            
-            target_digits = [int(d) for d in target_str[2:]]
-            
-            # Enhanced multi-scale analysis
-            scales = [1, 2, 3, 6]  # Restored all scales
-            similarities = []
-            
-            for scale in scales:
-                # Enhanced box counting
-                target_boxes = set()
-                data_boxes = set()
-                
-                # Create overlapping boxes for better coverage
-                for i in range(len(target_digits) - scale + 1):
-                    box = tuple(target_digits[i:i+scale])
-                    target_boxes.add(box)
-                
-                for i in range(len(all_digits) - scale + 1):
-                    box = tuple(all_digits[i:i+scale])
-                    data_boxes.add(box)
-                
-                # Enhanced similarity calculation
-                if target_boxes and data_boxes:
-                    intersection = len(target_boxes.intersection(data_boxes))
-                    union = len(target_boxes.union(data_boxes))
-                    jaccard = intersection / union if union > 0 else 0
-                    
-                    # Weight by scale importance
-                    scale_weight = 1.0 / scale  # Smaller scales get higher weight
-                    weighted_similarity = jaccard * scale_weight
-                    similarities.append(weighted_similarity)
-            
-            if not similarities:
-                return 8.0
-            
-            # Enhanced fractal dimension calculation
-            fractal_similarity = np.mean(similarities)
-            
-            # Apply enhanced scaling
-            scaled_score = self._apply_sigmoid_scaling(fractal_similarity, midpoint=0.3, steepness=7)
-            
-            # Scale to 5-82% range
-            final_score = 5 + (scaled_score * 77)
-            
-            return min(final_score, 82.0)
-            
-        except Exception as e:
-            logger.error(f"Error in fractal analysis: {e}")
-            return 8.0
-    
-    def calculate_ensemble_percentage(self, lottery_name, lottery_number, historical_data):
-        """Enhanced ensemble calculation with improved score distribution"""
+    def get_basic_historical_boost(self, lottery_name, lottery_number, historical_data):
+        """Simple historical data boost"""
         try:
             if not historical_data:
-                return self.base_probability + np.random.uniform(5, 15)  # Random base range
+                return 0
             
-            # Run all analysis methods
-            frequency_score = self.frequency_analysis(lottery_name, lottery_number, historical_data)
-            pattern_score = self.pattern_analysis(lottery_number, historical_data)
-            chaos_score = self.chaos_theory_analysis(lottery_number, historical_data)
-            quantum_score = self.quantum_inspired_analysis(lottery_number, historical_data)
-            fractal_score = self.fractal_analysis(lottery_number, historical_data)
+            target_prefix = lottery_number[:2]
+            target_last_4 = lottery_number[4:]  # Last 4 digits
             
-            # Enhanced weighted ensemble with dynamic weights
-            base_weights = {
-                'frequency': 0.30,  # Reduced from 0.35
-                'pattern': 0.25,    # Same
-                'chaos': 0.18,      # Increased from 0.15
-                'quantum': 0.17,    # Increased from 0.15
-                'fractal': 0.10     # Same
-            }
+            prefix_matches = 0
+            last_4_matches = 0
             
-            # Dynamic weight adjustment based on score ranges
-            total_score = frequency_score + pattern_score + chaos_score + quantum_score + fractal_score
-            if total_score > 200:  # High scoring number
-                # Boost advanced methods for high scorers
-                base_weights['chaos'] += 0.05
-                base_weights['quantum'] += 0.05
-                base_weights['frequency'] -= 0.10
+            for entry in historical_data:
+                ticket_num = str(entry['ticket_number']).upper().strip()
+                if not self.number_pattern.match(ticket_num):
+                    continue
+                
+                # Check prefix match
+                if ticket_num[:2] == target_prefix:
+                    prefix_matches += 1
+                
+                # Check last 4 digits match
+                if ticket_num[4:] == target_last_4:
+                    last_4_matches += 1
             
-            ensemble_score = (
-                frequency_score * base_weights['frequency'] +
-                pattern_score * base_weights['pattern'] +
-                chaos_score * base_weights['chaos'] +
-                quantum_score * base_weights['quantum'] +
-                fractal_score * base_weights['fractal']
-            )
+            total_entries = len(historical_data)
             
-            # Enhanced confidence scaling
-            data_size = len(historical_data)
-            if data_size >= 500:
-                data_confidence = 1.0
-            elif data_size >= 200:
-                data_confidence = 0.95
-            elif data_size >= 100:
-                data_confidence = 0.90
-            elif data_size >= 50:
-                data_confidence = 0.85
-            else:
-                data_confidence = 0.80
+            # Calculate boost based on frequency
+            prefix_boost = min((prefix_matches / total_entries) * 200, 15)  # Max 15 points
+            last_4_boost = min((last_4_matches / total_entries) * 300, 10)   # Max 10 points
             
-            # Apply confidence with less penalty
-            adjusted_score = ensemble_score * data_confidence
-            
-            # Add controlled randomization for variety (±1.5%)
-            randomization = np.random.uniform(-1.5, 1.5)
-            final_score = adjusted_score + randomization
-            
-            # Ensure proper range distribution: 1-95%
-            final_percentage = max(1.0, min(final_score, 95.0))
-            
-            return final_percentage
+            return int(prefix_boost + last_4_boost)
             
         except Exception as e:
-            logger.error(f"Error in ensemble calculation: {e}")
-            return self.base_probability + np.random.uniform(5, 15)
+            logger.error(f"Error in historical analysis: {e}")
+            return 0
+    
+    def calculate_entertainment_percentage(self, lottery_name, lottery_number, historical_data):
+        """Calculate percentage for entertainment with consistent results"""
+        try:
+            # Get consistent seed for this number until next result
+            seed = self.get_consistency_seed(lottery_name, lottery_number)
+            
+            # Use seed for pseudo-random but consistent calculation
+            import random
+            random.seed(seed)
+            
+            # Base random percentage (30-70% range)
+            base_percentage = random.randint(30, 70)
+            
+            # Pattern analysis bonus (0-50 points)
+            pattern_bonus = self.analyze_number_patterns(lottery_number)
+            
+            # Historical data boost (0-25 points)  
+            historical_boost = self.get_basic_historical_boost(lottery_name, lottery_number, historical_data)
+            
+            # Number-based adjustments for variety
+            digit_sum = sum(int(d) for d in lottery_number[2:])
+            
+            # Adjust based on digit sum for variety
+            if digit_sum <= 15:  # Low sum numbers
+                sum_adjustment = random.randint(-15, 5)
+            elif digit_sum >= 35:  # High sum numbers  
+                sum_adjustment = random.randint(-5, 15)
+            else:  # Medium sum numbers
+                sum_adjustment = random.randint(-10, 10)
+            
+            # Calculate final percentage
+            final_percentage = base_percentage + pattern_bonus + historical_boost + sum_adjustment
+            
+            # Add some final randomization for entertainment
+            entertainment_factor = random.randint(-8, 12)
+            final_percentage += entertainment_factor
+            
+            # Ensure hard fluctuation across 1-95% range
+            final_percentage = max(1, min(final_percentage, 95))
+            
+            return float(final_percentage)
+            
+        except Exception as e:
+            logger.error(f"Error calculating percentage: {e}")
+            # Fallback calculation
+            seed = hash(f"{lottery_name}{lottery_number}") % 1000000
+            random.seed(seed)
+            return float(random.randint(1, 95))
     
     def get_historical_data(self, lottery_name):
-        """Fetch historical lottery data"""
+        """Get basic historical data (simplified)"""
         try:
-            # Get lottery object
             lottery = Lottery.objects.filter(
                 Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
             ).first()
@@ -2013,16 +1704,15 @@ class LotteryWinningPercentageAPI(APIView):
             if not lottery:
                 return []
             
-            # Get recent results (last 2 years for better analysis)
-            two_years_ago = timezone.now().date() - timedelta(days=730)
+            # Get last 6 months of data (reduced for performance)
+            six_months_ago = timezone.now().date() - timedelta(days=180)
             
             historical_entries = PrizeEntry.objects.filter(
                 lottery_result__lottery=lottery,
                 lottery_result__is_published=True,
-                lottery_result__date__gte=two_years_ago,
-                # Include all prize types since format is consistent
-                prize_type__in=['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
-            ).values('ticket_number', 'prize_type', 'lottery_result__date').order_by('-lottery_result__date')
+                lottery_result__date__gte=six_months_ago,
+                prize_type__in=['1st', '2nd', '3rd', '4th', '5th']  # Only top prizes
+            ).values('ticket_number').order_by('-lottery_result__date')[:200]  # Limit to 200 entries
             
             return list(historical_entries)
             
@@ -2031,57 +1721,53 @@ class LotteryWinningPercentageAPI(APIView):
             return []
     
     def generate_message(self, percentage, lottery_number):
-        """Enhanced message generation with more varied responses"""
+        """Generate entertaining messages"""
         if percentage >= 85:
             messages = [
-                f"Exceptional! Number {lottery_number} shows extraordinary winning patterns with very high probability.",
-                f"Outstanding! Number {lottery_number} demonstrates exceptional alignment with historical winners.",
-                f"Remarkable! Number {lottery_number} exhibits very strong mathematical patterns for success."
+                f"🎯 Exceptional! {lottery_number} shows extraordinary winning potential!",
+                f"🔥 Hot number! {lottery_number} has outstanding winning patterns!",
+                f"⭐ Superb choice! {lottery_number} demonstrates exceptional promise!"
             ]
         elif percentage >= 70:
             messages = [
-                f"Excellent! Number {lottery_number} shows very strong winning patterns with high probability.",
-                f"Great choice! Number {lottery_number} aligns well with successful number characteristics.",
-                f"Strong potential! Number {lottery_number} demonstrates favorable winning indicators."
+                f"🎊 Excellent! {lottery_number} shows very strong winning patterns!",
+                f"💎 Great pick! {lottery_number} has high winning potential!",
+                f"🚀 Strong choice! {lottery_number} looks very promising!"
             ]
         elif percentage >= 55:
             messages = [
-                f"Good! Number {lottery_number} demonstrates favorable winning patterns.",
-                f"Positive signs! Number {lottery_number} shows encouraging mathematical patterns.",
-                f"Promising! Number {lottery_number} has decent alignment with winning characteristics."
+                f"👍 Good! {lottery_number} shows favorable patterns!",
+                f"✨ Nice choice! {lottery_number} has decent winning potential!",
+                f"🎯 Solid pick! {lottery_number} demonstrates good characteristics!"
             ]
         elif percentage >= 40:
             messages = [
-                f"Moderate chance. Number {lottery_number} shows some positive indicators.",
-                f"Average potential. Number {lottery_number} has mixed pattern signals.",
-                f"Fair possibility. Number {lottery_number} demonstrates moderate winning characteristics."
+                f"⚖️ Moderate potential. {lottery_number} shows mixed signals.",
+                f"🤔 Average choice. {lottery_number} has moderate indicators.",
+                f"📊 Fair chance. {lottery_number} shows some positive signs."
             ]
         elif percentage >= 25:
             messages = [
-                f"Below average. Number {lottery_number} has limited favorable patterns.",
-                f"Low-moderate chance. Number {lottery_number} shows weak pattern alignment.",
-                f"Modest potential. Number {lottery_number} has minimal positive indicators."
-            ]
-        elif percentage >= 10:
-            messages = [
-                f"Low probability. Number {lottery_number} has minimal favorable patterns.",
-                f"Weak indicators. Number {lottery_number} shows poor pattern alignment.",
-                f"Limited potential. Number {lottery_number} has few positive characteristics."
+                f"📉 Below average. {lottery_number} has limited potential.",
+                f"⚠️ Low-moderate chance. {lottery_number} shows weak patterns.",
+                f"🔍 Consider alternatives. {lottery_number} has minimal indicators."
             ]
         else:
             messages = [
-                f"Very low chance. Number {lottery_number} shows limited winning potential.",
-                f"Poor indicators. Number {lottery_number} has weak mathematical patterns.",
-                f"Minimal potential. Number {lottery_number} shows unfavorable characteristics."
+                f"❌ Low potential. {lottery_number} shows poor indicators.",
+                f"🚫 Weak choice. {lottery_number} has unfavorable patterns.",
+                f"💭 Think again. {lottery_number} shows limited promise."
             ]
         
-        return np.random.choice(messages)
+        # Use the same seed for consistent message selection
+        seed = hash(f"{percentage}{lottery_number}") % len(messages)
+        return messages[seed]
     
     def post(self, request):
         """
         Main API endpoint
         Expected body: {
-            "lottery_name": "Karunya",
+            "lottery_name": "Karunya", 
             "lottery_number": "AB123456"
         }
         """
@@ -2108,14 +1794,14 @@ class LotteryWinningPercentageAPI(APIView):
                     'status': 'error'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Validate number format (should be 2 alphabets + 6 digits)
+            # Validate and format number
             lottery_number = str(lottery_number).upper().strip()
-            if len(lottery_number) != 8 or not lottery_number[:2].isalpha() or not lottery_number[2:].isdigit():
+            if not self.number_pattern.match(lottery_number):
                 return Response({
                     'lottery_number': lottery_number,
                     'lottery_name': lottery_name,
                     'percentage': 0.0,
-                    'message': 'Invalid lottery number format. Please provide format: AB123456 (2 alphabets + 6 digits).',
+                    'message': 'Invalid format. Use: AB123456 (2 letters + 6 digits)',
                     'status': 'error'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
@@ -2129,24 +1815,15 @@ class LotteryWinningPercentageAPI(APIView):
                     'lottery_number': lottery_number,
                     'lottery_name': lottery_name,
                     'percentage': 0.0,
-                    'message': f'Lottery "{lottery_name}" not found in database',
+                    'message': f'Lottery "{lottery_name}" not found',
                     'status': 'error'
                 }, status=status.HTTP_404_NOT_FOUND)
             
             # Get historical data
             historical_data = self.get_historical_data(lottery_name)
             
-            if not historical_data:
-                return Response({
-                    'lottery_number': lottery_number,
-                    'lottery_name': lottery.name,
-                    'percentage': self.base_probability,
-                    'message': f'No historical data available for {lottery.name}. Showing base probability.',
-                    'status': 'success'
-                })
-            
-            # Calculate winning percentage
-            percentage = self.calculate_ensemble_percentage(
+            # Calculate entertainment percentage
+            percentage = self.calculate_entertainment_percentage(
                 lottery_name, lottery_number, historical_data
             )
             
@@ -2160,16 +1837,15 @@ class LotteryWinningPercentageAPI(APIView):
                 'lottery_name': lottery.name,
                 'percentage': round(percentage, 2),
                 'message': message
-                
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
-            logger.error(f"Unexpected error in LotteryWinningPercentageAPI: {e}")
+            logger.error(f"Error in LotteryWinningPercentageAPI: {e}")
             return Response({
                 'lottery_number': request.data.get('lottery_number', ''),
                 'lottery_name': request.data.get('lottery_name', ''),
                 'percentage': 0.0,
-                'message': 'Internal server error occurred while calculating percentage',
+                'message': 'Service temporarily unavailable',
                 'status': 'error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
