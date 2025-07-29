@@ -136,7 +136,7 @@ class FCMService:
                             icon='ic_notification',  # Your app's small icon on left
                             color='#FF6B6B',
                             image=image_url,  # Big picture ONLY when expanded
-                            click_action='OPEN_RESULTS',
+                            click_action='FLUTTER_NOTIFICATION_CLICK',
                             tag='lottery_notification'
                         ),
                         # Add image as data for better control
