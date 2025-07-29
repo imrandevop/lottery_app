@@ -1503,40 +1503,29 @@ logger = logging.getLogger(__name__)
 
 class LotteryWinningPercentageAPI(APIView):
     """
-    Simplified entertainment-focused lottery percentage API
+    Simple frequency-based lottery percentage API
     """
     permission_classes = [AllowAny]
     
     def __init__(self):
         super().__init__()
         self.number_pattern = re.compile(r'^[A-Z]{2}\d{6}$')
+        self.base_percentage = 10.0  # Base percentage for any number
     
     def get_consistency_seed(self, lottery_name, lottery_number):
         """Generate consistent seed that changes only when new results are published"""
         try:
-            # Get the latest result date for this lottery
-            lottery = Lottery.objects.filter(
-                Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
-            ).first()
+            # Get the latest result date across ALL lotteries for consistency
+            latest_result = LotteryResult.objects.filter(
+                is_published=True
+            ).order_by('-date').first()
             
-            if not lottery:
-                # Use current week if lottery not found
-                current_week = timezone.now().strftime("%Y-%U")
-                seed_string = f"{lottery_name}_{lottery_number}_{current_week}"
+            if latest_result:
+                seed_string = f"{lottery_number}_{latest_result.date}"
             else:
-                # Get the most recent published result
-                latest_result = LotteryResult.objects.filter(
-                    lottery=lottery,
-                    is_published=True
-                ).order_by('-date').first()
-                
-                if latest_result:
-                    # Use the latest result date as consistency anchor
-                    seed_string = f"{lottery.name}_{lottery_number}_{latest_result.date}"
-                else:
-                    # Fallback to current week
-                    current_week = timezone.now().strftime("%Y-%U")
-                    seed_string = f"{lottery_name}_{lottery_number}_{current_week}"
+                # Fallback to current week
+                current_week = timezone.now().strftime("%Y-%U")
+                seed_string = f"{lottery_number}_{current_week}"
             
             # Generate consistent hash
             return int(hashlib.md5(seed_string.encode()).hexdigest()[:8], 16)
@@ -1544,222 +1533,117 @@ class LotteryWinningPercentageAPI(APIView):
         except Exception as e:
             logger.error(f"Error generating consistency seed: {e}")
             # Fallback seed
-            fallback = f"{lottery_name}_{lottery_number}_{timezone.now().strftime('%Y-%U')}"
+            fallback = f"{lottery_number}_{timezone.now().strftime('%Y-%U')}"
             return int(hashlib.md5(fallback.encode()).hexdigest()[:8], 16)
     
-    def analyze_number_patterns(self, lottery_number):
-        """Basic pattern analysis for entertainment"""
+    def get_all_winning_numbers(self):
+        """Get ALL winning numbers from ALL lotteries"""
+        try:
+            # Get all winning numbers from all lotteries (last 2 years for performance)
+            two_years_ago = timezone.now().date() - timedelta(days=730)
+            
+            all_winners = PrizeEntry.objects.filter(
+                lottery_result__is_published=True,
+                lottery_result__date__gte=two_years_ago,
+                prize_type__in=['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
+            ).values('ticket_number')
+            
+            return list(all_winners)
+            
+        except Exception as e:
+            logger.error(f"Error fetching all winning numbers: {e}")
+            return []
+    
+    def calculate_frequency_percentage(self, lottery_name, lottery_number, all_winning_numbers):
+        """Calculate percentage based on last 4 digits frequency"""
         try:
             if not self.number_pattern.match(lottery_number):
-                return 0
+                return self.base_percentage
             
-            prefix = lottery_number[:2]
-            digits = [int(d) for d in lottery_number[2:]]
+            # Get last 4 digits of target number
+            target_last_4 = lottery_number[4:]  # Last 4 digits (positions 4,5,6,7)
             
-            pattern_score = 0
+            # Count how many times these last 4 digits appeared
+            frequency_count = 0
+            total_valid_numbers = 0
             
-            # Repeated digits bonus (more repeats = higher score)
-            unique_digits = len(set(digits))
-            if unique_digits <= 2:  # Like 111111, 121212
-                pattern_score += 25
-            elif unique_digits <= 3:  # Like 111222
-                pattern_score += 15
-            elif unique_digits <= 4:  # Like 112233
-                pattern_score += 8
-            
-            # Sequential patterns
-            if digits == sorted(digits):  # Ascending like 123456
-                pattern_score += 20
-            elif digits == sorted(digits, reverse=True):  # Descending like 654321
-                pattern_score += 20
-            
-            # Same consecutive digits
-            consecutive_count = 0
-            for i in range(len(digits) - 1):
-                if digits[i] == digits[i + 1]:
-                    consecutive_count += 1
-            pattern_score += consecutive_count * 3
-            
-            # Alternating patterns like 121212
-            is_alternating = True
-            if len(set(digits[::2])) == 1 and len(set(digits[1::2])) == 1:
-                pattern_score += 15
-            
-            # Mirror patterns like 123321
-            if digits == digits[::-1]:
-                pattern_score += 18
-            
-            # Sum-based patterns
-            digit_sum = sum(digits)
-            if digit_sum % 10 == 0:  # Sum ends in 0
-                pattern_score += 5
-            elif digit_sum in [7, 11, 21, 33]:  # "Lucky" sums
-                pattern_score += 8
-            
-            # All even or all odd
-            if all(d % 2 == 0 for d in digits):  # All even
-                pattern_score += 10
-            elif all(d % 2 == 1 for d in digits):  # All odd  
-                pattern_score += 10
-            
-            return min(pattern_score, 50)  # Cap pattern bonus at 50
-            
-        except Exception as e:
-            logger.error(f"Error in pattern analysis: {e}")
-            return 0
-    
-    def get_basic_historical_boost(self, lottery_name, lottery_number, historical_data):
-        """Simple historical data boost"""
-        try:
-            if not historical_data:
-                return 0
-            
-            target_prefix = lottery_number[:2]
-            target_last_4 = lottery_number[4:]  # Last 4 digits
-            
-            prefix_matches = 0
-            last_4_matches = 0
-            
-            for entry in historical_data:
+            for entry in all_winning_numbers:
                 ticket_num = str(entry['ticket_number']).upper().strip()
-                if not self.number_pattern.match(ticket_num):
-                    continue
                 
-                # Check prefix match
-                if ticket_num[:2] == target_prefix:
-                    prefix_matches += 1
-                
-                # Check last 4 digits match
-                if ticket_num[4:] == target_last_4:
-                    last_4_matches += 1
+                # Check if it's valid 8-character format
+                if self.number_pattern.match(ticket_num):
+                    total_valid_numbers += 1
+                    
+                    # Check if last 4 digits match
+                    if ticket_num[4:] == target_last_4:
+                        frequency_count += 1
             
-            total_entries = len(historical_data)
+            if total_valid_numbers == 0:
+                return self.base_percentage
             
-            # Calculate boost based on frequency
-            prefix_boost = min((prefix_matches / total_entries) * 200, 15)  # Max 15 points
-            last_4_boost = min((last_4_matches / total_entries) * 300, 10)   # Max 10 points
+            # Calculate frequency percentage
+            frequency_rate = frequency_count / total_valid_numbers
             
-            return int(prefix_boost + last_4_boost)
+            # Convert to percentage with boost
+            # Base percentage + frequency boost (scaled appropriately)
+            frequency_boost = frequency_rate * 1000  # Scale up the frequency
             
-        except Exception as e:
-            logger.error(f"Error in historical analysis: {e}")
-            return 0
-    
-    def calculate_entertainment_percentage(self, lottery_name, lottery_number, historical_data):
-        """Calculate percentage for entertainment with consistent results"""
-        try:
-            # Get consistent seed for this number until next result
+            final_percentage = self.base_percentage + frequency_boost
+            
+            # Apply consistency seed for same results
             seed = self.get_consistency_seed(lottery_name, lottery_number)
-            
-            # Use seed for pseudo-random but consistent calculation
             import random
             random.seed(seed)
             
-            # Base random percentage (30-70% range)
-            base_percentage = random.randint(30, 70)
+            # Add small consistent variation (±5%) to avoid identical percentages
+            variation = random.uniform(-5, 5)
+            final_percentage += variation
             
-            # Pattern analysis bonus (0-50 points)
-            pattern_bonus = self.analyze_number_patterns(lottery_number)
+            # Ensure reasonable range (1-95%)
+            final_percentage = max(1.0, min(final_percentage, 95.0))
             
-            # Historical data boost (0-25 points)  
-            historical_boost = self.get_basic_historical_boost(lottery_name, lottery_number, historical_data)
-            
-            # Number-based adjustments for variety
-            digit_sum = sum(int(d) for d in lottery_number[2:])
-            
-            # Adjust based on digit sum for variety
-            if digit_sum <= 15:  # Low sum numbers
-                sum_adjustment = random.randint(-15, 5)
-            elif digit_sum >= 35:  # High sum numbers  
-                sum_adjustment = random.randint(-5, 15)
-            else:  # Medium sum numbers
-                sum_adjustment = random.randint(-10, 10)
-            
-            # Calculate final percentage
-            final_percentage = base_percentage + pattern_bonus + historical_boost + sum_adjustment
-            
-            # Add some final randomization for entertainment
-            entertainment_factor = random.randint(-8, 12)
-            final_percentage += entertainment_factor
-            
-            # Ensure hard fluctuation across 1-95% range
-            final_percentage = max(1, min(final_percentage, 95))
-            
-            return float(final_percentage)
+            return final_percentage
             
         except Exception as e:
-            logger.error(f"Error calculating percentage: {e}")
-            # Fallback calculation
-            seed = hash(f"{lottery_name}{lottery_number}") % 1000000
-            random.seed(seed)
-            return float(random.randint(1, 95))
-    
-    def get_historical_data(self, lottery_name):
-        """Get basic historical data (simplified)"""
-        try:
-            lottery = Lottery.objects.filter(
-                Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
-            ).first()
-            
-            if not lottery:
-                return []
-            
-            # Get last 6 months of data (reduced for performance)
-            six_months_ago = timezone.now().date() - timedelta(days=180)
-            
-            historical_entries = PrizeEntry.objects.filter(
-                lottery_result__lottery=lottery,
-                lottery_result__is_published=True,
-                lottery_result__date__gte=six_months_ago,
-                prize_type__in=['1st', '2nd', '3rd', '4th', '5th']  # Only top prizes
-            ).values('ticket_number').order_by('-lottery_result__date')[:200]  # Limit to 200 entries
-            
-            return list(historical_entries)
-            
-        except Exception as e:
-            logger.error(f"Error fetching historical data: {e}")
-            return []
+            logger.error(f"Error calculating frequency percentage: {e}")
+            return self.base_percentage
     
     def generate_message(self, percentage, lottery_number):
-        """Generate entertaining messages"""
-        if percentage >= 85:
+        """Generate message based on percentage"""
+        last_4 = lottery_number[4:]
+        
+        if percentage >= 80:
             messages = [
-                f"🎯 Exceptional! {lottery_number} shows extraordinary winning potential!",
-                f"🔥 Hot number! {lottery_number} has outstanding winning patterns!",
-                f"⭐ Superb choice! {lottery_number} demonstrates exceptional promise!"
+                f"🎯 Excellent! Last 4 digits '{last_4}' have appeared frequently in winners!",
+                f"🔥 Hot digits! '{last_4}' shows high winning frequency!",
+                f"⭐ Great choice! '{last_4}' has strong historical performance!"
             ]
-        elif percentage >= 70:
+        elif percentage >= 60:
             messages = [
-                f"🎊 Excellent! {lottery_number} shows very strong winning patterns!",
-                f"💎 Great pick! {lottery_number} has high winning potential!",
-                f"🚀 Strong choice! {lottery_number} looks very promising!"
-            ]
-        elif percentage >= 55:
-            messages = [
-                f"👍 Good! {lottery_number} shows favorable patterns!",
-                f"✨ Nice choice! {lottery_number} has decent winning potential!",
-                f"🎯 Solid pick! {lottery_number} demonstrates good characteristics!"
+                f"👍 Good! Last 4 digits '{last_4}' have good winning history!",
+                f"✨ Nice! '{last_4}' shows decent frequency in winners!",
+                f"🎯 Promising! '{last_4}' has appeared multiple times!"
             ]
         elif percentage >= 40:
             messages = [
-                f"⚖️ Moderate potential. {lottery_number} shows mixed signals.",
-                f"🤔 Average choice. {lottery_number} has moderate indicators.",
-                f"📊 Fair chance. {lottery_number} shows some positive signs."
+                f"⚖️ Moderate! '{last_4}' has average appearance frequency.",
+                f"📊 Fair chance! '{last_4}' shows moderate winning history.",
+                f"🤔 Average! '{last_4}' has appeared occasionally in winners."
             ]
-        elif percentage >= 25:
+        elif percentage >= 20:
             messages = [
-                f"📉 Below average. {lottery_number} has limited potential.",
-                f"⚠️ Low-moderate chance. {lottery_number} shows weak patterns.",
-                f"🔍 Consider alternatives. {lottery_number} has minimal indicators."
+                f"📉 Below average! '{last_4}' has low frequency in winners.",
+                f"⚠️ Limited! '{last_4}' rarely appears in winning numbers.",
+                f"🔍 Low frequency! '{last_4}' has minimal winning history."
             ]
         else:
             messages = [
-                f"❌ Low potential. {lottery_number} shows poor indicators.",
-                f"🚫 Weak choice. {lottery_number} has unfavorable patterns.",
-                f"💭 Think again. {lottery_number} shows limited promise."
+                f"❌ Very low! '{last_4}' rarely appears in winning numbers.",
+                f"🚫 Poor frequency! '{last_4}' has very limited winning history.",
+                f"💭 Consider other options! '{last_4}' shows low frequency."
             ]
         
-        # Use the same seed for consistent message selection
+        # Use consistent message selection
         seed = hash(f"{percentage}{lottery_number}") % len(messages)
         return messages[seed]
     
@@ -1767,7 +1651,7 @@ class LotteryWinningPercentageAPI(APIView):
         """
         Main API endpoint
         Expected body: {
-            "lottery_name": "Karunya", 
+            "lottery_name": "Karunya",
             "lottery_number": "AB123456"
         }
         """
@@ -1805,7 +1689,7 @@ class LotteryWinningPercentageAPI(APIView):
                     'status': 'error'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Check if lottery exists
+            # Check if lottery exists (for response, but we check ALL lotteries for data)
             lottery = Lottery.objects.filter(
                 Q(name__icontains=lottery_name) | Q(code__icontains=lottery_name)
             ).first()
@@ -1819,12 +1703,21 @@ class LotteryWinningPercentageAPI(APIView):
                     'status': 'error'
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Get historical data
-            historical_data = self.get_historical_data(lottery_name)
+            # Get ALL winning numbers from ALL lotteries
+            all_winning_numbers = self.get_all_winning_numbers()
             
-            # Calculate entertainment percentage
-            percentage = self.calculate_entertainment_percentage(
-                lottery_name, lottery_number, historical_data
+            if not all_winning_numbers:
+                return Response({
+                    'lottery_number': lottery_number,
+                    'lottery_name': lottery.name,
+                    'percentage': self.base_percentage,
+                    'message': f'No historical data available. Showing base probability.',
+                    'status': 'success'
+                })
+            
+            # Calculate frequency-based percentage
+            percentage = self.calculate_frequency_percentage(
+                lottery_name, lottery_number, all_winning_numbers
             )
             
             # Generate message
