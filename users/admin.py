@@ -54,7 +54,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
     search_fields = ('phone_number', 'name')
-    ordering = ('phone_number',)
+    ordering = ('-date_joined',)
     filter_horizontal = ('groups', 'user_permissions',)
     readonly_fields = ('date_joined',)
 
