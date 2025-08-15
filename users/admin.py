@@ -40,11 +40,12 @@ class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
 
-    list_display = ('phone_number', 'name', 'is_staff')
-    list_filter = ('is_staff', 'is_active')
+    list_display = ('phone_number', 'name', 'date_joined', 'is_staff')
+    list_filter = ('is_staff', 'is_active', 'date_joined')
     fieldsets = (
         (None, {'fields': ('phone_number', 'name', 'password')}),
         ('Permissions', {'fields': ('is_staff', 'is_active', 'groups', 'user_permissions')}),
+        ('Important dates', {'fields': ('date_joined',)}),
     )
     add_fieldsets = (
         (None, {
@@ -55,6 +56,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('phone_number', 'name')
     ordering = ('phone_number',)
     filter_horizontal = ('groups', 'user_permissions',)
+    readonly_fields = ('date_joined',)
 
 admin.site.register(User, UserAdmin)
 
