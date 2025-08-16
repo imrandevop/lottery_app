@@ -1,0 +1,38 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'results/css/user_counter.css' %}">
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'results/js/user_counter.js' %}"></script>
+{% endblock %}
+
+{% block result_list %}
+<!-- User Counter at the top of users section -->
+<div class="counter-wrapper" style="width: 100%; overflow: hidden; margin-bottom: 20px;">
+    <div id="users-counter-main"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize the user counter for the users list page only
+    const mainCounterContainer = document.getElementById('users-counter-main');
+    if (mainCounterContainer) {
+        const counter = new FlippingCounter('users-counter-main', '/api/users/count/');
+        
+        // Make counter globally accessible for the refresh button
+        window.userCounter = counter;
+        
+        console.log('User counter initialized successfully');
+    } else {
+        console.error('Counter container not found');
+    }
+});
+</script>
+
+{{ block.super }}
+{% endblock %}

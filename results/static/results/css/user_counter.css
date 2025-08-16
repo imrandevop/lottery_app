@@ -1,0 +1,342 @@
+/* User Counter with Flipping Animation */
+
+/* Prevent horizontal scroll issues on admin users page */
+.model-user.change-list {
+    overflow-x: hidden;
+}
+
+.user-counter-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px auto;
+    max-width: 100%;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    position: relative;
+    overflow: hidden;
+}
+
+.user-counter-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.fullscreen-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    min-width: 35px;
+    height: 35px;
+}
+
+.fullscreen-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.counter-icon {
+    font-size: 24px;
+    margin-right: 10px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.counter-display {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.digit-container {
+    position: relative;
+    display: inline-block;
+    width: 35px;
+    height: 50px;
+    background: #2c3e50;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 0 1px;
+    box-shadow: 
+        0 4px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.digit {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: bold;
+    color: #00ff88;
+    text-shadow: 
+        0 0 10px #00ff88,
+        0 0 20px #00ff88,
+        0 0 30px #00ff88;
+    font-family: 'Courier New', monospace;
+    transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    background: linear-gradient(180deg, #34495e 0%, #2c3e50 50%, #1a252f 100%);
+}
+
+.digit.flip-up {
+    transform: rotateX(-180deg);
+}
+
+.digit.flip-down {
+    transform: rotateX(180deg);
+}
+
+.digit.current {
+    transform: rotateX(0deg);
+    z-index: 2;
+}
+
+.digit-separator {
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+    margin: 0 5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Loading state */
+.counter-loading {
+    color: white;
+    font-size: 16px;
+    opacity: 0.8;
+}
+
+.loading-dots {
+    display: inline-block;
+}
+
+.loading-dots::after {
+    content: '';
+    animation: loading-dots 1.5s infinite;
+}
+
+@keyframes loading-dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60% { content: '...'; }
+    80%, 100% { content: ''; }
+}
+
+/* Error state */
+.counter-error {
+    color: #ff6b6b;
+    font-size: 14px;
+    text-align: center;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .user-counter-container {
+        flex-direction: column;
+        text-align: center;
+        padding: 15px;
+    }
+    
+    .counter-label {
+        margin-right: 0;
+        margin-bottom: 10px;
+        font-size: 16px;
+    }
+    
+    .digit-container {
+        width: 30px;
+        height: 42px;
+    }
+    
+    .digit {
+        font-size: 24px;
+    }
+}
+
+/* Pulse animation for when counter updates */
+.counter-pulse {
+    animation: pulse 0.8s ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Glow effect for the entire counter */
+.user-counter-container:hover {
+    box-shadow: 
+        0 8px 25px rgba(0, 0, 0, 0.15),
+        0 0 20px rgba(102, 126, 234, 0.3);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
+}
+
+/* Fullscreen overlay styles */
+.fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+}
+
+.fullscreen-counter {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+}
+
+.fullscreen-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+}
+
+.fullscreen-digits-container {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+}
+
+.fullscreen-digit {
+    background: linear-gradient(180deg, #2c3e50 0%, #34495e 50%, #1a252f 100%);
+    border-radius: 15px;
+    width: 120px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 120px;
+    font-weight: bold;
+    color: #00ff88;
+    text-shadow: 
+        0 0 20px #00ff88,
+        0 0 40px #00ff88,
+        0 0 60px #00ff88;
+    font-family: 'Courier New', monospace;
+    box-shadow: 
+        0 8px 25px rgba(0, 0, 0, 0.5),
+        inset 0 2px 0 rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(0, 255, 136, 0.3);
+    animation: glow-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow-pulse {
+    0% {
+        box-shadow: 
+            0 8px 25px rgba(0, 0, 0, 0.5),
+            inset 0 2px 0 rgba(255, 255, 255, 0.1),
+            0 0 20px rgba(0, 255, 136, 0.3);
+    }
+    100% {
+        box-shadow: 
+            0 8px 25px rgba(0, 0, 0, 0.5),
+            inset 0 2px 0 rgba(255, 255, 255, 0.1),
+            0 0 40px rgba(0, 255, 136, 0.6);
+    }
+}
+
+.exit-fullscreen-btn {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    min-width: 35px;
+    height: 35px;
+}
+
+.exit-fullscreen-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive fullscreen */
+@media (max-width: 768px) {
+    .fullscreen-digits-container {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .fullscreen-digit {
+        width: 80px;
+        height: 120px;
+        font-size: 80px;
+    }
+    
+    .exit-fullscreen-btn {
+        bottom: 20px;
+        right: 20px;
+        padding: 6px 10px;
+        font-size: 14px;
+        min-width: 30px;
+        height: 30px;
+    }
+    
+    .fullscreen-btn {
+        padding: 6px 10px;
+        font-size: 14px;
+        min-width: 30px;
+        height: 30px;
+        bottom: 8px;
+        right: 8px;
+    }
+}
