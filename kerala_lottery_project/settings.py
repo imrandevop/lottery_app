@@ -255,7 +255,7 @@ else:
         }
     }
     SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-    print("💾 Database cache enabled - Fast and free!")
+    print("Database cache enabled - Fast and free!")
 
 # Use Redis for sessions (optional but recommended)
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
@@ -509,13 +509,13 @@ def initialize_firebase():
         else:
             # Using environment variables (production)
             cred = credentials.Certificate(firebase_creds)
-            print("🔥 Using Firebase environment variables")
+            print("Using Firebase environment variables")
         
         firebase_admin.initialize_app(cred)
-        print("✅ Firebase initialized successfully")
+        print("Firebase initialized successfully")
         
     except Exception as e:
-        print(f"❌ Firebase initialization failed: {e}")
+        print(f"Firebase initialization failed: {e}")
 
 # Initialize Firebase when settings load
 initialize_firebase()

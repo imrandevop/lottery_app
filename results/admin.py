@@ -2,6 +2,7 @@
 from django.contrib import admin, messages
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken
 from .models import DailyPointsPool, UserPointsBalance, PointsTransaction, DailyPointsAwarded
+from .models import DailyCashPool, UserCashBalance, CashTransaction, DailyCashAwarded  # Added cash back models
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -14,8 +15,6 @@ from django.shortcuts import render, redirect
 from .services.fcm_service import FCMService
 from django.db.models import Count
 
-
-
 # Custom widget that prevents spaces
 class NoSpaceTextInput(TextInput):
     def __init__(self, *args, **kwargs):
@@ -27,7 +26,6 @@ class NoSpaceTextInput(TextInput):
             'oninput': 'this.value = this.value.replace(/\\s/g, "")'
         })
 
-
 # Custom field that removes spaces from input
 class NoSpaceCharField(CharField):
     def clean(self, value):
@@ -36,14 +34,12 @@ class NoSpaceCharField(CharField):
             value = re.sub(r'\s+', '', str(value))
         return super().clean(value)
 
-
 class NoSpaceDecimalField(DecimalField):
     def clean(self, value):
         if value:
             # Remove all whitespace characters from decimal input
             value = re.sub(r'\s+', '', str(value))
         return super().clean(value)
-
 
 class LotteryForm(ModelForm):
     # Only apply no-space restriction to code field
@@ -64,7 +60,6 @@ class LotteryForm(ModelForm):
         # name and description are left unchanged (spaces allowed)
         return cleaned_data
 
-
 class LotteryAdmin(admin.ModelAdmin):
     form = LotteryForm
     list_display = ('name', 'code', 'price', 'first_price')
@@ -77,7 +72,6 @@ class LotteryAdmin(admin.ModelAdmin):
     
     class Media:
         js = ('results/js/no_spaces_admin.js',)  # We'll create this JS file
-
 
 class PrizeEntryForm(ModelForm):
     # Override fields to prevent spaces
@@ -97,7 +91,6 @@ class PrizeEntryForm(ModelForm):
             cleaned_data['place'] = re.sub(r'\s+', '', cleaned_data['place'])
         return cleaned_data
 
-
 class PrizeEntryInline(admin.TabularInline):
     model = PrizeEntry
     form = PrizeEntryForm
@@ -107,7 +100,6 @@ class PrizeEntryInline(admin.TabularInline):
     
     class Media:
         js = ('results/js/no_spaces_admin.js',)
-
 
 class LotteryResultForm(ModelForm):
     # Override draw_number to prevent spaces
@@ -136,7 +128,6 @@ class LotteryResultForm(ModelForm):
         if 'draw_number' in cleaned_data and cleaned_data['draw_number']:
             cleaned_data['draw_number'] = re.sub(r'\s+', '', cleaned_data['draw_number'])
         return cleaned_data
-
 
 class LotteryResultAdmin(admin.ModelAdmin):
     form = LotteryResultForm
@@ -198,7 +189,6 @@ class LotteryResultAdmin(admin.ModelAdmin):
         result_id = object_id.rstrip('/').split('/')[-1]
         return HttpResponseRedirect(f'/api/results/admin/edit-result/{result_id}/')
 
-
 # Admin for PrizeEntry with no-space form
 class PrizeEntryAdmin(admin.ModelAdmin):
     form = PrizeEntryForm
@@ -234,7 +224,6 @@ class ImageUpdateAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Allow deletion so users can manage multiple instances
         return True
-    
 
 #<---------------NEWS SECTION---------------->
 @admin.register(News)
@@ -261,8 +250,6 @@ class NewsAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-
-
 
 #<---------------LIVE SECTION---------------->
 @admin.register(LiveVideo)
@@ -407,7 +394,6 @@ class LiveVideoAdmin(admin.ModelAdmin):
             )
         return super().formfield_for_choice_field(db_field, request, **kwargs)
 
-
 #<---------------FCM TOKEN ADMIN---------------->
 @admin.register(FcmToken)
 class FcmTokenAdmin(admin.ModelAdmin):
@@ -478,12 +464,10 @@ class FcmTokenAdmin(admin.ModelAdmin):
     
     deactivate_tokens.short_description = 'Deactivate selected tokens'
 
-
-#<---------------POINT SYSTEM SECTION---------------->
-
+#<---------------POINTS SYSTEM SECTION---------------->
 @admin.register(DailyPointsPool)
 class DailyPointsPoolAdmin(admin.ModelAdmin):
-    list_display = ['date', 'total_budget', 'distributed_points', 'remaining_points', 'usage_percentage', 'created_at']
+    list_display = ['date', 'total_budget', 'distributed_points', 'remaining_points', 'usage_percentage', 'pool_status']
     list_filter = ['date', 'created_at']
     search_fields = ['date']
     readonly_fields = ['created_at', 'updated_at']
@@ -500,12 +484,28 @@ class DailyPointsPoolAdmin(admin.ModelAdmin):
         return "0%"
     usage_percentage.short_description = "Usage %"
     
+    def pool_status(self, obj):
+        if obj.remaining_points <= 0:
+            color = 'red'
+            status = 'EMPTY'
+        elif obj.remaining_points < 1000:
+            color = 'orange'
+            status = 'LOW'
+        else:
+            color = 'green'
+            status = 'ACTIVE'
+        
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color, status
+        )
+    pool_status.short_description = 'Status'
+    
     def get_readonly_fields(self, request, obj=None):
         # Make distributed_points and remaining_points readonly if object exists
         if obj:
             return self.readonly_fields + ['distributed_points', 'remaining_points']
         return self.readonly_fields
-
 
 @admin.register(UserPointsBalance)
 class UserPointsBalanceAdmin(admin.ModelAdmin):
@@ -529,14 +529,20 @@ class UserPointsBalanceAdmin(admin.ModelAdmin):
             return self.readonly_fields + ['total_points', 'lifetime_earned']
         return self.readonly_fields
 
-
 @admin.register(PointsTransaction)
 class PointsTransactionAdmin(admin.ModelAdmin):
-    list_display = ['phone_number', 'transaction_type', 'points_amount', 'balance_after', 'lottery_name', 'created_at']
+    list_display = ['phone_number', 'transaction_type', 'formatted_points_amount', 'balance_after', 'lottery_name', 'created_at']
     list_filter = ['transaction_type', 'created_at', 'daily_pool_date']
     search_fields = ['phone_number', 'ticket_number', 'lottery_name']
     readonly_fields = ['created_at']
     ordering = ['-created_at']
+    
+    def formatted_points_amount(self, obj):
+        if obj.points_amount >= 0:
+            return format_html('<span style="color: green;">+{} pts</span>', obj.points_amount)
+        else:
+            return format_html('<span style="color: red;">{} pts</span>', obj.points_amount)
+    formatted_points_amount.short_description = 'Points Amount'
     
     fieldsets = (
         ('Transaction Info', {
@@ -557,7 +563,6 @@ class PointsTransactionAdmin(admin.ModelAdmin):
         if obj:
             return [field.name for field in self.model._meta.fields]
         return self.readonly_fields
-
 
 @admin.register(DailyPointsAwarded)
 class DailyPointsAwardedAdmin(admin.ModelAdmin):
@@ -581,8 +586,136 @@ class DailyPointsAwardedAdmin(admin.ModelAdmin):
         # Prevent editing - this is an audit table
         return False
 
+#<---------------CASH BACK SYSTEM SECTION---------------->
+@admin.register(DailyCashPool)
+class DailyCashPoolAdmin(admin.ModelAdmin):
+    list_display = ('date', 'formatted_budget', 'formatted_distributed', 'formatted_remaining', 'users_awarded', 'max_users', 'pool_status')
+    list_filter = ('date', 'created_at')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-date',)
+    
+    def formatted_budget(self, obj):
+        return f"₹{obj.total_budget}"
+    formatted_budget.short_description = 'Total Budget'
+    
+    def formatted_distributed(self, obj):
+        return f"₹{obj.distributed_amount}"
+    formatted_distributed.short_description = 'Distributed'
+    
+    def formatted_remaining(self, obj):
+        return f"₹{obj.remaining_amount}"
+    formatted_remaining.short_description = 'Remaining'
+    
+    def pool_status(self, obj):
+        if obj.users_awarded >= obj.max_users:
+            color = 'red'
+            status = 'FULL'
+        elif obj.remaining_amount <= 0:
+            color = 'red'
+            status = 'EMPTY'
+        elif obj.users_awarded > 20:
+            color = 'orange'
+            status = 'HIGH'
+        else:
+            color = 'green'
+            status = 'ACTIVE'
+        
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color, status
+        )
+    pool_status.short_description = 'Status'
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make distributed amounts and user count readonly if object exists
+        if obj:
+            return self.readonly_fields + ['distributed_amount', 'remaining_amount', 'users_awarded']
+        return self.readonly_fields
 
-# Custom admin actions
+@admin.register(UserCashBalance)
+class UserCashBalanceAdmin(admin.ModelAdmin):
+    list_display = ('phone_number', 'formatted_total_cash', 'formatted_lifetime_earned', 'created_at', 'updated_at')
+    list_filter = ('created_at', 'updated_at')
+    search_fields = ('phone_number',)
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-total_cash',)
+    
+    def formatted_total_cash(self, obj):
+        return f"₹{obj.total_cash}"
+    formatted_total_cash.short_description = 'Total Cash'
+    
+    def formatted_lifetime_earned(self, obj):
+        return f"₹{obj.lifetime_earned_cash}"
+    formatted_lifetime_earned.short_description = 'Lifetime Earned'
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make cash amounts readonly - they should only be changed through transactions
+        if obj:
+            return self.readonly_fields + ['total_cash', 'lifetime_earned_cash']
+        return self.readonly_fields
+
+@admin.register(CashTransaction)
+class CashTransactionAdmin(admin.ModelAdmin):
+    list_display = ('phone_number', 'transaction_type', 'formatted_cash_amount', 'ticket_number', 'lottery_name', 'check_date', 'created_at')
+    list_filter = ('transaction_type', 'check_date', 'daily_cash_pool_date', 'created_at')
+    search_fields = ('phone_number', 'ticket_number', 'lottery_name')
+    readonly_fields = ('created_at',)
+    ordering = ('-created_at',)
+    
+    def formatted_cash_amount(self, obj):
+        if obj.cash_amount >= 0:
+            return format_html('<span style="color: green;">+₹{}</span>', obj.cash_amount)
+        else:
+            return format_html('<span style="color: red;">-₹{}</span>', abs(obj.cash_amount))
+    formatted_cash_amount.short_description = 'Cash Amount'
+    
+    fieldsets = (
+        ('Transaction Info', {
+            'fields': ('phone_number', 'transaction_type', 'cash_amount', 'balance_before', 'balance_after')
+        }),
+        ('Lottery Details', {
+            'fields': ('ticket_number', 'lottery_name', 'check_date'),
+            'classes': ('collapse',)
+        }),
+        ('System Info', {
+            'fields': ('daily_cash_pool_date', 'description', 'created_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_readonly_fields(self, request, obj=None):
+        # All fields should be readonly after creation
+        if obj:
+            return [field.name for field in self.model._meta.fields]
+        return self.readonly_fields
+
+@admin.register(DailyCashAwarded)
+class DailyCashAwardedAdmin(admin.ModelAdmin):
+    list_display = ('phone_number', 'formatted_cash_awarded', 'ticket_number', 'lottery_name', 'award_date', 'awarded_at')
+    list_filter = ('award_date', 'lottery_name', 'awarded_at')
+    search_fields = ('phone_number', 'ticket_number')
+    readonly_fields = ('awarded_at',)
+    ordering = ('-award_date', '-awarded_at')
+    
+    def formatted_cash_awarded(self, obj):
+        return f"₹{obj.cash_awarded}"
+    formatted_cash_awarded.short_description = 'Cash Awarded'
+    
+    def get_readonly_fields(self, request, obj=None):
+        # All fields should be readonly after creation to maintain audit trail
+        if obj:
+            return [field.name for field in self.model._meta.fields]
+        return self.readonly_fields
+    
+    def has_add_permission(self, request):
+        # Prevent manual creation - should only be created through API
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        # Prevent editing - this is an audit table
+        return False
+
+# Custom admin actions for points system
 def reset_daily_pool(modeladmin, request, queryset):
     """Custom admin action to reset selected daily pools"""
     for pool in queryset:
@@ -595,9 +728,23 @@ def reset_daily_pool(modeladmin, request, queryset):
 
 reset_daily_pool.short_description = "Reset selected pools to full budget"
 
-# Add the action to DailyPointsPoolAdmin
-DailyPointsPoolAdmin.actions = [reset_daily_pool]
+# Custom admin actions for cash back system
+def reset_daily_cash_pool(modeladmin, request, queryset):
+    """Custom admin action to reset selected daily cash pools"""
+    for pool in queryset:
+        pool.distributed_amount = 0.00
+        pool.remaining_amount = pool.total_budget
+        pool.users_awarded = 0
+        pool.save(update_fields=['distributed_amount', 'remaining_amount', 'users_awarded'])
+    
+    count = queryset.count()
+    modeladmin.message_user(request, f"Successfully reset {count} daily cash pools.")
 
+reset_daily_cash_pool.short_description = "Reset selected cash pools to full budget"
+
+# Add the actions to respective admin classes
+DailyPointsPoolAdmin.actions = [reset_daily_pool]
+DailyCashPoolAdmin.actions = [reset_daily_cash_pool]
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)

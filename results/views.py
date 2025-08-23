@@ -334,7 +334,7 @@ def lottery_results_by_code(request, lottery_code):
 
 class TicketCheckView(APIView):
     """
-    Enhanced API endpoint to check Kerala lottery tickets with points system
+    Enhanced API endpoint to check Kerala lottery tickets with points and cash back system
     """
     
     # Kerala Lottery day mapping
@@ -373,14 +373,15 @@ class TicketCheckView(APIView):
         # Return as is if we can't normalize
         return cleaned
 
-    def create_standard_response(self, status_code, status, result_status, message, points, data):
-        """Create standardized response format with points"""
+    def create_standard_response(self, status_code, status, result_status, message, points, cash_back, data):
+        """Create standardized response format with points and cash back"""
         return {
             "statusCode": status_code,
             "status": status,
             "resultStatus": result_status,
             "message": message,
-            "points": points,  # Now includes actual points or None
+            "points": points,  # null if no points awarded
+            "cashBack": cash_back,  # null if no cash back awarded
             "data": data
         }
 
@@ -491,36 +492,94 @@ class TicketCheckView(APIView):
             'prize_details': prize_details
         }
 
-    def calculate_points_award(self, ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist):
+    def check_reward_eligibility(self, ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist):
         """
-        Calculate points based on 6 strict rules - ALL must be met
-        Returns: (points_awarded, reason) tuple
+        Check if user is eligible for rewards (cash back or points)
+        Returns: (is_eligible, reason) tuple
         """
-        from .models import DailyPointsPool, DailyPointsAwarded, UserPointsBalance, PointsTransaction
+        from .models import DailyPointsAwarded, DailyCashAwarded
         
         # Normalize phone number for consistency
         normalized_phone = self.normalize_phone_number(phone_number)
         
         # Rule 1: Non-Winners Only
         if won_prize:
-            return (None, "Points only awarded to non-winning tickets")
+            return (False, "Rewards only given to non-winning tickets")
         
         # Rule 2: Today's Lottery Only
         ist = pytz.timezone('Asia/Kolkata')
         today_ist = timezone.now().astimezone(ist).date()
         if check_date != today_ist:
-            return (None, "Points only awarded for today's lottery check")
+            return (False, "Rewards only given for today's lottery check")
         
         # Rule 3: Time Restriction (After 3:00 PM IST)
         result_publish_time = time(15, 0)  # 3:00 PM
         if current_time_ist < result_publish_time:
-            return (None, "Points awarded only after 3:00 PM IST")
+            return (False, "Rewards given only after 3:00 PM IST")
         
-        # Rule 4: One Award Per User Per Day
+        # Rule 4: One Award Per User Per Day (check both cash and points)
+        if DailyCashAwarded.has_received_cash_today(normalized_phone):
+            return (False, "Cash back already received today for this phone number")
+        
         if DailyPointsAwarded.has_received_points_today(normalized_phone):
-            return (None, "Points already awarded today for this phone number")
+            return (False, "Points already awarded today for this phone number")
         
-        # Rule 5: Daily Pool Budget Control
+        return (True, "Eligible for rewards")
+
+    def calculate_cash_back_award(self, ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist):
+        """
+        Try to award cash back first (₹1-₹10 random for first 30 eligible users)
+        Returns: (cash_awarded, reason) tuple
+        """
+        from .models import DailyCashPool
+        import random
+        
+        # Check basic eligibility first
+        is_eligible, reason = self.check_reward_eligibility(
+            ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist
+        )
+        
+        if not is_eligible:
+            return (None, reason)
+        
+        # Rule 5: Daily Cash Pool Control (30 users max, ₹100 budget)
+        daily_cash_pool = DailyCashPool.get_today_pool()
+        
+        # Check if cash back is still available
+        if daily_cash_pool.users_awarded >= daily_cash_pool.max_users:
+            return (None, "Cash back limit reached (30 users per day)")
+        
+        if daily_cash_pool.remaining_amount <= 0:
+            return (None, "Daily cash pool exhausted")
+        
+        # Rule 6: Random Cash Generation (₹1-₹10)
+        random_cash = random.randint(1, 10)
+        
+        # Cap to available pool budget (but should always have enough for 30 users)
+        actual_cash = min(random_cash, int(daily_cash_pool.remaining_amount))
+        
+        if actual_cash <= 0:
+            return (None, "No cash available in daily pool")
+        
+        return (actual_cash, "Cash back awarded successfully")
+
+    def calculate_points_award(self, ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist):
+        """
+        Calculate points award (fallback when cash back not available)
+        Returns: (points_awarded, reason) tuple
+        """
+        from .models import DailyPointsPool
+        import random
+        
+        # Check basic eligibility first
+        is_eligible, reason = self.check_reward_eligibility(
+            ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist
+        )
+        
+        if not is_eligible:
+            return (None, reason)
+        
+        # Rule 5: Daily Points Pool Budget Control
         daily_pool = DailyPointsPool.get_today_pool()
         if daily_pool.remaining_points <= 0:
             return (None, "Daily points pool exhausted")
@@ -535,6 +594,62 @@ class TicketCheckView(APIView):
             return (None, "No points available in daily pool")
         
         return (actual_points, "Points awarded successfully")
+
+    def award_cash_back_to_user(self, phone_number, cash_amount, ticket_number, lottery_name, check_date):
+        """
+        Award cash back to user with full transaction tracking
+        Returns: (success, message) tuple
+        """
+        from .models import DailyCashPool, DailyCashAwarded, UserCashBalance, CashTransaction
+        
+        try:
+            with transaction.atomic():
+                normalized_phone = self.normalize_phone_number(phone_number)
+                
+                # Get today's cash pool with row lock
+                daily_cash_pool = DailyCashPool.get_today_pool()
+                
+                # Double-check pool can award cash
+                if not daily_cash_pool.can_award_cash(cash_amount):
+                    return (False, "Daily cash pool insufficient or user limit reached")
+                
+                # Award cash from pool
+                if not daily_cash_pool.award_cash(cash_amount):
+                    return (False, "Failed to deduct from cash pool")
+                
+                # Get or create user cash balance
+                user_cash_balance = UserCashBalance.get_or_create_user(normalized_phone)
+                balance_before = user_cash_balance.total_cash
+                
+                # Add cash to user
+                user_cash_balance.add_cash(cash_amount)
+                balance_after = user_cash_balance.total_cash
+                
+                # Record daily cash award (prevents duplicate awards)
+                DailyCashAwarded.record_cash_award(
+                    normalized_phone, cash_amount, ticket_number, lottery_name
+                )
+                
+                # Create cash transaction record
+                CashTransaction.objects.create(
+                    phone_number=normalized_phone,
+                    transaction_type='lottery_check',
+                    cash_amount=cash_amount,
+                    balance_before=balance_before,
+                    balance_after=balance_after,
+                    ticket_number=ticket_number,
+                    lottery_name=lottery_name,
+                    check_date=check_date,
+                    daily_cash_pool_date=daily_cash_pool.date,
+                    description=f"Lottery check cash back: {ticket_number} ({lottery_name})"
+                )
+                
+                logger.info(f"✅ Cash back awarded: {normalized_phone} +₹{cash_amount} (Pool: {daily_cash_pool.users_awarded}/{daily_cash_pool.max_users} users, ₹{daily_cash_pool.remaining_amount} remaining)")
+                return (True, f"Successfully awarded ₹{cash_amount} cash back")
+                
+        except Exception as e:
+            logger.error(f"❌ Cash back award failed: {e}")
+            return (False, f"Cash back award failed: {str(e)}")
 
     def award_points_to_user(self, phone_number, points_amount, ticket_number, lottery_name, check_date):
         """
@@ -593,7 +708,7 @@ class TicketCheckView(APIView):
             return (False, f"Points award failed: {str(e)}")
 
     def post(self, request):
-        """Enhanced post method with points system integration"""
+        """Enhanced post method with cash back and points system integration"""
         from .serializers import TicketCheckSerializer
         from .models import Lottery, LotteryResult
         
@@ -604,7 +719,7 @@ class TicketCheckView(APIView):
                 error_data = self.create_data_structure("", "", "", False, False, False)
                 response = self.create_standard_response(
                     400, "fail", "Validation Error", 
-                    f"Invalid data: {serializer.errors}", None, error_data
+                    f"Invalid data: {serializer.errors}", None, None, error_data
                 )
                 return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -617,7 +732,7 @@ class TicketCheckView(APIView):
                 error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
                 response = self.create_standard_response(
                     400, "fail", "Invalid Ticket", 
-                    "Invalid ticket number format", None, error_data
+                    "Invalid ticket number format", None, None, error_data
                 )
                 return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -628,7 +743,7 @@ class TicketCheckView(APIView):
                 error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
                 response = self.create_standard_response(
                     400, "fail", "Invalid Lottery Code", 
-                    f"Invalid lottery code: {lottery_code}", None, error_data
+                    f"Invalid lottery code: {lottery_code}", None, None, error_data
                 )
                 return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -638,7 +753,7 @@ class TicketCheckView(APIView):
                 error_data = self.create_data_structure(ticket_number, "", str(check_date), False, False, False)
                 response = self.create_standard_response(
                     400, "fail", "Lottery Not Found", 
-                    f'Lottery with code "{lottery_code}" not found', None, error_data
+                    f'Lottery with code "{lottery_code}" not found', None, None, error_data
                 )
                 return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
@@ -690,7 +805,7 @@ class TicketCheckView(APIView):
             error_data = self.create_data_structure("", "", "", False, False, False)
             response = self.create_standard_response(
                 500, "error", "Internal Server Error", 
-                "An unexpected error occurred. Please try again later.", None, error_data
+                "An unexpected error occurred. Please try again later.", None, None, error_data
             )
             return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -708,7 +823,7 @@ class TicketCheckView(APIView):
         
         response = self.create_standard_response(
             200, "success", "Result is not published", 
-            message, None, data  # No points when result not published
+            message, None, None, data  # No rewards when result not published
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -718,26 +833,50 @@ class TicketCheckView(APIView):
         prize_data = self.check_ticket_prizes(ticket_number, lottery_result)
         won_prize = bool(prize_data)
         
-        # Calculate points (only for today's non-winning tickets after 3 PM)
+        # Initialize reward variables
+        cash_back_awarded = None
         points_awarded = None
+        
+        # Try to award rewards (only for today's non-winning tickets after 3 PM)
         if is_today:
-            calculated_points, points_reason = self.calculate_points_award(
+            # Priority 1: Try cash back first
+            calculated_cash, cash_reason = self.calculate_cash_back_award(
                 ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist
             )
             
-            if calculated_points:
-                # Award points to user
-                award_success, award_message = self.award_points_to_user(
-                    phone_number, calculated_points, ticket_number, lottery.name, check_date
+            if calculated_cash:
+                # Award cash back to user
+                cash_award_success, cash_award_message = self.award_cash_back_to_user(
+                    phone_number, calculated_cash, ticket_number, lottery.name, check_date
                 )
                 
-                if award_success:
-                    points_awarded = calculated_points
-                    logger.info(f"✅ Points awarded: {phone_number} +{calculated_points} pts")
+                if cash_award_success:
+                    cash_back_awarded = calculated_cash
+                    logger.info(f"✅ Cash back awarded: {phone_number} +₹{calculated_cash}")
                 else:
-                    logger.warning(f"⚠️ Points calculation passed but award failed: {award_message}")
+                    logger.warning(f"⚠️ Cash back calculation passed but award failed: {cash_award_message}")
+                    
             else:
-                logger.info(f"ℹ️ No points awarded: {points_reason}")
+                # Priority 2: Try points as fallback
+                logger.info(f"ℹ️ No cash back available: {cash_reason}")
+                
+                calculated_points, points_reason = self.calculate_points_award(
+                    ticket_number, phone_number, check_date, won_prize, is_today, current_time_ist
+                )
+                
+                if calculated_points:
+                    # Award points to user
+                    points_award_success, points_award_message = self.award_points_to_user(
+                        phone_number, calculated_points, ticket_number, lottery.name, check_date
+                    )
+                    
+                    if points_award_success:
+                        points_awarded = calculated_points
+                        logger.info(f"✅ Points awarded: {phone_number} +{calculated_points} pts")
+                    else:
+                        logger.warning(f"⚠️ Points calculation passed but award failed: {points_award_message}")
+                else:
+                    logger.info(f"ℹ️ No points awarded: {points_reason}")
         
         if prize_data:
             # Won prize on requested date
@@ -753,14 +892,18 @@ class TicketCheckView(APIView):
                 True, True, False, lottery_result, prize_data
             )
             response = self.create_standard_response(
-                200, "success", result_status, message, points_awarded, data
+                200, "success", result_status, message, points_awarded, cash_back_awarded, data
             )
         else:
             # No prize on requested date
             if is_today:
                 result_status = "No Price Today"
                 base_message = "Better luck next time"
-                if points_awarded:
+                
+                # Customize message based on rewards
+                if cash_back_awarded:
+                    message = f"{base_message}. You earned ₹{cash_back_awarded} cash back!"
+                elif points_awarded:
                     message = f"{base_message}. You earned {points_awarded} points!"
                 else:
                     message = base_message
@@ -773,7 +916,7 @@ class TicketCheckView(APIView):
                 False, True, False, lottery_result, None
             )
             response = self.create_standard_response(
-                200, "success", result_status, message, points_awarded, data
+                200, "success", result_status, message, points_awarded, cash_back_awarded, data
             )
         
         return Response(response, status=status.HTTP_200_OK)
@@ -796,14 +939,14 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 400, "fail", "No Previous data", 
-                "No result data found on database", None, data  # No points for previous results
+                "No result data found on database", None, None, data  # No rewards for previous results
             )
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if ticket won in the most recent result
         prize_data = self.check_ticket_prizes(ticket_number, previous_result)
         
-        # No points for previous results (Rule 2: Today's Lottery Only)
+        # No rewards for previous results (Rule 2: Today's Lottery Only)
         
         if prize_data:
             # Won in most recent result
@@ -813,7 +956,7 @@ class TicketCheckView(APIView):
             )
             message = f"Congratulations! You won ₹{prize_data['total_amount']:,.0f} in the latest {lottery.name} draw."
             response = self.create_standard_response(
-                200, "success", "Previous Result", message, None, data  # No points for previous results
+                200, "success", "Previous Result", message, None, None, data  # No rewards for previous results
             )
         else:
             # No prize in most recent result
@@ -823,7 +966,7 @@ class TicketCheckView(APIView):
             )
             response = self.create_standard_response(
                 200, "success", "Previous Result no price", 
-                "Better luck next time", None, data  # No points for previous results
+                "Better luck next time", None, None, data  # No rewards for previous results
             )
         
         return Response(response, status=status.HTTP_200_OK)

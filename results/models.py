@@ -600,3 +600,175 @@ class DailyPointsAwarded(models.Model):
             ticket_number=ticket_number,
             lottery_name=lottery_name
         )
+    
+#<---------------------CASH BACK SECTION--------------------->
+
+class DailyCashPool(models.Model):
+    """Manages daily cash pool with ₹100 budget for first 30 eligible users"""
+    date = models.DateField(unique=True, db_index=True)
+    total_budget = models.DecimalField(max_digits=10, decimal_places=2, default=100.00)
+    distributed_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    remaining_amount = models.DecimalField(max_digits=10, decimal_places=2, default=100.00)
+    users_awarded = models.IntegerField(default=0)  # Track number of users who got cash back
+    max_users = models.IntegerField(default=30)     # Maximum 30 users per day
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Daily Cash Pool"
+        verbose_name_plural = "Daily Cash Pools"
+        ordering = ['-date']
+    
+    def __str__(self):
+        return f"Cash Pool {self.date}: ₹{self.remaining_amount}/{self.total_budget} remaining ({self.users_awarded}/{self.max_users} users)"
+    
+    @classmethod
+    def get_today_pool(cls):
+        """Get or create today's cash pool (IST timezone)"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        pool, created = cls.objects.get_or_create(
+            date=today_ist,
+            defaults={
+                'total_budget': 100.00,
+                'distributed_amount': 0.00,
+                'remaining_amount': 100.00,
+                'users_awarded': 0,
+                'max_users': 30
+            }
+        )
+        return pool
+    
+    def can_award_cash(self, cash_amount):
+        """Check if pool can award cash (has budget and user slots)"""
+        return (self.remaining_amount >= cash_amount and 
+                self.users_awarded < self.max_users)
+    
+    def award_cash(self, cash_amount):
+        """Award cash and update pool (with database transaction)"""
+        with transaction.atomic():
+            # Refresh from database to prevent race conditions
+            pool = DailyCashPool.objects.select_for_update().get(id=self.id)
+            
+            if pool.can_award_cash(cash_amount):
+                pool.distributed_amount += cash_amount
+                pool.remaining_amount -= cash_amount
+                pool.users_awarded += 1
+                pool.save(update_fields=['distributed_amount', 'remaining_amount', 'users_awarded', 'updated_at'])
+                return True
+            return False
+
+
+class UserCashBalance(models.Model):
+    """Track total cash balance for each user (phone number)"""
+    phone_number = models.CharField(max_length=15, unique=True, db_index=True)
+    total_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    lifetime_earned_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "User Cash Balance"
+        verbose_name_plural = "User Cash Balances"
+    
+    def __str__(self):
+        return f"{self.phone_number}: ₹{self.total_cash}"
+    
+    @classmethod
+    def get_or_create_user(cls, phone_number):
+        """Get or create user cash balance record"""
+        user, created = cls.objects.get_or_create(
+            phone_number=phone_number,
+            defaults={'total_cash': 0.00, 'lifetime_earned_cash': 0.00}
+        )
+        return user
+    
+    def add_cash(self, cash_amount):
+        """Add cash to user balance"""
+        self.total_cash += cash_amount
+        self.lifetime_earned_cash += cash_amount
+        self.save(update_fields=['total_cash', 'lifetime_earned_cash', 'updated_at'])
+
+
+class CashTransaction(models.Model):
+    """Track all cash transactions for audit and user history"""
+    TRANSACTION_TYPES = [
+        ('lottery_check', 'Lottery Check Cash Back'),
+        ('bonus', 'Bonus Cash'),
+        ('redemption', 'Cash Redemption'),
+        ('adjustment', 'Manual Adjustment'),
+    ]
+    
+    phone_number = models.CharField(max_length=15, db_index=True)
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    cash_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_before = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Lottery check specific fields
+    ticket_number = models.CharField(max_length=50, blank=True)
+    lottery_name = models.CharField(max_length=200, blank=True)
+    check_date = models.DateField(null=True, blank=True)
+    
+    # Pool tracking
+    daily_cash_pool_date = models.DateField(null=True, blank=True)
+    
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Cash Transaction"
+        verbose_name_plural = "Cash Transactions"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['phone_number', '-created_at']),
+            models.Index(fields=['daily_cash_pool_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.phone_number}: ₹{self.cash_amount} ({self.get_transaction_type_display()})"
+
+
+class DailyCashAwarded(models.Model):
+    """Track which users have received cash back today (prevents multiple awards per day)"""
+    phone_number = models.CharField(max_length=15, db_index=True)
+    award_date = models.DateField(db_index=True)
+    cash_awarded = models.DecimalField(max_digits=10, decimal_places=2)
+    ticket_number = models.CharField(max_length=50)
+    lottery_name = models.CharField(max_length=200)
+    awarded_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Daily Cash Awarded"
+        verbose_name_plural = "Daily Cash Awarded"
+        unique_together = ('phone_number', 'award_date')  # One award per user per day
+        ordering = ['-award_date', '-awarded_at']
+    
+    def __str__(self):
+        return f"{self.phone_number}: ₹{self.cash_awarded} on {self.award_date}"
+    
+    @classmethod
+    def has_received_cash_today(cls, phone_number):
+        """Check if user has already received cash back today (IST)"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        return cls.objects.filter(
+            phone_number=phone_number,
+            award_date=today_ist
+        ).exists()
+    
+    @classmethod
+    def record_cash_award(cls, phone_number, cash_amount, ticket_number, lottery_name):
+        """Record that user received cash back today"""
+        ist = pytz.timezone('Asia/Kolkata')
+        today_ist = timezone.now().astimezone(ist).date()
+        
+        return cls.objects.create(
+            phone_number=phone_number,
+            award_date=today_ist,
+            cash_awarded=cash_amount,
+            ticket_number=ticket_number,
+            lottery_name=lottery_name
+        )
