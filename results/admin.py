@@ -710,8 +710,20 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Optimize queryset and handle potential database errors"""
         try:
-            # Add timeout protection and optimization
+            # Check if table exists first
             from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'results_dailycashawarded'
+                    );
+                """)
+                table_exists = cursor.fetchone()[0]
+                
+                if not table_exists:
+                    messages.error(request, "Daily Cash Awarded table not found. Please run database migrations: 'python manage.py migrate'")
+                    return self.model.objects.none()
             
             # Set a reasonable timeout for long queries
             with connection.cursor() as cursor:
@@ -728,7 +740,7 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
             return queryset
             
         except Exception as e:
-            messages.error(request, f"Error loading cash awards data: {str(e)}. Please try again or contact support.")
+            messages.error(request, f"Database migration needed: {str(e)}. Run 'python manage.py migrate' to fix this issue.")
             # Return empty queryset to prevent complete failure
             return self.model.objects.none()
     
