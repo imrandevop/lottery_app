@@ -751,24 +751,34 @@ class DailyCashAwarded(models.Model):
     @classmethod
     def has_received_cash_today(cls, phone_number):
         """Check if user has already received cash back today (IST)"""
-        ist = pytz.timezone('Asia/Kolkata')
-        today_ist = timezone.now().astimezone(ist).date()
-        
-        return cls.objects.filter(
-            phone_number=phone_number,
-            award_date=today_ist
-        ).exists()
+        try:
+            ist = pytz.timezone('Asia/Kolkata')
+            today_ist = timezone.now().astimezone(ist).date()
+            
+            return cls.objects.filter(
+                phone_number=phone_number,
+                award_date=today_ist
+            ).exists()
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in has_received_cash_today: {e}")
+            return False
     
     @classmethod
     def record_cash_award(cls, phone_number, cash_amount, ticket_number, lottery_name):
         """Record that user received cash back today"""
-        ist = pytz.timezone('Asia/Kolkata')
-        today_ist = timezone.now().astimezone(ist).date()
-        
-        return cls.objects.create(
-            phone_number=phone_number,
-            award_date=today_ist,
-            cash_awarded=cash_amount,
-            ticket_number=ticket_number,
-            lottery_name=lottery_name
-        )
+        try:
+            ist = pytz.timezone('Asia/Kolkata')
+            today_ist = timezone.now().astimezone(ist).date()
+            
+            return cls.objects.create(
+                phone_number=phone_number,
+                award_date=today_ist,
+                cash_awarded=cash_amount,
+                ticket_number=ticket_number,
+                lottery_name=lottery_name
+            )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in record_cash_award: {e}")
+            raise e

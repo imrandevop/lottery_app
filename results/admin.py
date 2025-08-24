@@ -696,10 +696,41 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
     search_fields = ('phone_number', 'ticket_number')
     readonly_fields = ('awarded_at',)
     ordering = ('-award_date', '-awarded_at')
+    list_per_page = 25  # Reduced from 50 to prevent timeout
+    list_max_show_all = 100  # Limit "Show all" functionality
+    list_select_related = True  # Optimize database queries
     
     def formatted_cash_awarded(self, obj):
-        return f"₹{obj.cash_awarded}"
+        try:
+            return f"₹{obj.cash_awarded}"
+        except Exception:
+            return "Error"
     formatted_cash_awarded.short_description = 'Cash Awarded'
+    
+    def get_queryset(self, request):
+        """Optimize queryset and handle potential database errors"""
+        try:
+            # Add timeout protection and optimization
+            from django.db import connection
+            
+            # Set a reasonable timeout for long queries
+            with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = '30s'")
+            
+            queryset = super().get_queryset(request)
+            
+            # Apply date filter to recent records only (last 30 days) to improve performance
+            from django.utils import timezone
+            from datetime import timedelta
+            thirty_days_ago = timezone.now().date() - timedelta(days=30)
+            queryset = queryset.filter(award_date__gte=thirty_days_ago)
+            
+            return queryset
+            
+        except Exception as e:
+            messages.error(request, f"Error loading cash awards data: {str(e)}. Please try again or contact support.")
+            # Return empty queryset to prevent complete failure
+            return self.model.objects.none()
     
     def get_readonly_fields(self, request, obj=None):
         # All fields should be readonly after creation to maintain audit trail
@@ -714,6 +745,22 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         # Prevent editing - this is an audit table
         return False
+    
+    def changelist_view(self, request, extra_context=None):
+        """Override changelist view to add custom error handling"""
+        try:
+            return super().changelist_view(request, extra_context)
+        except Exception as e:
+            messages.error(request, f"Unable to load Daily Cash Awarded data: {str(e)}. This may be due to high server load or database connectivity issues.")
+            # Return a simple template or redirect
+            from django.shortcuts import render
+            return render(request, 'admin/change_list.html', {
+                'title': 'Daily Cash Awarded (Error)',
+                'app_label': 'results',
+                'opts': self.model._meta,
+                'has_add_permission': self.has_add_permission(request),
+                'error_message': f"Database error: {str(e)}"
+            })
 
 # Custom admin actions for points system
 def reset_daily_pool(modeladmin, request, queryset):
