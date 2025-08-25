@@ -634,7 +634,7 @@ class DailyCashPoolAdmin(admin.ModelAdmin):
 
 @admin.register(UserCashBalance)
 class UserCashBalanceAdmin(admin.ModelAdmin):
-    list_display = ('phone_number', 'formatted_total_cash', 'formatted_lifetime_earned', 'created_at', 'updated_at')
+    list_display = ('phone_number', 'formatted_total_cash', 'formatted_cash_withdrawn', 'created_at', 'updated_at')
     list_filter = ('created_at', 'updated_at')
     search_fields = ('phone_number',)
     readonly_fields = ('created_at', 'updated_at')
@@ -644,14 +644,14 @@ class UserCashBalanceAdmin(admin.ModelAdmin):
         return f"₹{obj.total_cash}"
     formatted_total_cash.short_description = 'Total Cash'
     
-    def formatted_lifetime_earned(self, obj):
-        return f"₹{obj.lifetime_earned_cash}"
-    formatted_lifetime_earned.short_description = 'Lifetime Earned'
+    def formatted_cash_withdrawn(self, obj):
+        return f"₹{obj.cash_withdrawn}"
+    formatted_cash_withdrawn.short_description = 'Cash Withdrawn'
     
     def get_readonly_fields(self, request, obj=None):
-        # Make cash amounts readonly - they should only be changed through transactions
+        # Make cash amounts readonly - they should only be changed through transactions/signals
         if obj:
-            return self.readonly_fields + ['total_cash', 'lifetime_earned_cash']
+            return self.readonly_fields + ['total_cash', 'cash_withdrawn']
         return self.readonly_fields
 
 @admin.register(CashTransaction)
@@ -689,16 +689,32 @@ class CashTransactionAdmin(admin.ModelAdmin):
             return [field.name for field in self.model._meta.fields]
         return self.readonly_fields
 
+class DailyCashAwardedForm(ModelForm):
+    class Meta:
+        model = DailyCashAwarded
+        fields = ['is_claimed']  # Only allow editing of is_claimed field
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make is_claimed field more prominent
+        if 'is_claimed' in self.fields:
+            self.fields['is_claimed'].widget.attrs.update({
+                'class': 'form-check-input',
+                'style': 'transform: scale(1.2);'  # Make checkbox bigger
+            })
+
 @admin.register(DailyCashAwarded)
 class DailyCashAwardedAdmin(admin.ModelAdmin):
-    list_display = ('phone_number', 'formatted_cash_awarded', 'ticket_number', 'lottery_name', 'award_date', 'awarded_at')
-    list_filter = ('award_date', 'lottery_name', 'awarded_at')
-    search_fields = ('phone_number', 'ticket_number')
-    readonly_fields = ('awarded_at',)
+    form = DailyCashAwardedForm
+    list_display = ('cashback_id', 'phone_number', 'formatted_cash_awarded', 'is_claimed', 'lottery_name', 'award_date', 'awarded_at')
+    list_filter = ('award_date', 'lottery_name', 'is_claimed', 'awarded_at')
+    search_fields = ('cashback_id', 'phone_number', 'ticket_number', 'lottery_name')
+    readonly_fields = ('cashback_id', 'awarded_at')
     ordering = ('-award_date', '-awarded_at')
     list_per_page = 25  # Reduced from 50 to prevent timeout
     list_max_show_all = 100  # Limit "Show all" functionality
     list_select_related = True  # Optimize database queries
+    list_editable = ('is_claimed',)  # Allow quick editing of claim status
     
     def formatted_cash_awarded(self, obj):
         try:
@@ -706,6 +722,20 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
         except Exception:
             return "Error"
     formatted_cash_awarded.short_description = 'Cash Awarded'
+    
+    def claim_status(self, obj):
+        """Display claim status with colored badge"""
+        if obj.is_claimed:
+            return format_html(
+                '<span style="background-color: #28a745; color: white; padding: 2px 6px; '
+                'border-radius: 3px; font-size: 11px; font-weight: bold;">✅ CLAIMED</span>'
+            )
+        else:
+            return format_html(
+                '<span style="background-color: #ffc107; color: black; padding: 2px 6px; '
+                'border-radius: 3px; font-size: 11px; font-weight: bold;">⏳ PENDING</span>'
+            )
+    claim_status.short_description = 'Status'
     
     def get_queryset(self, request):
         """Optimize queryset and handle potential database errors"""
@@ -745,9 +775,12 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
             return self.model.objects.none()
     
     def get_readonly_fields(self, request, obj=None):
-        # All fields should be readonly after creation to maintain audit trail
+        # Allow editing of is_claimed field, but keep other fields readonly for audit trail
         if obj:
-            return [field.name for field in self.model._meta.fields]
+            # Return all fields except is_claimed as readonly
+            all_fields = [field.name for field in self.model._meta.fields]
+            readonly_fields = [field for field in all_fields if field not in ['is_claimed']]
+            return readonly_fields
         return self.readonly_fields
     
     def has_add_permission(self, request):
@@ -755,8 +788,8 @@ class DailyCashAwardedAdmin(admin.ModelAdmin):
         return False
     
     def has_change_permission(self, request, obj=None):
-        # Prevent editing - this is an audit table
-        return False
+        # Allow editing for claim status updates, but restrict other changes
+        return True
     
     def changelist_view(self, request, extra_context=None):
         """Override changelist view to add custom error handling"""

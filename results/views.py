@@ -2371,18 +2371,19 @@ class UserPointsHistoryView(APIView):
         # Return as is if we can't normalize
         return cleaned
 
-    def create_success_response(self, user_id, total_points, history):
+    def create_success_response(self, user_id, total_points, history, cashback_history):
         """Create standardized success response"""
         # Remove +91 prefix from user_id for display
         display_user_id = user_id.replace('+91', '') if user_id.startswith('+91') else user_id
         
         return {
             "status": "success",  # Changed from True to "success"
-            "message": "Points history fetched successfully",
+            "message": "Points and cashback history fetched successfully",
             "data": {
                 "user_id": display_user_id,  # Phone number without +91
                 "total_points": total_points,
-                "history": history
+                "history": history,
+                "cashback_history": cashback_history
             }
         }
 
@@ -2423,7 +2424,7 @@ class UserPointsHistoryView(APIView):
     def post(self, request):
         """Get user points and history"""
         from .serializers import UserPointsHistorySerializer
-        from .models import UserPointsBalance, PointsTransaction
+        from .models import UserPointsBalance, PointsTransaction, DailyCashAwarded
         
         try:
             # Validate request data
@@ -2448,13 +2449,9 @@ class UserPointsHistoryView(APIView):
                 total_points = user_balance.total_points
                 user_id = normalized_phone  # Using phone as user_id as per your example
             except UserPointsBalance.DoesNotExist:
-                # User not found - return empty but valid response
-                empty_response = self.create_success_response(
-                    user_id=normalized_phone,
-                    total_points=0,
-                    history=[]
-                )
-                return Response(empty_response, status=status.HTTP_200_OK)
+                # User doesn't have points balance, but might have cashback - set points to 0
+                total_points = 0
+                user_id = normalized_phone
             
             # Get transaction history (only lottery check rewards)
             transactions = PointsTransaction.objects.filter(
@@ -2476,11 +2473,28 @@ class UserPointsHistoryView(APIView):
                 }
                 history.append(history_item)
             
+            # Get cashback history for this user
+            cashback_records = DailyCashAwarded.objects.filter(
+                phone_number=normalized_phone
+            ).order_by('-award_date')[:limit]
+            
+            # Format cashback history
+            cashback_history = []
+            for cashback in cashback_records:
+                cashback_item = {
+                    "cashback_id": cashback.cashback_id or f"CB{cashback.id:06d}",  # Fallback for existing records
+                    "date": str(cashback.award_date),
+                    "amount": float(cashback.cash_awarded),
+                    "isClaimed": cashback.is_claimed
+                }
+                cashback_history.append(cashback_item)
+            
             # Create success response
             response_data = self.create_success_response(
                 user_id=user_id,
                 total_points=total_points,
-                history=history
+                history=history,
+                cashback_history=cashback_history
             )
             
             return Response(response_data, status=status.HTTP_200_OK)

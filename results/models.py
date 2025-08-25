@@ -664,7 +664,7 @@ class UserCashBalance(models.Model):
     """Track total cash balance for each user (phone number)"""
     phone_number = models.CharField(max_length=15, unique=True, db_index=True)
     total_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    lifetime_earned_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    cash_withdrawn = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Total amount withdrawn by user")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -680,15 +680,25 @@ class UserCashBalance(models.Model):
         """Get or create user cash balance record"""
         user, created = cls.objects.get_or_create(
             phone_number=phone_number,
-            defaults={'total_cash': 0.00, 'lifetime_earned_cash': 0.00}
+            defaults={'total_cash': 0.00, 'cash_withdrawn': 0.00}
         )
         return user
     
     def add_cash(self, cash_amount):
         """Add cash to user balance"""
         self.total_cash += cash_amount
-        self.lifetime_earned_cash += cash_amount
-        self.save(update_fields=['total_cash', 'lifetime_earned_cash', 'updated_at'])
+        # Note: cash_withdrawn will be updated via signal when admin marks as claimed
+        self.save(update_fields=['total_cash', 'updated_at'])
+    
+    def add_withdrawal(self, amount):
+        """Add to cash withdrawn amount (called by signal)"""
+        self.cash_withdrawn += amount
+        self.save(update_fields=['cash_withdrawn', 'updated_at'])
+    
+    def subtract_withdrawal(self, amount):
+        """Subtract from cash withdrawn amount (called by signal when unclaimed)"""
+        self.cash_withdrawn = max(0, self.cash_withdrawn - amount)
+        self.save(update_fields=['cash_withdrawn', 'updated_at'])
 
 
 class CashTransaction(models.Model):
@@ -739,6 +749,10 @@ class DailyCashAwarded(models.Model):
     lottery_name = models.CharField(max_length=200)
     awarded_at = models.DateTimeField(auto_now_add=True)
     
+    # New fields for cashback management
+    cashback_id = models.CharField(max_length=20, unique=True, blank=True, help_text="Auto-generated cashback ID")
+    is_claimed = models.BooleanField(default=False, help_text="Whether the cashback has been claimed by user")
+    
     class Meta:
         verbose_name = "Daily Cash Awarded"
         verbose_name_plural = "Daily Cash Awarded"
@@ -746,7 +760,25 @@ class DailyCashAwarded(models.Model):
         ordering = ['-award_date', '-awarded_at']
     
     def __str__(self):
-        return f"{self.phone_number}: ₹{self.cash_awarded} on {self.award_date}"
+        claim_status = "✅ Claimed" if self.is_claimed else "⏳ Pending"
+        return f"{self.cashback_id or 'No ID'}: ₹{self.cash_awarded} - {claim_status}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate cashback_id if not provided"""
+        if not self.cashback_id:
+            # Generate cashback ID format: CB + YYYYMMDD + sequential number (CB20250825001)
+            ist = pytz.timezone('Asia/Kolkata')
+            date_str = self.award_date.strftime('%Y%m%d') if self.award_date else timezone.now().astimezone(ist).strftime('%Y%m%d')
+            
+            # Get the count of cashback entries for this date to generate sequential number
+            date_count = DailyCashAwarded.objects.filter(
+                award_date=self.award_date or timezone.now().astimezone(ist).date()
+            ).count()
+            
+            # Format: CB + YYYYMMDD + 3-digit sequential number
+            self.cashback_id = f"CB{date_str}{(date_count + 1):03d}"
+        
+        super().save(*args, **kwargs)
     
     @classmethod
     def has_received_cash_today(cls, phone_number):
@@ -782,3 +814,58 @@ class DailyCashAwarded(models.Model):
             logger = logging.getLogger(__name__)
             logger.error(f"Error in record_cash_award: {e}")
             raise e
+
+
+#<---------------------CASH WITHDRAWAL SIGNALS--------------------->
+# Signals for DailyCashAwarded to update UserCashBalance.cash_withdrawn
+
+@receiver(pre_save, sender=DailyCashAwarded)
+def daily_cash_awarded_pre_save_handler(sender, instance, **kwargs):
+    """
+    Store the original claimed state before save
+    """
+    if instance.pk:
+        try:
+            old_instance = DailyCashAwarded.objects.get(pk=instance.pk)
+            instance._original_is_claimed = old_instance.is_claimed
+        except DailyCashAwarded.DoesNotExist:
+            instance._original_is_claimed = False
+    else:
+        instance._original_is_claimed = False
+
+
+@receiver(post_save, sender=DailyCashAwarded)
+def daily_cash_awarded_post_save_handler(sender, instance, created, **kwargs):
+    """
+    Update UserCashBalance.cash_withdrawn when is_claimed status changes
+    """
+    try:
+        import logging
+        logger = logging.getLogger('lottery_app')
+        
+        # Skip if this is a new record creation (no claim status change)
+        if created:
+            return
+        
+        # Check if is_claimed status changed
+        if hasattr(instance, '_original_is_claimed'):
+            original_claimed = instance._original_is_claimed
+            current_claimed = instance.is_claimed
+            
+            # If claim status changed
+            if original_claimed != current_claimed:
+                # Get or create user cash balance
+                user_balance = UserCashBalance.get_or_create_user(instance.phone_number)
+                
+                if current_claimed and not original_claimed:
+                    # Changed from unclaimed to claimed - add to cash_withdrawn
+                    user_balance.add_withdrawal(instance.cash_awarded)
+                    logger.info(f"CASH CLAIMED: Added Rs{instance.cash_awarded} to cash_withdrawn for {instance.phone_number} (ID: {instance.cashback_id})")
+                    
+                elif not current_claimed and original_claimed:
+                    # Changed from claimed to unclaimed - subtract from cash_withdrawn
+                    user_balance.subtract_withdrawal(instance.cash_awarded)
+                    logger.info(f"CASH UNCLAIMED: Subtracted Rs{instance.cash_awarded} from cash_withdrawn for {instance.phone_number} (ID: {instance.cashback_id})")
+                
+    except Exception as e:
+        logger.error(f"❌ Error in cash withdrawal signal handler: {e}")
