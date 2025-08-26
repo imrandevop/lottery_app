@@ -36,6 +36,9 @@ function initLotteryAdmin() {
 
     // Check if we're in edit mode and load existing entries
     loadExistingPrizeEntries();
+    
+    // Set default prize amounts for 1st, 2nd, 3rd prizes (only for new entries, not edit mode)
+    setDefaultPrizeAmounts();
 
     // Add ENHANCED form submission handler (only one)
     const form = document.getElementById('lotteryForm');
@@ -76,9 +79,10 @@ function validateAndSubmitWithNotification(e) {
         return;
     }
     
-    // Check if at least one prize entry is filled
+    // Check if at least one prize entry is filled and validate special prize first entries
     let hasEntries = false;
     const prizeTypes = Object.keys(entryCounters);
+    const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     
     for (const prizeType of prizeTypes) {
         const entriesContainer = document.getElementById(prizeType + '-entries');
@@ -86,8 +90,59 @@ function validateAndSubmitWithNotification(e) {
         
         const entries = entriesContainer.querySelectorAll('.prize-entry');
         
+        // Special validation for consolation and 4th-10th prizes
+        if (specialPrizes.includes(prizeType) && entries.length > 0) {
+            const firstEntry = entries[0];
+            const firstEntryAmountInput = firstEntry.querySelector('.first-entry-amount') || 
+                                        firstEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]:not([type="hidden"])`);
+            
+            const hasTicketEntries = Array.from(entries).some(entry => {
+                const ticketInput = entry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
+                return ticketInput && ticketInput.value.trim() !== '';
+            });
+            
+            // If there are ticket entries but no first entry amount, show error
+            if (hasTicketEntries && (!firstEntryAmountInput || !firstEntryAmountInput.value.trim() || firstEntryAmountInput.value.trim() === '0')) {
+                const prizeTypeName = prizeType === 'consolation' ? 'Consolation' : prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                showNotification(`⚠️ No prize amount entered! Please enter the prize amount for ${prizeTypeName} prize before saving.`, 'error');
+                if (firstEntryAmountInput) {
+                    firstEntryAmountInput.focus();
+                    firstEntryAmountInput.style.borderColor = '#dc3545';  // Red border to highlight
+                    setTimeout(() => {
+                        firstEntryAmountInput.style.borderColor = '';  // Reset after 3 seconds
+                    }, 3000);
+                }
+                return;
+            }
+        }
+        
+        // Check for regular prizes (1st, 2nd, 3rd) - each entry must have both amount and ticket
+        if (!specialPrizes.includes(prizeType) && entries.length > 0) {
+            for (const entry of entries) {
+                const amountInput = entry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+                const ticketInput = entry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
+                
+                const hasTicket = ticketInput && ticketInput.value.trim() !== '';
+                const hasAmount = amountInput && amountInput.value.trim() !== '' && amountInput.value.trim() !== '0';
+                
+                // If has ticket but no amount, show error
+                if (hasTicket && !hasAmount) {
+                    const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                    showNotification(`⚠️ No prize amount entered! Please enter the prize amount for ${prizeTypeName} prize before saving.`, 'error');
+                    if (amountInput) {
+                        amountInput.focus();
+                        amountInput.style.borderColor = '#dc3545';  // Red border to highlight
+                        setTimeout(() => {
+                            amountInput.style.borderColor = '';  // Reset after 3 seconds
+                        }, 3000);
+                    }
+                    return;
+                }
+            }
+        }
+        
         for (const entry of entries) {
-            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]');
+            const inputs = entry.querySelectorAll('input[type="number"], input[type="text"]:not([type="hidden"])');
             const values = Array.from(inputs).map(input => input.value.trim());
             
             if (values.filter(v => v !== '').length >= 2) {
@@ -125,6 +180,15 @@ function validateAndSubmitWithNotification(e) {
     // Get the form and create FormData object
     const form = document.getElementById('lotteryForm');
     const formData = new FormData(form);
+    
+    // Debug: Log all form data being submitted
+    console.log('=== FORM DATA BEING SUBMITTED ===');
+    for (let [key, value] of formData.entries()) {
+        if (key.includes('_ticket_number') || key.includes('_prize_amount')) {
+            console.log(`${key}: "${value}"`);
+        }
+    }
+    console.log('=== END FORM DATA ===');
     
     // Get UI elements for status updates
     const saveBtn = document.querySelector('.save-btn-bottom');
@@ -302,35 +366,256 @@ function addEntry(prizeType) {
     const firstEntry = entriesContainer.children[0];
     if (!firstEntry) return;
     
-    const newEntry = firstEntry.cloneNode(true);
+    const entryIndex = entriesContainer.children.length;
+    const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    const isSpecialPrize = specialPrizes.includes(prizeType);
     
-    // Clear input values and set up tracking
-    const inputs = newEntry.querySelectorAll('input');
-    inputs.forEach(input => {
-        input.value = '';
-        input.addEventListener('change', () => {
-            isDirty = true;
-            notifyPreviewUpdate();
+    // Create new entry element from scratch
+    const newEntry = document.createElement('div');
+    newEntry.className = 'prize-entry';
+    newEntry.setAttribute('data-entry-index', entryIndex);
+    
+    // Create form row
+    const formRow = document.createElement('div');
+    formRow.className = 'form-row';
+    
+    // For special prizes (consolation, 4th-10th), additional entries don't get prize amount field
+    if (isSpecialPrize && entryIndex >= 1) {
+        // Get first entry amount for inheritance
+        const firstEntryAmountInput = firstEntry.querySelector('input[type="number"]') || 
+                                    firstEntry.querySelector('.first-entry-amount') ||
+                                    firstEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+        const inheritedAmount = firstEntryAmountInput ? firstEntryAmountInput.value : '';
+        
+        // Create hidden input for prize amount
+        const hiddenAmountInput = document.createElement('input');
+        hiddenAmountInput.type = 'hidden';
+        hiddenAmountInput.name = `${prizeType}_prize_amount[]`;
+        hiddenAmountInput.value = inheritedAmount;
+        hiddenAmountInput.classList.add('inherited-amount');
+        formRow.appendChild(hiddenAmountInput);
+        
+        // Set up listener to update inherited value when first entry changes
+        if (firstEntryAmountInput) {
+            firstEntryAmountInput.addEventListener('input', () => {
+                hiddenAmountInput.value = firstEntryAmountInput.value;
+            });
+        }
+        
+        // Create 3 ticket number fields in the same row
+        for (let i = 0; i < 3; i++) {
+            const ticketGroup = document.createElement('div');
+            ticketGroup.className = 'form-group ticket-field-group';
+            
+            const ticketLabel = document.createElement('label');
+            ticketLabel.setAttribute('for', `${prizeType}_ticket_${entryIndex}_${i}`);
+            ticketLabel.textContent = i === 0 ? 'Ticket Numbers' : ''; // Only label the first field
+            
+            const inputContainer = document.createElement('div');
+            inputContainer.className = 'input-with-remove';
+            
+            const ticketInput = document.createElement('input');
+            ticketInput.type = 'text';
+            ticketInput.name = `${prizeType}_ticket_number[]`;
+            ticketInput.id = `${prizeType}_ticket_${entryIndex}_${i}`;
+            ticketInput.className = 'form-control';
+            // Removed placeholder
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-ticket-btn';
+            removeBtn.innerHTML = '×';
+            removeBtn.title = 'Clear this ticket number';
+            removeBtn.onclick = function() {
+                // Only clear the input value, keep the field visible
+                ticketInput.value = '';
+                ticketInput.focus(); // Focus back on the cleared field
+                isDirty = true;
+                notifyPreviewUpdate();
+            };
+            
+            inputContainer.appendChild(ticketInput);
+            inputContainer.appendChild(removeBtn);
+            
+            ticketGroup.appendChild(ticketLabel);
+            ticketGroup.appendChild(inputContainer);
+            formRow.appendChild(ticketGroup);
+            
+            // Set up event listeners
+            ticketInput.addEventListener('change', () => {
+                isDirty = true;
+                notifyPreviewUpdate();
+            });
+            applyNoSpacesToInput(ticketInput);
+            
+            // Focus on first ticket input
+            if (i === 0) {
+                setTimeout(() => ticketInput.focus(), 100);
+            }
+        }
+        
+    } else {
+        // Regular entry (first entry for special prizes, or any entry for 1st/2nd/3rd prizes)
+        // Clone from first entry and modify
+        const clonedEntry = firstEntry.cloneNode(true);
+        newEntry.innerHTML = clonedEntry.innerHTML;
+        
+        // Fix duplicate IDs
+        const inputs = newEntry.querySelectorAll('input');
+        inputs.forEach((input, inputIndex) => {
+            if (input.id) {
+                input.id = `${input.id}_${entryIndex}_${inputIndex}`;
+            }
+            input.value = '';
+            
+            // Set default amount for 1st, 2nd, 3rd prize amount fields
+            if (input.name && input.name.includes('_prize_amount[]')) {
+                const defaultAmounts = {
+                    '1st': '10000000',    // 1 crore
+                    '2nd': '3000000',     // 30 lakh  
+                    '3rd': '500000'       // 5 lakh
+                };
+                
+                if (prizeType in defaultAmounts) {
+                    input.value = defaultAmounts[prizeType];
+                }
+            }
+            
+            input.addEventListener('change', () => {
+                isDirty = true;
+                notifyPreviewUpdate();
+            });
+            applyNoSpacesToInput(input);
         });
         
-        // Apply no-spaces functionality to new inputs
-        applyNoSpacesToInput(input);
-    });
+        // Fix label for attributes
+        const labels = newEntry.querySelectorAll('label[for]');
+        labels.forEach((label, labelIndex) => {
+            if (label.getAttribute('for')) {
+                label.setAttribute('for', `${label.getAttribute('for')}_${entryIndex}_${labelIndex}`);
+            }
+        });
+        
+        // Focus on first input
+        const firstInput = newEntry.querySelector('input');
+        if (firstInput) setTimeout(() => firstInput.focus(), 100);
+    }
     
-    // Add remove button if this is not the first entry
-    if (entriesContainer.children.length > 0 && !newEntry.querySelector('.remove-entry-btn')) {
+    // Add form row to entry
+    if (!newEntry.querySelector('.form-row')) {
+        newEntry.appendChild(formRow);
+    }
+    
+    // Add remove button for additional entries
+    if (entryIndex > 0) {
         addRemoveButtonToEntry(newEntry, entriesContainer);
     }
     
     entryCounters[prizeType] = (entryCounters[prizeType] || 0) + 1;
     entriesContainer.appendChild(newEntry);
     isDirty = true;
-    
-    // Focus on the first input
-    const firstInput = newEntry.querySelector('input');
-    if (firstInput) firstInput.focus();
-
     notifyPreviewUpdate();
+}
+
+/**
+ * Delete all additional entries and clear all ticket numbers and prize amount
+ */
+function deleteAllAdditionalEntries(prizeType) {
+    const entriesContainer = document.getElementById(prizeType + '-entries');
+    if (!entriesContainer) return;
+    
+    const entries = Array.from(entriesContainer.children);
+    const firstEntry = entries[0];
+    
+    // Check if there's anything to clear
+    const hasAdditionalEntries = entries.length > 1;
+    let hasTicketNumbers = false;
+    let hasPrizeAmount = false;
+    
+    if (firstEntry) {
+        // Check for ticket numbers
+        const ticketInputs = firstEntry.querySelectorAll('input[name$="_ticket_number[]"]');
+        hasTicketNumbers = Array.from(ticketInputs).some(input => input.value.trim() !== '');
+        
+        // Check for prize amount
+        const prizeInput = firstEntry.querySelector('input[name$="_prize_amount[]"]');
+        hasPrizeAmount = prizeInput && prizeInput.value.trim() !== '';
+    }
+    
+    if (!hasAdditionalEntries && !hasTicketNumbers && !hasPrizeAmount) {
+        showNotification('No entries or data to clear.', 'info');
+        return;
+    }
+    
+    // Build confirmation message based on what will be cleared
+    let confirmMessage = 'Are you sure you want to clear:\n';
+    if (hasAdditionalEntries) {
+        const additionalCount = entries.length - 1;
+        confirmMessage += `• ${additionalCount} additional entries\n`;
+    }
+    if (hasTicketNumbers) {
+        confirmMessage += '• All ticket numbers\n';
+    }
+    if (hasPrizeAmount) {
+        confirmMessage += '• Prize amount\n';
+    }
+    confirmMessage += '\nThis cannot be undone.';
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Remove all additional entries (keep only the first entry)
+    for (let i = entries.length - 1; i >= 1; i--) {
+        console.log(`Removing entry ${i}:`, entries[i]);
+        entriesContainer.removeChild(entries[i]);
+    }
+    
+    // Clear all ticket numbers and prize amount from the first entry
+    if (firstEntry) {
+        // Clear all ticket number inputs
+        const ticketInputs = firstEntry.querySelectorAll('input[name$="_ticket_number[]"]');
+        console.log(`Found ${ticketInputs.length} ticket inputs to clear`);
+        ticketInputs.forEach((input, index) => {
+            console.log(`Clearing ticket input ${index}: ${input.name} = "${input.value}"`);
+            input.value = '';
+        });
+        
+        // Clear prize amount input
+        const prizeInput = firstEntry.querySelector('input[name$="_prize_amount[]"]');
+        if (prizeInput) {
+            console.log(`Clearing prize input: ${prizeInput.name} = "${prizeInput.value}"`);
+            prizeInput.value = '';
+        }
+        
+        // Force DOM update
+        firstEntry.style.display = 'none';
+        setTimeout(() => {
+            firstEntry.style.display = '';
+        }, 10);
+    }
+    
+    // Update counter
+    entryCounters[prizeType] = 1;
+    isDirty = true;
+    notifyPreviewUpdate();
+    
+    // Build success message
+    let successMessage = 'Cleared: ';
+    const clearedItems = [];
+    if (hasAdditionalEntries) {
+        const additionalCount = entries.length - 1;
+        clearedItems.push(`${additionalCount} additional entries`);
+    }
+    if (hasTicketNumbers) {
+        clearedItems.push('all ticket numbers');
+    }
+    if (hasPrizeAmount) {
+        clearedItems.push('prize amount');
+    }
+    successMessage += clearedItems.join(', ');
+    
+    showNotification(successMessage, 'success');
 }
 
 /**
@@ -361,9 +646,16 @@ function toggleBulkEntry(prizeType) {
 function processBulkEntries(prizeType) {
     const textarea = document.getElementById(prizeType + '-bulk-textarea');
     const entriesContainer = document.getElementById(prizeType + '-entries');
+    const bulkSection = document.getElementById(prizeType + '-bulk');
     
     if (!textarea || !entriesContainer) {
         showNotification('Error: Could not find required elements.', 'error');
+        return;
+    }
+    
+    // Check if bulk section is visible
+    if (!bulkSection || bulkSection.style.display === 'none') {
+        showNotification('Please switch to Bulk mode first.', 'warning');
         return;
     }
     
@@ -373,11 +665,28 @@ function processBulkEntries(prizeType) {
         return;
     }
     
-    // Clear existing entries
-    entriesContainer.innerHTML = '';
-    
+    // Don't clear existing entries - we want to append to them
     const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     const isSpecialPrize = specialPrizes.includes(prizeType);
+    
+    // Get current entry count to continue numbering
+    const currentEntryCount = entriesContainer.children.length;
+    
+    // Check if the first entry is empty (template entry)
+    let hasEmptyFirstEntry = false;
+    if (currentEntryCount === 1) {
+        const firstEntry = entriesContainer.children[0];
+        const firstAmountInput = firstEntry.querySelector('input[name$="_prize_amount[]"]');
+        const firstTicketInputs = firstEntry.querySelectorAll('input[name$="_ticket_number[]"]');
+        
+        const hasAmount = firstAmountInput && firstAmountInput.value.trim();
+        const hasTickets = Array.from(firstTicketInputs).some(input => input.value.trim());
+        
+        if (!hasAmount && !hasTickets) {
+            hasEmptyFirstEntry = true;
+        }
+    }
+    
     
     let errorCount = 0;
     let successCount = 0;
@@ -387,14 +696,37 @@ function processBulkEntries(prizeType) {
         const bulkAmountInput = document.getElementById(prizeType + '-bulk-amount');
         if (!bulkAmountInput) {
             showNotification('Error: Could not find prize amount input.', 'error');
-            entriesContainer.appendChild(templateEntry);
             return;
         }
         
-        const prizeAmount = bulkAmountInput.value.trim();
-        if (!prizeAmount) {
-            showNotification('Please enter a prize amount.', 'warning');
-            entriesContainer.appendChild(templateEntry);
+        let prizeAmount = bulkAmountInput.value.trim();
+        
+        // If no prize amount entered but there are existing entries, inherit from first entry
+        if ((!prizeAmount || prizeAmount === '0') && currentEntryCount > 0) {
+            const firstExistingEntry = entriesContainer.children[0];
+            const firstAmountInput = firstExistingEntry.querySelector('input[name$="_prize_amount[]"]');
+            if (firstAmountInput && firstAmountInput.value.trim()) {
+                prizeAmount = firstAmountInput.value.trim();
+                showNotification(`Using existing prize amount: ₹${prizeAmount}`, 'info');
+            }
+        }
+        
+        // Always require prize amount for bulk entry processing
+        if (!prizeAmount || prizeAmount === '0') {
+            showNotification('⚠️ Prize amount is required! Please enter a prize amount before processing bulk entries.', 'error');
+            bulkAmountInput.focus();
+            bulkAmountInput.style.borderColor = '#dc3545';  // Red border to highlight
+            setTimeout(() => {
+                bulkAmountInput.style.borderColor = '';  // Reset after 3 seconds
+            }, 3000);
+            return;
+        }
+        
+        // Validate that prize amount is a positive number
+        const prizeAmountNum = parseFloat(prizeAmount);
+        if (isNaN(prizeAmountNum) || prizeAmountNum <= 0) {
+            showNotification('Prize amount must be a positive number.', 'error');
+            bulkAmountInput.focus();
             return;
         }
         
@@ -406,50 +738,192 @@ function processBulkEntries(prizeType) {
 
         
         if (ticketNumbers.length === 0) {
-            showNotification('No valid numeric ticket numbers found.', 'warning');
-            entriesContainer.appendChild(templateEntry);
+            showNotification('No valid ticket numbers found.', 'warning');
             return;
         }
         
         const invalidCount = rawTicketNumbers.length - ticketNumbers.length;
         
-        // Process each ticket number
-        ticketNumbers.forEach((ticketNumber, index) => {
-            const cleanTicketNumber = ticketNumber.trim();
-            if (cleanTicketNumber.length > 0) {
-                const newEntry = templateEntry.cloneNode(true);
-                
-                const amountInput = newEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
-                const ticketInput = newEntry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
-                
-                if (amountInput) amountInput.value = prizeAmount;
-                if (ticketInput) ticketInput.value = cleanTicketNumber;
-                
-                if (successCount > 0) {
-                    addRemoveButtonToEntry(newEntry, entriesContainer);
-                }
-                
-                setupEntryChangeTracking(newEntry);
-                entriesContainer.appendChild(newEntry);
-                successCount++;
-            } else {
-                errorCount++;
-            }
-        });
+        // Strategy: First fill existing empty ticket fields, then create new entries as needed
+        let ticketIndex = 0; // Track position in ticketNumbers array
+        let currentEntryIdx = hasEmptyFirstEntry ? -1 : 0; // Start from first existing entry
         
-        bulkAmountInput.value = '';
-        textarea.value = '';
+        // If we have an empty first entry, we'll replace it instead of appending
+        if (hasEmptyFirstEntry) {
+            entriesContainer.removeChild(entriesContainer.children[0]);
+            currentEntryIdx = -1; // Signal that we need to create the first entry
+        }
+        
+        // First, fill existing entries' empty ticket fields
+        if (!hasEmptyFirstEntry && currentEntryCount > 0) {
+            for (let entryIdx = 0; entryIdx < currentEntryCount && ticketIndex < ticketNumbers.length; entryIdx++) {
+                const existingEntry = entriesContainer.children[entryIdx];
+                const ticketInputs = existingEntry.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+                
+                // Fill empty ticket fields in this existing entry
+                for (let fieldIdx = 0; fieldIdx < ticketInputs.length && ticketIndex < ticketNumbers.length; fieldIdx++) {
+                    if (!ticketInputs[fieldIdx].value.trim()) {
+                        ticketInputs[fieldIdx].value = ticketNumbers[ticketIndex];
+                        ticketIndex++;
+                        successCount++;
+                        
+                        // Set up event listeners for the newly filled field
+                        applyNoSpacesToInput(ticketInputs[fieldIdx]);
+                        ticketInputs[fieldIdx].addEventListener('change', () => {
+                            isDirty = true;
+                            notifyPreviewUpdate();
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Now create new entries for remaining tickets
+        let newEntryIndex = 0;
+        while (ticketIndex < ticketNumbers.length) {
+            // Get up to 3 tickets for this entry
+            const remainingTickets = ticketNumbers.length - ticketIndex;
+            const ticketsForThisEntry = Math.min(3, remainingTickets);
+            const entryTickets = ticketNumbers.slice(ticketIndex, ticketIndex + ticketsForThisEntry);
+            
+            if (entryTickets.length === 0) break;
+            
+            // Create new entry
+            const entry = document.createElement('div');
+            entry.className = 'prize-entry';
+            entry.setAttribute('data-entry-index', (hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex);
+            
+            const formRow = document.createElement('div');
+            formRow.className = 'form-row';
+            
+            // Add amount field logic:
+            // - Only add visible amount field if this is the very first entry in the entire container
+            const isVeryFirstEntry = (hasEmptyFirstEntry && newEntryIndex === 0) || (currentEntryCount === 0 && newEntryIndex === 0);
+            
+            if (isVeryFirstEntry) {
+                const prizeGroup = document.createElement('div');
+                prizeGroup.className = 'form-group prize-amount-field';
+                
+                const prizeLabel = document.createElement('label');
+                prizeLabel.textContent = 'Prize Amount (₹)';
+                prizeLabel.setAttribute('for', `${prizeType}_bulk_amount_0`);
+                
+                const prizeInput = document.createElement('input');
+                prizeInput.type = 'number';
+                prizeInput.name = `${prizeType}_prize_amount[]`;
+                prizeInput.id = `${prizeType}_bulk_amount_0`;
+                prizeInput.className = 'form-control first-entry-amount';
+                prizeInput.value = prizeAmount;
+                prizeInput.onwheel = function() { this.blur(); };  // Prevent scroll wheel changes
+                
+                // Set up event listener for amount changes to update inherited amounts
+                prizeInput.addEventListener('input', () => {
+                    const allEntries = entriesContainer.querySelectorAll('.prize-entry');
+                    allEntries.forEach((entryEl, entryIdx) => {
+                        if (entryIdx > 0) { // Skip the first entry
+                            const inheritedInput = entryEl.querySelector('.inherited-amount');
+                            if (inheritedInput) {
+                                inheritedInput.value = prizeInput.value;
+                            }
+                        }
+                    });
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                });
+                
+                prizeGroup.appendChild(prizeLabel);
+                prizeGroup.appendChild(prizeInput);
+                formRow.appendChild(prizeGroup);
+            } else {
+                // Hidden amount input for additional entries
+                const hiddenAmountInput = document.createElement('input');
+                hiddenAmountInput.type = 'hidden';
+                hiddenAmountInput.name = `${prizeType}_prize_amount[]`;
+                hiddenAmountInput.value = prizeAmount;
+                hiddenAmountInput.classList.add('inherited-amount');
+                formRow.appendChild(hiddenAmountInput);
+            }
+            
+            // Create 3 ticket fields for this entry
+            for (let j = 0; j < 3; j++) {
+                const ticketGroup = document.createElement('div');
+                ticketGroup.className = 'form-group ticket-field-group';
+                
+                const ticketLabel = document.createElement('label');
+                ticketLabel.textContent = j === 0 ? 'Ticket Numbers' : '';
+                
+                const inputContainer = document.createElement('div');
+                inputContainer.className = 'input-with-remove';
+                
+                const ticketInput = document.createElement('input');
+                ticketInput.type = 'text';
+                ticketInput.name = `${prizeType}_ticket_number[]`;
+                ticketInput.id = `${prizeType}_ticket_bulk_${(hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex}_${j}`;
+                ticketInput.className = 'form-control';
+                
+                // Set ticket value if available from current batch
+                const ticketValue = j < entryTickets.length ? entryTickets[j].trim() : '';
+                ticketInput.value = ticketValue;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'remove-ticket-btn';
+                removeBtn.innerHTML = '×';
+                removeBtn.title = 'Clear this ticket number';
+                removeBtn.onclick = function() {
+                    ticketInput.value = '';
+                    ticketInput.focus();
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                };
+                
+                inputContainer.appendChild(ticketInput);
+                inputContainer.appendChild(removeBtn);
+                
+                ticketGroup.appendChild(ticketLabel);
+                ticketGroup.appendChild(inputContainer);
+                formRow.appendChild(ticketGroup);
+                
+                applyNoSpacesToInput(ticketInput);
+                ticketInput.setAttribute('data-bulk-field', 'true');
+                
+                // Set up event listeners for form changes
+                ticketInput.addEventListener('change', () => {
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                });
+            }
+            
+            entry.appendChild(formRow);
+            
+            // Add remove button for additional entries (any entry that's not the very first one in the entire container)
+            if (!isVeryFirstEntry) {
+                addRemoveButtonToEntry(entry, entriesContainer);
+            }
+            
+            setupEntryChangeTracking(entry);
+            entriesContainer.appendChild(entry);
+            newEntryIndex++;
+            
+            // Update success count and ticket index
+            successCount += entryTickets.length;
+            ticketIndex += entryTickets.length;
+        }
+        
+        
+        // Clear bulk inputs after successful processing
+        if (bulkAmountInput) bulkAmountInput.value = '';
+        if (textarea) textarea.value = '';
         
     } else {
         // Handle original format for 1st, 2nd, 3rd prizes
         const lines = textarea.value.trim().split('\n');
         if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {
             showNotification('No entries found in the bulk entry textarea.', 'warning');
-            entriesContainer.appendChild(templateEntry);
             return;
         }
         
-        lines.forEach((line) => {
+        lines.forEach((line, lineIndex) => {
             const values = line.split(',').map(v => v.trim());
             
             if (values.length < 2) {
@@ -458,6 +932,7 @@ function processBulkEntries(prizeType) {
             }
             
             const newEntry = templateEntry.cloneNode(true);
+            newEntry.setAttribute('data-entry-index', currentEntryCount + successCount);
             
             const amountInput = newEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
             const ticketInput = newEntry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
@@ -467,7 +942,9 @@ function processBulkEntries(prizeType) {
             if (ticketInput) ticketInput.value = values[1] || '';
             if (placeInput && values[2]) placeInput.value = values[2];
             
-            if (successCount > 0) {
+            // Add remove button for additional entries (not the first entry in container)
+            const isFirstInContainer = (currentEntryCount === 0 && successCount === 0);
+            if (!isFirstInContainer) {
                 addRemoveButtonToEntry(newEntry, entriesContainer);
             }
             
@@ -479,11 +956,73 @@ function processBulkEntries(prizeType) {
         textarea.value = '';
     }
     
-    // If no successful entries, add back the template
-    if (successCount === 0) {
-        entriesContainer.appendChild(templateEntry);
+    // No need to add template entry back - we preserve existing entries
+    
+    // Ensure the first entry has the correct structure after bulk processing
+    if (isSpecialPrize && entriesContainer.children.length > 0) {
+        const firstEntry = entriesContainer.children[0];
+        let firstEntryAmountInput = firstEntry.querySelector('.first-entry-amount');
+        
+        // If first entry doesn't have visible amount input, we need to fix this
+        if (!firstEntryAmountInput) {
+            // Look for hidden amount input and convert it to visible
+            const hiddenAmountInput = firstEntry.querySelector(`input[name="${prizeType}_prize_amount[]"][type="hidden"]`);
+            
+            if (hiddenAmountInput) {
+                // Create visible amount field structure
+                const prizeGroup = document.createElement('div');
+                prizeGroup.className = 'form-group prize-amount-field';
+                
+                const prizeLabel = document.createElement('label');
+                prizeLabel.textContent = 'Prize Amount (₹)';
+                prizeLabel.setAttribute('for', `${prizeType}_amount`);
+                
+                const prizeInput = document.createElement('input');
+                prizeInput.type = 'number';
+                prizeInput.name = `${prizeType}_prize_amount[]`;
+                prizeInput.id = `${prizeType}_amount`;
+                prizeInput.className = 'form-control first-entry-amount';
+                prizeInput.value = hiddenAmountInput.value;
+                prizeInput.onwheel = function() { this.blur(); };
+                
+                // Set up event listener for amount changes to update inherited amounts
+                prizeInput.addEventListener('input', () => {
+                    const allEntries = entriesContainer.querySelectorAll('.prize-entry');
+                    allEntries.forEach((entryEl, entryIdx) => {
+                        if (entryIdx > 0) { // Skip the first entry
+                            const inheritedInput = entryEl.querySelector('.inherited-amount');
+                            if (inheritedInput) {
+                                inheritedInput.value = prizeInput.value;
+                            }
+                        }
+                    });
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                });
+                
+                prizeGroup.appendChild(prizeLabel);
+                prizeGroup.appendChild(prizeInput);
+                
+                // Replace hidden input with visible one
+                const formRow = firstEntry.querySelector('.form-row');
+                formRow.removeChild(hiddenAmountInput);
+                formRow.insertBefore(prizeGroup, formRow.firstChild);
+            }
+        }
+        
+        // Ensure all ticket inputs in the first entry are properly set up
+        const ticketInputs = firstEntry.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+        ticketInputs.forEach((ticketInput, index) => {
+            // Apply event listeners and no-spaces functionality
+            applyNoSpacesToInput(ticketInput);
+            ticketInput.addEventListener('change', () => {
+                isDirty = true;
+                notifyPreviewUpdate();
+            });
+        });
     }
     
+    // Update the entry counter based on final count
     entryCounters[prizeType] = entriesContainer.children.length;
     isDirty = true;
     
@@ -494,9 +1033,9 @@ function processBulkEntries(prizeType) {
     }
     
     // Hide the bulk section
-    const bulkSection = document.getElementById(prizeType + '-bulk');
-    if (bulkSection) {
-        bulkSection.style.display = 'none';
+    const bulkSectionElement = document.getElementById(prizeType + '-bulk');
+    if (bulkSectionElement) {
+        bulkSectionElement.style.display = 'none';
     }
     
     // Show summary notification
@@ -546,6 +1085,40 @@ function setupEntryChangeTracking(entry) {
 }
 
 /**
+ * Set default prize amounts for 1st, 2nd, 3rd prizes
+ */
+function setDefaultPrizeAmounts() {
+    // Only set defaults if we're not in edit mode (no existing data)
+    const isEditMode = document.querySelector('input[name="result_id"]') !== null;
+    if (isEditMode) {
+        return; // Don't set defaults in edit mode
+    }
+    
+    // Default amounts
+    const defaultAmounts = {
+        '1st': '10000000',    // 1 crore
+        '2nd': '3000000',     // 30 lakh  
+        '3rd': '500000'       // 5 lakh
+    };
+    
+    // Set default amounts for 1st, 2nd, 3rd prize first entries
+    Object.keys(defaultAmounts).forEach(prizeType => {
+        const amountInput = document.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+        if (amountInput && !amountInput.value.trim()) {
+            amountInput.value = defaultAmounts[prizeType];
+            
+            // Mark form as clean initially since these are defaults
+            setTimeout(() => {
+                // Only mark clean if user hasn't made other changes
+                if (amountInput.value === defaultAmounts[prizeType]) {
+                    // Don't mark as dirty for default values
+                }
+            }, 100);
+        }
+    });
+}
+
+/**
  * Load existing prize entries in edit mode
  */
 function loadExistingPrizeEntries() {
@@ -567,29 +1140,94 @@ function loadExistingPrizeEntries() {
         const templateEntry = firstEntry.cloneNode(true);
         entriesContainer.innerHTML = '';
         
-        entries.forEach((entry, index) => {
-            const newEntry = templateEntry.cloneNode(true);
-            
-            const amountInput = newEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
-            if (amountInput) amountInput.value = entry.prize_amount || '';
-            
-            const ticketInput = newEntry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
-            if (ticketInput) ticketInput.value = entry.ticket_number || '';
-            
-            if (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd') {
-                const placeInput = newEntry.querySelector(`input[name="${prizeType}_place[]"]`);
-                if (placeInput) placeInput.value = entry.place || '';
-            }
-            
-            if (index > 0) {
-                addRemoveButtonToEntry(newEntry, entriesContainer);
-            }
-            
-            setupEntryChangeTracking(newEntry);
-            entriesContainer.appendChild(newEntry);
-        });
+        const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+        const isSpecialPrize = specialPrizes.includes(prizeType);
         
-        entryCounters[prizeType] = entriesContainer.children.length;
+        if (isSpecialPrize) {
+            // For special prizes, group tickets by 3 per entry
+            const groupedEntries = [];
+            for (let i = 0; i < entries.length; i += 3) {
+                const entryGroup = entries.slice(i, i + 3);
+                if (entryGroup.length > 0) {
+                    groupedEntries.push({
+                        prize_amount: entryGroup[0].prize_amount,
+                        tickets: entryGroup.map(e => e.ticket_number)
+                    });
+                }
+            }
+            
+            groupedEntries.forEach((group, groupIndex) => {
+                const newEntry = templateEntry.cloneNode(true);
+                newEntry.setAttribute('data-entry-index', groupIndex);
+                
+                const amountInput = newEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+                
+                // Set amount for the entry
+                if (groupIndex === 0) {
+                    // First entry keeps visible amount field
+                    if (amountInput) amountInput.value = group.prize_amount || '';
+                } else {
+                    // Additional entries get hidden amount field
+                    const formRow = newEntry.querySelector('.form-row');
+                    const prizeAmountField = newEntry.querySelector('.prize-amount-field');
+                    
+                    if (prizeAmountField && formRow) {
+                        prizeAmountField.remove();
+                        
+                        const hiddenAmountInput = document.createElement('input');
+                        hiddenAmountInput.type = 'hidden';
+                        hiddenAmountInput.name = `${prizeType}_prize_amount[]`;
+                        hiddenAmountInput.value = group.prize_amount || '';
+                        hiddenAmountInput.classList.add('inherited-amount');
+                        
+                        formRow.appendChild(hiddenAmountInput);
+                    }
+                }
+                
+                // Set ticket values in the 3 available fields
+                const ticketFields = newEntry.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+                group.tickets.forEach((ticket, ticketIndex) => {
+                    if (ticketFields[ticketIndex]) {
+                        ticketFields[ticketIndex].value = ticket || '';
+                    }
+                });
+                
+                if (groupIndex > 0) {
+                    addRemoveButtonToEntry(newEntry, entriesContainer);
+                }
+                
+                setupEntryChangeTracking(newEntry);
+                entriesContainer.appendChild(newEntry);
+            });
+            
+            entryCounters[prizeType] = groupedEntries.length;
+        } else {
+            // Regular prizes - original logic
+            entries.forEach((entry, index) => {
+                const newEntry = templateEntry.cloneNode(true);
+                newEntry.setAttribute('data-entry-index', index);
+                
+                const amountInput = newEntry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+                const ticketInput = newEntry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
+                
+                if (amountInput) amountInput.value = entry.prize_amount || '';
+                if (ticketInput) ticketInput.value = entry.ticket_number || '';
+                
+                if (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd') {
+                    const placeInput = newEntry.querySelector(`input[name="${prizeType}_place[]"]`);
+                    if (placeInput) placeInput.value = entry.place || '';
+                }
+                
+                if (index > 0) {
+                    addRemoveButtonToEntry(newEntry, entriesContainer);
+                }
+                
+                setupEntryChangeTracking(newEntry);
+                entriesContainer.appendChild(newEntry);
+            });
+            
+            entryCounters[prizeType] = entries.length;
+        }
     });
 }
 
@@ -1192,8 +1830,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initLotteryAdmin();
 });
 
+
 // Export functions for global access
 window.addEntry = addEntry;
+window.deleteAllAdditionalEntries = deleteAllAdditionalEntries;
 window.toggleBulkEntry = toggleBulkEntry;
 window.processBulkEntries = processBulkEntries;
 window.handlePreviewToggle = handlePreviewToggle;

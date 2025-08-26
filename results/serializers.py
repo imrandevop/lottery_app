@@ -71,6 +71,7 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
     lottery_name = serializers.CharField(source='lottery.name', read_only=True)
     lottery_code = serializers.CharField(source='lottery.code', read_only=True)
     prizes = serializers.SerializerMethodField()
+    re_order = serializers.SerializerMethodField()
     
     class Meta:
         model = LotteryResult
@@ -84,6 +85,7 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
             'prizes',
             'is_published',
             'is_bumper',
+            're_order',
             'created_at',
             'updated_at'    
         ]
@@ -166,6 +168,10 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         
         result.sort(key=prize_sort_key)
         return result
+
+    def get_re_order(self, obj):
+        """Get re_order field based on results_ready_notification (notify checkbox)"""
+        return obj.results_ready_notification
 
     
 

@@ -127,16 +127,49 @@
                 <div class="section-content">
                     <!-- Normal Entry Section -->
                     <div id="{{ prize_type }}-entries">
-                        <div class="prize-entry">
+                        <div class="prize-entry" data-entry-index="0">
                             <div class="form-row">
+                                <!-- Prize Amount field - always visible for first entry, conditional for others -->
+                                {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                                <div class="form-group prize-amount-field">
+                                    <label for="{{ prize_type }}_amount">Prize Amount (₹)</label>
+                                    <input type="number" onwheel="this.blur()" name="{{ prize_type }}_prize_amount[]" id="{{ prize_type }}_amount" class="form-control first-entry-amount">
+                                </div>
+                                {% else %}
                                 <div class="form-group">
                                     <label for="{{ prize_type }}_amount">Prize Amount (₹)</label>
                                     <input type="number" onwheel="this.blur()" name="{{ prize_type }}_prize_amount[]" id="{{ prize_type }}_amount" class="form-control">
                                 </div>
+                                {% endif %}
+                                {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                                <!-- Multiple ticket fields for consolation and 4th-10th prizes -->
+                                <div class="form-group ticket-field-group">
+                                    <label for="{{ prize_type }}_ticket_0">Ticket Numbers</label>
+                                    <div class="input-with-remove">
+                                        <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_0" class="form-control">
+                                        <button type="button" class="remove-ticket-btn" title="Clear this ticket number" onclick="this.previousElementSibling.value=''; this.previousElementSibling.focus();">×</button>
+                                    </div>
+                                </div>
+                                <div class="form-group ticket-field-group">
+                                    <label for="{{ prize_type }}_ticket_1"></label>
+                                    <div class="input-with-remove">
+                                        <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_1" class="form-control">
+                                        <button type="button" class="remove-ticket-btn" title="Clear this ticket number" onclick="this.previousElementSibling.value=''; this.previousElementSibling.focus();">×</button>
+                                    </div>
+                                </div>
+                                <div class="form-group ticket-field-group">
+                                    <label for="{{ prize_type }}_ticket_2"></label>
+                                    <div class="input-with-remove">
+                                        <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_2" class="form-control">
+                                        <button type="button" class="remove-ticket-btn" title="Clear this ticket number" onclick="this.previousElementSibling.value=''; this.previousElementSibling.focus();">×</button>
+                                    </div>
+                                </div>
+                                {% else %}
                                 <div class="form-group">
                                     <label for="{{ prize_type }}_ticket">Ticket Number</label>
                                     <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket" class="form-control">
                                 </div>
+                                {% endif %}
                                 <!-- Place field only for 1st, 2nd, 3rd prizes -->
                                 {% if prize_type in "1st,2nd,3rd"|split:"," %}
                                 <div class="form-group">
@@ -151,6 +184,9 @@
                     <!-- Add Entry Button -->
                     <div class="form-row">
                         <button type="button" class="btn btn-secondary btn-small add-entry-btn" onclick="addEntry('{{ prize_type }}')">+ Add Another Entry</button>
+                        {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                        <button type="button" class="btn btn-danger btn-small delete-all-btn" onclick="deleteAllAdditionalEntries('{{ prize_type }}')">🗑️ Clear All</button>
+                        {% endif %}
                     </div>
                     
                     <!-- Bulk Entry Section -->

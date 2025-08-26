@@ -48,6 +48,239 @@
 
 .form-section {
     margin: 0;
+}
+
+/* Hidden prize field for additional entries */
+.hidden-prize-field {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Individual ticket field styling */
+.input-with-remove {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-remove .form-control {
+    flex: 1;
+    padding-right: 35px; /* Make space for remove button */
+}
+
+.remove-ticket-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    transition: all 0.2s ease;
+}
+
+.remove-ticket-btn:hover {
+    background: #c82333;
+    transform: translateY(-50%) scale(1.1);
+}
+
+.remove-ticket-btn:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.ticket-field-group {
+    position: relative;
+}
+
+/* Delete all additional entries button */
+.delete-all-btn {
+    background: #dc3545 !important;
+    color: white !important;
+    border: 1px solid #dc3545 !important;
+    margin-left: 10px;
+    transition: all 0.2s ease;
+}
+
+.delete-all-btn:hover {
+    background: #c82333 !important;
+    border-color: #bd2130 !important;
+    color: white !important;
+    transform: translateY(-1px);
+}
+
+.delete-all-btn:active {
+    transform: translateY(0px);
+}
+
+/* Button row styling */
+.form-row .add-entry-btn + .delete-all-btn {
+    margin-left: 10px;
+}
+
+/* ========== MOBILE RESPONSIVE STYLES FOR NEW ELEMENTS ========== */
+
+/* Tablet responsiveness (992px and below) */
+@media (max-width: 992px) {
+    /* Ticket field groups - stack vertically on tablet */
+    .form-row .ticket-field-group {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    /* Remove button adjustments */
+    .remove-ticket-btn {
+        width: 18px;
+        height: 18px;
+        font-size: 12px;
+        right: 6px;
+    }
+    
+    /* Button row - keep horizontal but smaller */
+    .form-row .add-entry-btn,
+    .form-row .delete-all-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+}
+
+/* Mobile responsiveness (768px and below) */
+@media (max-width: 768px) {
+    /* Form row - stack elements vertically on mobile */
+    .form-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    /* Ticket field groups - full width on mobile */
+    .ticket-field-group {
+        width: 100%;
+    }
+    
+    /* Input with remove styling for mobile */
+    .input-with-remove {
+        width: 100%;
+    }
+    
+    .input-with-remove .form-control {
+        padding-right: 40px; /* More space for mobile touch */
+    }
+    
+    /* Remove button - larger for mobile touch */
+    .remove-ticket-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 14px;
+        right: 8px;
+    }
+    
+    /* Button row - stack buttons vertically on mobile */
+    .form-row .add-entry-btn,
+    .form-row .delete-all-btn {
+        width: 100%;
+        margin-left: 0;
+        margin-bottom: 8px;
+        padding: 12px 16px;
+        font-size: 14px;
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .form-row .add-entry-btn + .delete-all-btn {
+        margin-left: 0;
+        margin-top: 8px;
+    }
+}
+
+/* Small mobile responsiveness (576px and below) */
+@media (max-width: 576px) {
+    /* Even more compact styling for small screens */
+    .ticket-field-group label {
+        font-size: 13px;
+        margin-bottom: 6px;
+    }
+    
+    .input-with-remove .form-control {
+        padding: 8px 35px 8px 10px;
+        font-size: 14px;
+    }
+    
+    /* Remove button - optimized for small touch screens */
+    .remove-ticket-btn {
+        width: 22px;
+        height: 22px;
+        font-size: 13px;
+        right: 6px;
+    }
+    
+    /* Buttons - full width and larger touch targets */
+    .form-row .add-entry-btn,
+    .form-row .delete-all-btn {
+        padding: 14px 16px;
+        font-size: 15px;
+        min-height: 48px; /* Minimum touch target size */
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    /* Larger touch targets for touch devices */
+    .remove-ticket-btn {
+        width: 26px;
+        height: 26px;
+        font-size: 15px;
+        right: 6px;
+    }
+    
+    .input-with-remove .form-control {
+        padding-right: 42px;
+    }
+    
+    .add-entry-btn,
+    .delete-all-btn {
+        min-height: 50px;
+        padding: 15px 20px;
+    }
+}
+
+/* Landscape phone orientation */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    /* More compact spacing in landscape mode */
+    .form-row {
+        gap: 10px;
+    }
+    
+    .form-row .add-entry-btn,
+    .form-row .delete-all-btn {
+        padding: 8px 12px;
+        min-height: 36px;
+    }
+}
+
+/* High contrast mode - mobile optimizations */
+@media (prefers-contrast: high) and (max-width: 768px) {
+    .remove-ticket-btn {
+        border: 2px solid #000;
+        background: #fff;
+        color: #000;
+    }
+    
+    .delete-all-btn {
+        border: 2px solid #dc3545 !important;
+    }
+}
     border-bottom: 1px solid #dee2e6;
 }
 

@@ -167,16 +167,62 @@ def handle_form_submission(request):
             ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
             places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
             
-            for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
-                if amount and ticket:
-                    place = places[i] if i < len(places) and prize_type in ['1st', '2nd', '3rd'] else None
-                    PrizeEntry.objects.create(
-                        lottery_result=lottery_result,
-                        prize_type=prize_type,
-                        prize_amount=amount,
-                        ticket_number=ticket,  # Already cleaned of spaces
-                        place=place  # Already cleaned of spaces
-                    )
+            # Handle special logic for consolation and 4th-10th prizes
+            special_prizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+            
+            if prize_type in special_prizes:
+                # For special prizes, check if there are tickets without corresponding amounts
+                has_tickets = any(ticket.strip() for ticket in ticket_numbers)
+                has_valid_amounts = any(amount and amount.strip() and amount.strip() != '0' for amount in prize_amounts)
+                
+                if has_tickets and not has_valid_amounts:
+                    prize_name = 'Consolation' if prize_type == 'consolation' else f'{prize_type.capitalize()}'
+                    messages.error(request, f'⚠️ No prize amount entered! Please enter the prize amount for {prize_name} prize before saving.')
+                    return redirect(request.path)
+                
+                # For special prizes, each amount corresponds to multiple tickets (up to 3)
+                # Tickets are grouped by entries, with up to 3 tickets per entry
+                entry_index = 0
+                current_amount = None
+                
+                for i, ticket in enumerate(ticket_numbers):
+                    if ticket:  # Only process non-empty tickets
+                        # Determine which entry this ticket belongs to (3 tickets per entry)
+                        entry_index = i // 3
+                        
+                        # Get the amount for this entry
+                        if entry_index < len(prize_amounts) and prize_amounts[entry_index]:
+                            current_amount = prize_amounts[entry_index]
+                        
+                        if current_amount:
+                            PrizeEntry.objects.create(
+                                lottery_result=lottery_result,
+                                prize_type=prize_type,
+                                prize_amount=current_amount,
+                                ticket_number=ticket,
+                                place=None  # Special prizes don't have places
+                            )
+            else:
+                # For regular prizes (1st, 2nd, 3rd), check for tickets without amounts
+                for i, ticket in enumerate(ticket_numbers):
+                    if ticket.strip():  # If there's a ticket number
+                        amount = prize_amounts[i] if i < len(prize_amounts) else ''
+                        if not amount or amount.strip() == '' or amount.strip() == '0':
+                            prize_name = f'{prize_type.capitalize()}'
+                            messages.error(request, f'⚠️ No prize amount entered! Please enter the prize amount for {prize_name} prize before saving.')
+                            return redirect(request.path)
+                
+                # Original logic for 1st, 2nd, 3rd prizes
+                for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
+                    if amount and ticket:
+                        place = places[i] if i < len(places) and prize_type in ['1st', '2nd', '3rd'] else None
+                        PrizeEntry.objects.create(
+                            lottery_result=lottery_result,
+                            prize_type=prize_type,
+                            prize_amount=amount,
+                            ticket_number=ticket,  # Already cleaned of spaces
+                            place=place  # Already cleaned of spaces
+                        )
         
         # Show appropriate success message
         if lottery_result.results_ready_notification:
@@ -435,16 +481,63 @@ def handle_edit_form_submission(request, lottery_result):
             ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
             places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
             
-            for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
-                if amount and ticket:
-                    place = places[i] if i < len(places) and prize_type in ['1st', '2nd', '3rd'] else None
-                    PrizeEntry.objects.create(
-                        lottery_result=lottery_result,
-                        prize_type=prize_type,
-                        prize_amount=amount,
-                        ticket_number=ticket,  # Already cleaned of spaces
-                        place=place  # Already cleaned of spaces
-                    )
+            
+            # Handle special logic for consolation and 4th-10th prizes
+            special_prizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+            
+            if prize_type in special_prizes:
+                # For special prizes, check if there are tickets without corresponding amounts
+                has_tickets = any(ticket.strip() for ticket in ticket_numbers)
+                has_valid_amounts = any(amount and amount.strip() and amount.strip() != '0' for amount in prize_amounts)
+                
+                if has_tickets and not has_valid_amounts:
+                    prize_name = 'Consolation' if prize_type == 'consolation' else f'{prize_type.capitalize()}'
+                    messages.error(request, f'⚠️ No prize amount entered! Please enter the prize amount for {prize_name} prize before saving.')
+                    return redirect(request.path)
+                
+                # For special prizes, each amount corresponds to multiple tickets (up to 3)
+                # Tickets are grouped by entries, with up to 3 tickets per entry
+                entry_index = 0
+                current_amount = None
+                
+                for i, ticket in enumerate(ticket_numbers):
+                    if ticket:  # Only process non-empty tickets
+                        # Determine which entry this ticket belongs to (3 tickets per entry)
+                        entry_index = i // 3
+                        
+                        # Get the amount for this entry
+                        if entry_index < len(prize_amounts) and prize_amounts[entry_index]:
+                            current_amount = prize_amounts[entry_index]
+                        
+                        if current_amount:
+                            PrizeEntry.objects.create(
+                                lottery_result=lottery_result,
+                                prize_type=prize_type,
+                                prize_amount=current_amount,
+                                ticket_number=ticket,
+                                place=None  # Special prizes don't have places
+                            )
+            else:
+                # For regular prizes (1st, 2nd, 3rd), check for tickets without amounts
+                for i, ticket in enumerate(ticket_numbers):
+                    if ticket.strip():  # If there's a ticket number
+                        amount = prize_amounts[i] if i < len(prize_amounts) else ''
+                        if not amount or amount.strip() == '' or amount.strip() == '0':
+                            prize_name = f'{prize_type.capitalize()}'
+                            messages.error(request, f'⚠️ No prize amount entered! Please enter the prize amount for {prize_name} prize before saving.')
+                            return redirect(request.path)
+                
+                # Original logic for 1st, 2nd, 3rd prizes
+                for i, (amount, ticket) in enumerate(zip(prize_amounts, ticket_numbers)):
+                    if amount and ticket:
+                        place = places[i] if i < len(places) and prize_type in ['1st', '2nd', '3rd'] else None
+                        PrizeEntry.objects.create(
+                            lottery_result=lottery_result,
+                            prize_type=prize_type,
+                            prize_amount=amount,
+                            ticket_number=ticket,  # Already cleaned of spaces
+                            place=place  # Already cleaned of spaces
+                        )
         
         # Show appropriate success message
         newly_checked_notification = (
