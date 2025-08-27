@@ -1,6 +1,6 @@
 #results\urls.py
 from django.urls import path
-from .admin_views import add_result_view, edit_result_view
+from .admin_views import add_result_view, edit_result_view, auto_save_ticket
 from . import views
 from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, test_send_notification, firebase_status, list_fcm_tokens, test_send_with_details, clear_test_tokens, test_send_direct
 app_name = 'results'
@@ -8,6 +8,7 @@ app_name = 'results'
 urlpatterns = [
     path('admin/add-result/', add_result_view, name='add_result'),
     path('admin/edit-result/<int:result_id>/', edit_result_view, name='edit_result'),
+    path('admin/auto-save-ticket/', auto_save_ticket, name='auto_save_ticket'),
 
     # List all published lottery results
     path('results/', views.LotteryResultListView.as_view(), name='lottery-results-list'),

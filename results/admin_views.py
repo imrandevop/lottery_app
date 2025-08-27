@@ -6,6 +6,8 @@ from django.contrib import messages
 from django.contrib.admin import site
 from django.contrib.admin.sites import AdminSite
 from .models import Lottery, LotteryResult, PrizeEntry  # Removed NotificationLog import
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 import json
 import re
 from datetime import datetime
@@ -645,3 +647,95 @@ def handle_edit_form_submission(request, lottery_result):
             'is_edit_mode': True,
         }
         return render(request, 'admin/lottery_add_result.html', context)
+
+
+@csrf_protect
+@staff_member_required
+@require_POST
+def auto_save_ticket(request):
+    """Auto-save ticket number for 4th-10th prizes."""
+    try:
+        # Parse JSON request body
+        data = json.loads(request.body)
+        
+        # Extract data
+        result_id = data.get('result_id')
+        prize_type = data.get('prize_type')
+        ticket_number = data.get('ticket_number', '').strip()
+        prize_amount = data.get('prize_amount', '').strip()
+        
+        # Validate required fields
+        if not all([result_id, prize_type, ticket_number, prize_amount]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+        
+        # Validate prize type (only 4th-10th allowed)
+        allowed_prize_types = ['4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        if prize_type not in allowed_prize_types:
+            return JsonResponse({
+                'success': False,
+                'error': 'Auto-save only allowed for 4th-10th prizes'
+            }, status=400)
+        
+        # Clean spaces from ticket number
+        cleaned_ticket = re.sub(r'\s+', '', ticket_number)
+        if not cleaned_ticket:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid ticket number'
+            }, status=400)
+        
+        # Get lottery result
+        try:
+            lottery_result = LotteryResult.objects.get(id=result_id)
+        except LotteryResult.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Lottery result not found'
+            }, status=404)
+        
+        # Check if ticket already exists for this prize type
+        existing_entry = PrizeEntry.objects.filter(
+            lottery_result=lottery_result,
+            prize_type=prize_type,
+            ticket_number=cleaned_ticket
+        ).first()
+        
+        if existing_entry:
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket already exists',
+                'action': 'existing'
+            })
+        
+        # Create new prize entry
+        prize_entry = PrizeEntry.objects.create(
+            lottery_result=lottery_result,
+            prize_type=prize_type,
+            prize_amount=prize_amount,
+            ticket_number=cleaned_ticket,
+            place=None  # Special prizes don't have places
+        )
+        
+        logger.info(f"Auto-saved ticket: {cleaned_ticket} for {prize_type} prize in result {result_id}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Ticket saved successfully',
+            'action': 'created',
+            'entry_id': prize_entry.id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error in auto_save_ticket: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Internal server error'
+        }, status=500)
