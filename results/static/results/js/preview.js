@@ -327,22 +327,46 @@ function collectPrizeEntriesForType(prizeType) {
         return entries;
     }
     
-    const prizeEntries = container.querySelectorAll('.prize-entry');
+    // Check if this is a special prize type that has multiple tickets per amount
+    const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    const isSpecialPrize = specialPrizes.includes(prizeType);
     
-    prizeEntries.forEach(entry => {
-        const amountInput = entry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
-        const ticketInput = entry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
-        const placeInput = entry.querySelector(`input[name="${prizeType}_place[]"]`);
+    if (isSpecialPrize) {
+        // For special prizes, collect all ticket inputs directly from container
+        const ticketInputs = container.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+        const amountInputs = container.querySelectorAll(`input[name="${prizeType}_prize_amount[]"]`);
         
-        const amount = amountInput ? amountInput.value.trim() : '';
-        const ticket = ticketInput ? ticketInput.value.trim() : '';
-        const place = placeInput ? placeInput.value.trim() : '';
+        // Group tickets by amount (every 3 tickets share an amount)
+        ticketInputs.forEach((ticketInput, index) => {
+            const ticket = ticketInput.value.trim();
+            if (ticket) {
+                // Determine which amount this ticket belongs to (3 tickets per amount)
+                const amountIndex = Math.floor(index / 3);
+                const amountInput = amountInputs[amountIndex];
+                const amount = amountInput ? amountInput.value.trim() : '';
+                
+                entries.push({ amount, ticket, place: '' });
+            }
+        });
+    } else {
+        // For regular prizes (1st, 2nd, 3rd), use original logic
+        const prizeEntries = container.querySelectorAll('.prize-entry');
         
-        // Only include entries with at least amount or ticket
-        if (amount || ticket) {
-            entries.push({ amount, ticket, place });
-        }
-    });
+        prizeEntries.forEach(entry => {
+            const amountInput = entry.querySelector(`input[name="${prizeType}_prize_amount[]"]`);
+            const ticketInput = entry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
+            const placeInput = entry.querySelector(`input[name="${prizeType}_place[]"]`);
+            
+            const amount = amountInput ? amountInput.value.trim() : '';
+            const ticket = ticketInput ? ticketInput.value.trim() : '';
+            const place = placeInput ? placeInput.value.trim() : '';
+            
+            // Only include entries with at least amount or ticket
+            if (amount || ticket) {
+                entries.push({ amount, ticket, place });
+            }
+        });
+    }
     
     return entries;
 }
