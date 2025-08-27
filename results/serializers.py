@@ -92,8 +92,8 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
     
     def get_prizes(self, obj):
         """Group prizes by prize_type and prize_amount, with detailed ticket info for certain prizes"""
-        # Get all prizes for this lottery result
-        all_prizes = obj.prizes.all()
+        # Get all prizes for this lottery result - order by creation time to preserve insertion order
+        all_prizes = obj.prizes.all().order_by('created_at')
         
         if not all_prizes:
             return []
