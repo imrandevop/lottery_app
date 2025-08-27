@@ -306,6 +306,25 @@ function collectPrizeData() {
     const prizes = {};
     const prizeTypes = ['1st', '2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     
+    // First, try to use existing database data if available (edit mode)
+    if (window.prizeEntriesData && Object.keys(window.prizeEntriesData).length > 0) {
+        prizeTypes.forEach(prizeType => {
+            if (window.prizeEntriesData[prizeType] && window.prizeEntriesData[prizeType].length > 0) {
+                prizes[prizeType] = window.prizeEntriesData[prizeType].map(entry => ({
+                    amount: entry.prize_amount || '',
+                    ticket: entry.ticket_number || '',
+                    place: entry.place || ''
+                }));
+            }
+        });
+        
+        // If we have existing data, return it
+        if (Object.keys(prizes).length > 0) {
+            return prizes;
+        }
+    }
+    
+    // Fallback to form inputs if no existing data
     prizeTypes.forEach(prizeType => {
         const entries = collectPrizeEntriesForType(prizeType);
         if (entries.length > 0) {
