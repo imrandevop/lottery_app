@@ -443,10 +443,9 @@ function addEntry(prizeType) {
                 removeBtn.type = 'button';
                 removeBtn.className = 'remove-ticket-btn';
                 removeBtn.innerHTML = '×';
-                removeBtn.title = 'Clear this ticket number';
+                removeBtn.title = 'Delete this ticket number';
                 removeBtn.onclick = function() {
-                    ticketInput.value = '';
-                    ticketInput.focus();
+                    deleteIndividualTicket(ticketInput, prizeType);
                     isDirty = true;
                     notifyPreviewUpdate();
                 };
@@ -919,10 +918,9 @@ function processBulkEntries(prizeType) {
                     removeBtn.type = 'button';
                     removeBtn.className = 'remove-ticket-btn';
                     removeBtn.innerHTML = '×';
-                    removeBtn.title = 'Clear this ticket number';
+                    removeBtn.title = 'Delete this ticket number';
                     removeBtn.onclick = function() {
-                        ticketInput.value = '';
-                        ticketInput.focus();
+                        deleteIndividualTicket(ticketInput, prizeType);
                         isDirty = true;
                         notifyPreviewUpdate();
                     };
@@ -1252,6 +1250,8 @@ function loadExistingPrizeEntries() {
                 group.tickets.forEach((ticket, ticketIndex) => {
                     if (ticketFields[ticketIndex]) {
                         ticketFields[ticketIndex].value = ticket || '';
+                        // Initialize _originalValue for auto-save tracking
+                        ticketFields[ticketIndex]._originalValue = ticket || '';
                     }
                 });
                 
@@ -1274,7 +1274,11 @@ function loadExistingPrizeEntries() {
                 const ticketInput = newEntry.querySelector(`input[name="${prizeType}_ticket_number[]"]`);
                 
                 if (amountInput) amountInput.value = entry.prize_amount || '';
-                if (ticketInput) ticketInput.value = entry.ticket_number || '';
+                if (ticketInput) {
+                    ticketInput.value = entry.ticket_number || '';
+                    // Initialize _originalValue for auto-save tracking
+                    ticketInput._originalValue = entry.ticket_number || '';
+                }
                 
                 if (prizeType === '1st' || prizeType === '2nd' || prizeType === '3rd') {
                     const placeInput = newEntry.querySelector(`input[name="${prizeType}_place[]"]`);
@@ -1943,7 +1947,8 @@ function autoSaveTicket(ticketInput, prizeType) {
         result_id: resultIdInput.value,
         prize_type: prizeType,
         ticket_number: ticketNumber,
-        prize_amount: prizeAmountInput.value.trim()
+        prize_amount: prizeAmountInput.value.trim(),
+        original_ticket_number: ticketInput._originalValue || ''  // Include original ticket number for edit tracking
     };
     
     // Make AJAX call to auto-save
@@ -2180,8 +2185,19 @@ function setupAutoSaveForTicketInputs() {
  * Set up auto-save for a single input
  */
 function setupAutoSaveForInput(ticketInput, prizeType) {
-    // Remove existing auto-save listener to avoid duplicates
-    ticketInput.removeEventListener('blur', ticketInput._autoSaveHandler);
+    // Remove existing auto-save listeners to avoid duplicates
+    if (ticketInput._autoSaveHandler) {
+        ticketInput.removeEventListener('blur', ticketInput._autoSaveHandler);
+    }
+    if (ticketInput._focusHandler) {
+        ticketInput.removeEventListener('focus', ticketInput._focusHandler);
+    }
+    
+    // Create focus handler to store original value
+    ticketInput._focusHandler = function() {
+        // Store the original value when focus is gained
+        ticketInput._originalValue = ticketInput.value.trim();
+    };
     
     // Create auto-save handler
     ticketInput._autoSaveHandler = function() {
@@ -2191,6 +2207,9 @@ function setupAutoSaveForInput(ticketInput, prizeType) {
         }, 100);
     };
     
+    // Add focus event listener to track original value
+    ticketInput.addEventListener('focus', ticketInput._focusHandler);
+    
     // Add blur event listener for auto-save
     ticketInput.addEventListener('blur', ticketInput._autoSaveHandler);
     
@@ -2199,11 +2218,157 @@ function setupAutoSaveForInput(ticketInput, prizeType) {
     ticketInput.style.borderLeft = '3px solid #007bff'; // Blue border to indicate auto-save
 }
 
+/**
+ * Delete individual ticket from database for 4th-10th prizes
+ */
+function deleteIndividualTicket(ticketInput, prizeType) {
+    const ticketNumber = ticketInput.value.trim();
+    
+    // Only allow deletion for 4th-10th prizes
+    const deletionAllowedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    if (!deletionAllowedPrizes.includes(prizeType)) {
+        // For other prizes, just clear the field
+        ticketInput.value = '';
+        ticketInput.focus();
+        return;
+    }
+    
+    // If no ticket number, just clear and focus
+    if (!ticketNumber) {
+        ticketInput.value = '';
+        ticketInput.focus();
+        return;
+    }
+    
+    // Get result ID (required for deletion)
+    const resultIdInput = document.querySelector('input[name="result_id"]');
+    if (!resultIdInput || !resultIdInput.value) {
+        // If not in edit mode, just clear the field
+        ticketInput.value = '';
+        ticketInput.focus();
+        return;
+    }
+    
+    
+    // Show deleting indicator
+    const originalValue = ticketInput.value;
+    ticketInput.disabled = true;
+    ticketInput.style.backgroundColor = '#ffe6e6';
+    ticketInput.style.borderColor = '#dc3545';
+    
+    // Prepare data for deletion
+    const deleteData = {
+        result_id: resultIdInput.value,
+        prize_type: prizeType,
+        ticket_number: ticketNumber
+    };
+    
+    // Make AJAX call to delete ticket
+    fetch('/api/results/admin/delete-individual-ticket/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify(deleteData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            if (response.status === 403) {
+                throw new Error('CSRF verification failed. Please refresh the page.');
+            } else if (response.status === 404) {
+                throw new Error('Ticket not found in database. It may have already been deleted.');
+            } else {
+                throw new Error(`Server error (${response.status}). Please try again.`);
+            }
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // Successfully deleted from database
+            ticketInput.value = '';
+            ticketInput.disabled = false;
+            ticketInput.style.backgroundColor = '';
+            ticketInput.style.borderColor = '#28a745'; // Green border
+            ticketInput.focus();
+            
+            // Show success message briefly
+            const successMsg = document.createElement('div');
+            successMsg.textContent = '✓ Deleted';
+            successMsg.style.cssText = `
+                position: absolute;
+                background: #28a745;
+                color: white;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 11px;
+                z-index: 1000;
+                pointer-events: none;
+            `;
+            
+            const rect = ticketInput.getBoundingClientRect();
+            successMsg.style.top = (rect.top + window.scrollY - 30) + 'px';
+            successMsg.style.left = (rect.left + window.scrollX) + 'px';
+            
+            document.body.appendChild(successMsg);
+            
+            setTimeout(() => {
+                if (successMsg && successMsg.parentNode) {
+                    successMsg.parentNode.removeChild(successMsg);
+                }
+                ticketInput.style.borderColor = '';
+            }, 2000);
+            
+            console.log(`Deleted ticket: ${ticketNumber} for ${prizeType} prize`);
+        } else {
+            throw new Error(data.error || 'Failed to delete ticket');
+        }
+    })
+    .catch(error => {
+        console.error('Delete ticket error:', error);
+        
+        // Restore original state
+        ticketInput.value = originalValue;
+        ticketInput.disabled = false;
+        ticketInput.style.backgroundColor = '';
+        ticketInput.style.borderColor = '#dc3545'; // Red border to indicate error
+        
+        // Show error message
+        const errorMsg = document.createElement('div');
+        errorMsg.textContent = '✗ Error deleting';
+        errorMsg.style.cssText = `
+            position: absolute;
+            background: #dc3545;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            z-index: 1000;
+            pointer-events: none;
+        `;
+        
+        const rect = ticketInput.getBoundingClientRect();
+        errorMsg.style.top = (rect.top + window.scrollY - 30) + 'px';
+        errorMsg.style.left = (rect.left + window.scrollX) + 'px';
+        
+        document.body.appendChild(errorMsg);
+        
+        setTimeout(() => {
+            if (errorMsg && errorMsg.parentNode) {
+                errorMsg.parentNode.removeChild(errorMsg);
+            }
+            ticketInput.style.borderColor = '';
+        }, 3000);
+    });
+}
+
 // Export functions for global access
 window.addEntry = addEntry;
 window.deleteAllAdditionalEntries = deleteAllAdditionalEntries;
 window.toggleBulkEntry = toggleBulkEntry;
 window.processBulkEntries = processBulkEntries;
+window.deleteIndividualTicket = deleteIndividualTicket;
 window.handlePreviewToggle = handlePreviewToggle;
 window.showNotification = showNotification;
 window.setupAutoSaveForInput = setupAutoSaveForInput;

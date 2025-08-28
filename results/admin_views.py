@@ -663,6 +663,7 @@ def auto_save_ticket(request):
         prize_type = data.get('prize_type')
         ticket_number = data.get('ticket_number', '').strip()
         prize_amount = data.get('prize_amount', '').strip()
+        original_ticket = data.get('original_ticket_number', '').strip()  # Track original ticket number
         
         # Validate required fields
         if not all([result_id, prize_type, ticket_number, prize_amount]):
@@ -681,6 +682,8 @@ def auto_save_ticket(request):
         
         # Clean spaces from ticket number
         cleaned_ticket = re.sub(r'\s+', '', ticket_number)
+        cleaned_original = re.sub(r'\s+', '', original_ticket) if original_ticket else ''
+        
         if not cleaned_ticket:
             return JsonResponse({
                 'success': False,
@@ -696,6 +699,43 @@ def auto_save_ticket(request):
                 'error': 'Lottery result not found'
             }, status=404)
         
+        # If this is an edit of existing ticket (original_ticket provided)
+        if cleaned_original and cleaned_original != cleaned_ticket:
+            # Find the entry with the original ticket number
+            original_entry = PrizeEntry.objects.filter(
+                lottery_result=lottery_result,
+                prize_type=prize_type,
+                ticket_number=cleaned_original
+            ).first()
+            
+            if original_entry:
+                # Check if the new ticket number already exists (would create duplicate)
+                duplicate_entry = PrizeEntry.objects.filter(
+                    lottery_result=lottery_result,
+                    prize_type=prize_type,
+                    ticket_number=cleaned_ticket
+                ).exclude(id=original_entry.id).first()
+                
+                if duplicate_entry:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Ticket number {cleaned_ticket} already exists for {prize_type} prize'
+                    }, status=400)
+                
+                # Update the original entry with new ticket number and amount
+                original_entry.ticket_number = cleaned_ticket
+                original_entry.prize_amount = prize_amount
+                original_entry.save(update_fields=['ticket_number', 'prize_amount'])
+                
+                logger.info(f"Updated ticket from {cleaned_original} to {cleaned_ticket} for {prize_type} prize in result {result_id}")
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Ticket updated successfully',
+                    'action': 'updated',
+                    'entry_id': original_entry.id
+                })
+        
         # Check if ticket already exists for this prize type
         existing_entry = PrizeEntry.objects.filter(
             lottery_result=lottery_result,
@@ -704,11 +744,23 @@ def auto_save_ticket(request):
         ).first()
         
         if existing_entry:
-            return JsonResponse({
-                'success': True,
-                'message': 'Ticket already exists',
-                'action': 'existing'
-            })
+            # Update existing entry with new prize amount if needed
+            if str(existing_entry.prize_amount) != str(prize_amount):
+                existing_entry.prize_amount = prize_amount
+                existing_entry.save(update_fields=['prize_amount'])
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Ticket updated successfully',
+                    'action': 'updated',
+                    'entry_id': existing_entry.id
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Ticket already exists',
+                    'action': 'existing',
+                    'entry_id': existing_entry.id
+                })
         
         # Create new prize entry
         prize_entry = PrizeEntry.objects.create(
@@ -735,6 +787,90 @@ def auto_save_ticket(request):
         }, status=400)
     except Exception as e:
         logger.error(f"Error in auto_save_ticket: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Internal server error'
+        }, status=500)
+
+
+@csrf_protect
+@staff_member_required
+@require_POST
+def delete_individual_ticket(request):
+    """Delete individual ticket entry for 4th-10th prizes."""
+    try:
+        # Parse JSON request body
+        data = json.loads(request.body)
+        
+        # Extract data
+        result_id = data.get('result_id')
+        prize_type = data.get('prize_type')
+        ticket_number = data.get('ticket_number', '').strip()
+        
+        # Validate required fields
+        if not all([result_id, prize_type, ticket_number]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+        
+        # Validate prize type (only 4th-10th allowed for individual deletion)
+        allowed_prize_types = ['4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        if prize_type not in allowed_prize_types:
+            return JsonResponse({
+                'success': False,
+                'error': 'Individual ticket deletion only allowed for 4th-10th prizes'
+            }, status=400)
+        
+        # Clean spaces from ticket number
+        cleaned_ticket = re.sub(r'\s+', '', ticket_number)
+        if not cleaned_ticket:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid ticket number'
+            }, status=400)
+        
+        # Get lottery result
+        try:
+            lottery_result = LotteryResult.objects.get(id=result_id)
+        except LotteryResult.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Lottery result not found'
+            }, status=404)
+        
+        # Find and delete the specific ticket entry
+        ticket_entry = PrizeEntry.objects.filter(
+            lottery_result=lottery_result,
+            prize_type=prize_type,
+            ticket_number=cleaned_ticket
+        ).first()
+        
+        if not ticket_entry:
+            return JsonResponse({
+                'success': False,
+                'error': f'Ticket number {cleaned_ticket} not found for {prize_type} prize'
+            }, status=404)
+        
+        # Delete the entry
+        entry_id = ticket_entry.id
+        ticket_entry.delete()
+        
+        logger.info(f"Deleted ticket: {cleaned_ticket} for {prize_type} prize in result {result_id}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Ticket deleted successfully',
+            'deleted_entry_id': entry_id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error in delete_individual_ticket: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': 'Internal server error'
