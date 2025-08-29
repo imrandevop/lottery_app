@@ -59,54 +59,38 @@
     padding: 0 !important;
 }
 
-/* Individual ticket field styling */
-.input-with-remove {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.input-with-remove .form-control {
-    flex: 1;
-    padding-right: 35px; /* Make space for remove button */
-}
-
-.remove-ticket-btn {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    transition: all 0.2s ease;
-}
-
-.remove-ticket-btn:hover {
-    background: #c82333;
-    transform: translateY(-50%) scale(1.1);
-}
-
-.remove-ticket-btn:active {
-    transform: translateY(-50%) scale(0.95);
-}
-
+/* Ticket field group styling */
 .ticket-field-group {
     position: relative;
 }
 
-/* Delete all additional entries button */
-.delete-all-btn {
+/* Spacing between ticket rows */
+.form-row.ticket-row {
+    margin-bottom: 8px;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    max-width: 100% !important;
+}
+
+.form-row.ticket-row:last-child {
+    margin-bottom: 0;
+}
+
+/* Force exactly 3 fields per row - no more, no less */
+.form-row.ticket-row .form-group {
+    flex: 1 1 33.333% !important;
+    min-width: 0 !important;
+    max-width: 33.333% !important;
+    box-sizing: border-box !important;
+}
+
+/* Hide any fields beyond the 3rd in a row */
+.form-row.ticket-row .form-group:nth-child(n+4) {
+    display: none !important;
+}
+
+/* Clear button styling */
+.clear-btn {
     background: #dc3545 !important;
     color: white !important;
     border: 1px solid #dc3545 !important;
@@ -114,23 +98,19 @@
     transition: all 0.2s ease;
 }
 
-.delete-all-btn:hover {
+.clear-btn:hover {
     background: #c82333 !important;
     border-color: #bd2130 !important;
     color: white !important;
     transform: translateY(-1px);
 }
 
-.delete-all-btn:active {
+.clear-btn:active {
     transform: translateY(0px);
 }
 
-/* Button row styling */
-.form-row .add-entry-btn + .delete-all-btn {
-    margin-left: 10px;
-}
 
-/* ========== MOBILE RESPONSIVE STYLES FOR NEW ELEMENTS ========== */
+/* ========== MOBILE RESPONSIVE STYLES FOR BUTTONS ========== */
 
 /* Tablet responsiveness (992px and below) */
 @media (max-width: 992px) {
@@ -140,17 +120,9 @@
         min-width: 200px;
     }
     
-    /* Remove button adjustments */
-    .remove-ticket-btn {
-        width: 18px;
-        height: 18px;
-        font-size: 12px;
-        right: 6px;
-    }
-    
     /* Button row - keep horizontal but smaller */
     .form-row .add-entry-btn,
-    .form-row .delete-all-btn {
+    .form-row .clear-btn {
         padding: 8px 12px;
         font-size: 13px;
     }
@@ -158,38 +130,15 @@
 
 /* Mobile responsiveness (768px and below) */
 @media (max-width: 768px) {
-    /* Form row - stack elements vertically on mobile */
-    .form-row {
-        flex-direction: column;
-        gap: 15px;
-    }
-    
     /* Ticket field groups - full width on mobile */
     .ticket-field-group {
         width: 100%;
     }
     
-    /* Input with remove styling for mobile */
-    .input-with-remove {
-        width: 100%;
-    }
-    
-    .input-with-remove .form-control {
-        padding-right: 40px; /* More space for mobile touch */
-    }
-    
-    /* Remove button - larger for mobile touch */
-    .remove-ticket-btn {
-        width: 24px;
-        height: 24px;
-        font-size: 14px;
-        right: 8px;
-    }
-    
-    /* Button row - stack buttons vertically on mobile */
+    /* Button row styling on mobile */
     .form-row .add-entry-btn,
-    .form-row .delete-all-btn {
-        width: 100%;
+    .form-row .clear-btn {
+        width: 48%;
         margin-left: 0;
         margin-bottom: 8px;
         padding: 12px 16px;
@@ -198,9 +147,8 @@
         text-align: center;
     }
     
-    .form-row .add-entry-btn + .delete-all-btn {
-        margin-left: 0;
-        margin-top: 8px;
+    .form-row .clear-btn {
+        margin-left: 4%;
     }
 }
 
@@ -212,22 +160,9 @@
         margin-bottom: 6px;
     }
     
-    .input-with-remove .form-control {
-        padding: 8px 35px 8px 10px;
-        font-size: 14px;
-    }
-    
-    /* Remove button - optimized for small touch screens */
-    .remove-ticket-btn {
-        width: 22px;
-        height: 22px;
-        font-size: 13px;
-        right: 6px;
-    }
-    
     /* Buttons - full width and larger touch targets */
     .form-row .add-entry-btn,
-    .form-row .delete-all-btn {
+    .form-row .clear-btn {
         padding: 14px 16px;
         font-size: 15px;
         min-height: 48px; /* Minimum touch target size */
@@ -236,20 +171,8 @@
 
 /* Touch device optimizations */
 @media (hover: none) and (pointer: coarse) {
-    /* Larger touch targets for touch devices */
-    .remove-ticket-btn {
-        width: 26px;
-        height: 26px;
-        font-size: 15px;
-        right: 6px;
-    }
-    
-    .input-with-remove .form-control {
-        padding-right: 42px;
-    }
-    
     .add-entry-btn,
-    .delete-all-btn {
+    .clear-btn {
         min-height: 50px;
         padding: 15px 20px;
     }
@@ -263,7 +186,7 @@
     }
     
     .form-row .add-entry-btn,
-    .form-row .delete-all-btn {
+    .form-row .clear-btn {
         padding: 8px 12px;
         min-height: 36px;
     }
@@ -271,13 +194,10 @@
 
 /* High contrast mode - mobile optimizations */
 @media (prefers-contrast: high) and (max-width: 768px) {
-    .remove-ticket-btn {
-        border: 2px solid #000;
-        background: #fff;
-        color: #000;
+    .add-entry-btn {
+        border: 2px solid #007bff !important;
     }
-    
-    .delete-all-btn {
+    .clear-btn {
         border: 2px solid #dc3545 !important;
     }
 }
@@ -584,19 +504,6 @@ input:checked + .slider:before {
     margin-top: 10px;
 }
 
-.remove-entry-btn {
-    color: #dc3545;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 4px 8px;
-    border-radius: 4px;
-}
-
-.remove-entry-btn:hover {
-    background-color: #f8d7da;
-}
 
 /* ========== BULK ENTRY SECTION ========== */
 
@@ -1116,6 +1023,85 @@ body.change-form .bottom-action-buttons {
 
 /* ========== RESPONSIVE DESIGN ========== */
 
+/* Extra small screens (360px and below) - ultra compact */
+@media (max-width: 360px) {
+    .form-row.ticket-row {
+        gap: 3px !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row on ultra small screens */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        padding: 6px 4px !important;
+        font-size: 11px !important;
+    }
+}
+
+/* Large screens (1400px and above) - more space */
+@media (min-width: 1400px) {
+    .form-row.ticket-row {
+        gap: 12px !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row on large screens */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        padding: 12px 15px !important;
+        font-size: 15px !important;
+    }
+}
+
+/* Large tablets and small desktops (1200px and below) */
+@media (max-width: 1200px) {
+    .form-row.ticket-row {
+        gap: 10px !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row on medium screens */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        padding: 11px 10px !important;
+        font-size: 14px !important;
+    }
+}
+
+/* Tablets (992px and below) */
 @media (max-width: 992px) {
     .lottery-admin-container {
         padding: 10px;
@@ -1124,6 +1110,33 @@ body.change-form .bottom-action-buttons {
     .form-row {
         flex-direction: column;
         gap: 15px;
+    }
+    
+    /* Exception: Keep 3 fields per row for ticket number entries on all devices */
+    .form-row.ticket-row {
+        flex-direction: row !important;
+        gap: 8px !important;
+        align-items: flex-end !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        width: 100% !important;
+        padding: 10px 8px !important;
+        font-size: 13px !important;
     }
     
     .form-group {
@@ -1175,6 +1188,35 @@ body.change-form .bottom-action-buttons {
         padding: 15px;
         font-size: 20px;
     }
+    
+    /* Maintain 3 fields per row on mobile for ticket entries */
+    .form-row.ticket-row {
+        flex-direction: row !important;
+        gap: 6px !important;
+        align-items: flex-end !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row on mobile */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        width: 100% !important;
+        padding: 10px 8px !important;
+        font-size: 13px !important;
+        min-width: 0 !important;
+    }
+    
 }
 
 @media (max-width: 576px) {
@@ -1192,6 +1234,36 @@ body.change-form .bottom-action-buttons {
     .bottom-action-buttons .btn span:first-child {
         font-size: 16px;
     }
+    
+    /* Maintain 3 fields per row even on very small mobile screens */
+    .form-row.ticket-row {
+        flex-direction: row !important;
+        gap: 4px !important;
+        align-items: flex-end !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+    }
+    
+    .form-row.ticket-row .form-group {
+        flex: 1 1 33.333% !important;
+        min-width: 0 !important;
+        max-width: 33.333% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure no more than 3 fields per row even on small screens */
+    .form-row.ticket-row .form-group:nth-child(n+4) {
+        display: none !important;
+    }
+    
+    .form-row.ticket-row .form-control {
+        width: 100% !important;
+        padding: 8px 6px !important;
+        font-size: 12px !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+    
 }
 
 /* ========== ACCESSIBILITY & ENHANCEMENTS ========== */
