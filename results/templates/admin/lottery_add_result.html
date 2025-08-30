@@ -144,13 +144,25 @@
                                 {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
                                 <!-- Multiple ticket fields for consolation and 4th-10th prizes -->
                                 <div class="form-group ticket-field-group">
+                                    {% if prize_type in "7th,8th,9th,10th"|split:"," %}
+                                    <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_0" class="form-control" maxlength="4" placeholder="4 digits" title="Enter exactly 4 digits" pattern="[0-9]{4}" inputmode="numeric">
+                                    {% else %}
                                     <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_0" class="form-control">
+                                    {% endif %}
                                 </div>
                                 <div class="form-group ticket-field-group">
+                                    {% if prize_type in "7th,8th,9th,10th"|split:"," %}
+                                    <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_1" class="form-control" maxlength="4" placeholder="4 digits" title="Enter exactly 4 digits" pattern="[0-9]{4}" inputmode="numeric">
+                                    {% else %}
                                     <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_1" class="form-control">
+                                    {% endif %}
                                 </div>
                                 <div class="form-group ticket-field-group">
+                                    {% if prize_type in "7th,8th,9th,10th"|split:"," %}
+                                    <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_2" class="form-control" maxlength="4" placeholder="4 digits" title="Enter exactly 4 digits" pattern="[0-9]{4}" inputmode="numeric">
+                                    {% else %}
                                     <input type="text" name="{{ prize_type }}_ticket_number[]" id="{{ prize_type }}_ticket_2" class="form-control">
+                                    {% endif %}
                                 </div>
                                 {% else %}
                                 <div class="form-group">
@@ -171,7 +183,7 @@
                     
                     <!-- Add Entry Button -->
                     <div class="form-row">
-                        <button type="button" class="btn btn-secondary btn-small add-entry-btn" onclick="addMultipleFields('{{ prize_type }}')">+ Add Fields</button>
+                        <button type="button" class="btn btn-secondary btn-small add-entry-btn" onclick="addMultipleFields('{{ prize_type }}')">+ Add 3 Fields</button>
                         {% if prize_type in "4th,5th,6th,7th,8th,9th,10th"|split:"," %}
                         <button type="button" class="btn btn-danger btn-small clear-btn" onclick="clearAllFields('{{ prize_type }}')">🗑️ Clear</button>
                         {% endif %}
@@ -235,4 +247,133 @@
 <!-- ========== JAVASCRIPT INCLUDES ========== -->
 <script src="{% static 'results/js/lottery_admin.js' %}"></script>
 <script src="{% static 'results/js/preview.js' %}"></script>
+
+<!-- Add 4-digit validation for initial template fields -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Setting up 4-digit validation for template fields');
+    
+    // Apply 4-digit validation to 7th-10th prize template fields
+    const fourDigitPrizes = ['7th', '8th', '9th', '10th'];
+    fourDigitPrizes.forEach(prizeType => {
+        for (let i = 0; i < 3; i++) {
+            const input = document.getElementById(prizeType + '_ticket_' + i);
+            if (input) {
+                console.log(`Setting up validation for ${input.id}`);
+                
+                // Add input filtering to allow only digits and limit to 4 characters
+                input.addEventListener('input', function(e) {
+                    console.log(`Input event on ${this.id}, original value: "${this.value}"`);
+                    // Remove any non-digit characters
+                    let value = this.value.replace(/\D/g, '');
+                    // Limit to 4 digits
+                    if (value.length > 4) {
+                        value = value.slice(0, 4);
+                        console.log(`Limited value from ${this.value.length} to 4 digits`);
+                    }
+                    this.value = value;
+                    console.log(`Final value: "${this.value}"`);
+                });
+                
+                // Add keydown event to prevent certain keys
+                input.addEventListener('keydown', function(e) {
+                    // Allow: backspace, delete, tab, escape, enter
+                    if ([8, 9, 27, 13, 46].indexOf(e.keyCode) !== -1 ||
+                        // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+                        (e.keyCode === 65 && e.ctrlKey === true) ||
+                        (e.keyCode === 67 && e.ctrlKey === true) ||
+                        (e.keyCode === 86 && e.ctrlKey === true) ||
+                        (e.keyCode === 88 && e.ctrlKey === true)) {
+                        return;
+                    }
+                    // Ensure that it is a number and stop the keypress if current length is 4
+                    if (this.value.length >= 4 || (e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
+                        e.preventDefault();
+                    }
+                });
+                
+                // Add paste event filtering
+                input.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    let paste = (e.clipboardData || window.clipboardData).getData('text');
+                    // Remove non-digits and limit to 4 characters
+                    paste = paste.replace(/\D/g, '').slice(0, 4);
+                    this.value = paste;
+                    // Trigger input event for validation
+                    this.dispatchEvent(new Event('input'));
+                });
+                
+                // Add real-time validation with enhanced error handling
+                input.addEventListener('input', function() {
+                    if (typeof clearInputError === 'function') {
+                        clearInputError(this);
+                    }
+                    if (typeof validateFourDigitInput === 'function') {
+                        clearTimeout(this.validationTimeout);
+                        this.validationTimeout = setTimeout(() => {
+                            validateFourDigitInput(this, prizeType);
+                        }, 500);
+                    }
+                });
+                
+                // Add blur validation with enhanced error handling
+                input.addEventListener('blur', function() {
+                    if (typeof validateFourDigitInput === 'function') {
+                        validateFourDigitInput(this, prizeType);
+                    }
+                });
+            }
+        }
+    });
+    
+    // Also add stronger form submission validation
+    const form = document.getElementById('lotteryForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            console.log('Form submission - checking 4-digit validation');
+            const fourDigitPrizes = ['7th', '8th', '9th', '10th'];
+            for (const prizeType of fourDigitPrizes) {
+                const inputs = document.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+                for (const input of inputs) {
+                    const value = input.value.trim();
+                    if (value !== '') {
+                        // Check for non-numeric characters
+                        if (!/^\d+$/.test(value)) {
+                            e.preventDefault();
+                            const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                            alert(`ERROR: ${prizeTypeName} prize ticket "${value}" contains invalid characters. Only numbers (0-9) are allowed.`);
+                            if (typeof showInputError === 'function') {
+                                showInputError(input, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
+                            }
+                            input.focus();
+                            return false;
+                        }
+                        
+                        // Check if exactly 4 digits
+                        if (value.length !== 4) {
+                            e.preventDefault();
+                            const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                            let message = '';
+                            if (value.length < 4) {
+                                message = `ERROR: ${prizeTypeName} prize ticket "${value}" requires exactly 4 digits. You entered ${value.length} digit${value.length === 1 ? '' : 's'}. Please add ${4 - value.length} more digit${4 - value.length === 1 ? '' : 's'}.`;
+                            } else {
+                                message = `ERROR: ${prizeTypeName} prize ticket "${value}" requires exactly 4 digits. You entered ${value.length} digits. Please remove ${value.length - 4} digit${value.length - 4 === 1 ? '' : 's'}.`;
+                            }
+                            alert(message);
+                            if (typeof showInputError === 'function') {
+                                const detailMessage = value.length < 4 
+                                    ? `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digit${value.length === 1 ? '' : 's'}. Please add ${4 - value.length} more digit${4 - value.length === 1 ? '' : 's'}.`
+                                    : `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digits. Please remove ${value.length - 4} digit${value.length - 4 === 1 ? '' : 's'}.`;
+                                showInputError(input, detailMessage);
+                            }
+                            input.focus();
+                            return false;
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

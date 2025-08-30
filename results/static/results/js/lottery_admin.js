@@ -157,6 +157,58 @@ function validateAndSubmitWithNotification(e) {
         if (hasEntries) break;
     }
     
+    // Enhanced 4-digit validation for 7th-10th prizes during form submission
+    let validationFailed = false;
+    const fourDigitPrizes = ['7th', '8th', '9th', '10th'];
+    for (const prizeType of fourDigitPrizes) {
+        const entriesContainer = document.getElementById(prizeType + '-entries');
+        if (!entriesContainer) continue;
+        
+        const ticketInputs = entriesContainer.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+        for (const ticketInput of ticketInputs) {
+            const value = ticketInput.value.trim();
+            if (value !== '') {
+                // Check for non-numeric characters
+                if (!/^\d+$/.test(value)) {
+                    const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                    showNotification(`❌ FORM BLOCKED: ${prizeTypeName} prize ticket "${value}" contains invalid characters. Only numbers (0-9) are allowed.`, 'error');
+                    showInputError(ticketInput, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
+                    ticketInput.focus();
+                    validationFailed = true;
+                    break;
+                }
+                
+                // Check if it's exactly 4 digits
+                if (value.length !== 4) {
+                    const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
+                    let errorMessage = '';
+                    let detailMessage = '';
+                    
+                    if (value.length < 4) {
+                        errorMessage = `❌ FORM BLOCKED: ${prizeTypeName} prize requires exactly 4 digits. "${value}" has only ${value.length} digit${value.length === 1 ? '' : 's'}.`;
+                        detailMessage = `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digit${value.length === 1 ? '' : 's'}. Please add ${4 - value.length} more digit${4 - value.length === 1 ? '' : 's'}.`;
+                    } else {
+                        errorMessage = `❌ FORM BLOCKED: ${prizeTypeName} prize requires exactly 4 digits. "${value}" has ${value.length} digits.`;
+                        detailMessage = `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digits. Please remove ${value.length - 4} digit${value.length - 4 === 1 ? '' : 's'}.`;
+                    }
+                    
+                    showNotification(errorMessage, 'error');
+                    showInputError(ticketInput, detailMessage);
+                    ticketInput.focus();
+                    validationFailed = true;
+                    break;
+                }
+            }
+        }
+        if (validationFailed) break;
+    }
+    
+    // If validation failed, stop here and don't submit
+    if (validationFailed) {
+        console.log('FORM SUBMISSION BLOCKED DUE TO VALIDATION FAILURE');
+        return false;
+    }
+    
     if (!hasEntries) {
         showNotification('Please add at least one prize entry.', 'error');
         return;
@@ -361,13 +413,14 @@ function initializeNotificationCheckbox() {
 
 /**
  * Add multiple individual ticket fields to prize section
+ * SMART APPEND: Adds fields to the end of existing fields, filling incomplete rows first
  * @param {string} prizeType - The type of prize (e.g., '1st', 'consolation', etc.)
  * @param {number} numFields - Number of fields to add (optional, will prompt if not provided)
  */
 function addMultipleFields(prizeType, numFields) {
     // If numFields is not provided, prompt user
     if (typeof numFields === 'undefined') {
-        numFields = prompt('How many fields do you need?', '1');
+        numFields = prompt('How many fields do you need?', '3');
         
         // Validate input
         if (numFields === null) return; // User cancelled
@@ -382,121 +435,226 @@ function addMultipleFields(prizeType, numFields) {
     const entriesContainer = document.getElementById(prizeType + '-entries');
     if (!entriesContainer) return;
     
-    // Ensure the existing template row has the proper ticket-row class for 4th-10th prizes
-    const specialPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-    if (specialPrizes.includes(prizeType)) {
-        const templateRow = entriesContainer.querySelector('.form-row');
-        if (templateRow && !templateRow.classList.contains('ticket-row')) {
-            templateRow.classList.add('ticket-row');
-        }
-    }
-    
-    // Get the current number of existing ticket fields
-    const existingFields = entriesContainer.querySelectorAll('input[name$="_ticket_number[]"]');
-    let currentFieldCount = existingFields.length;
-    
-    // Determine how many fields to show per row (3 for all prize types to maintain responsiveness)
     const fieldsPerRow = 3;
+    let fieldsToAdd = numFields;
     
-    // If we're adding to existing fields, we need to ensure proper row structure
-    if (currentFieldCount > 0) {
-        // Check if existing fields are properly organized in rows
-        const existingRows = entriesContainer.querySelectorAll('.form-row.ticket-row');
-        if (existingRows.length === 0 && specialPrizes.includes(prizeType)) {
-            // Existing fields are not in proper ticket-row structure, reorganize them
-            reorganizeExistingFields(entriesContainer, prizeType);
-            // Recalculate after reorganization
-            const updatedFields = entriesContainer.querySelectorAll('input[name$="_ticket_number[]"]');
-            currentFieldCount = updatedFields.length;
+    // Find ALL existing entries and determine the absolute last one to append to
+    const allExistingEntries = entriesContainer.querySelectorAll('.prize-entry');
+    let targetEntry;
+    
+    console.log(`[DEBUG] Found ${allExistingEntries.length} existing entries for ${prizeType}`);
+    
+    if (allExistingEntries.length > 0) {
+        // Use the last existing entry
+        targetEntry = allExistingEntries[allExistingEntries.length - 1];
+        console.log(`[DEBUG] Using existing entry:`, targetEntry);
+    } else {
+        // Create the first entry if none exists
+        targetEntry = document.createElement('div');
+        targetEntry.className = 'prize-entry';
+        targetEntry.setAttribute('data-entry-index', 0);
+        entriesContainer.appendChild(targetEntry);
+        console.log(`[DEBUG] Created new entry:`, targetEntry);
+    }
+    
+    // Find the very last ticket row across ALL entries
+    const allExistingRows = entriesContainer.querySelectorAll('.form-row.ticket-row');
+    let lastRow = allExistingRows[allExistingRows.length - 1];
+    
+    console.log(`[DEBUG] Found ${allExistingRows.length} existing ticket rows, last row:`, lastRow);
+    
+    if (lastRow) {
+        // Make sure we're adding to the entry that contains the last row
+        const lastRowEntry = lastRow.closest('.prize-entry');
+        if (lastRowEntry) {
+            targetEntry = lastRowEntry;
+        }
+        
+        const fieldsInLastRow = lastRow.querySelectorAll('.ticket-field-group').length;
+        const spaceInLastRow = fieldsPerRow - fieldsInLastRow;
+        
+        if (spaceInLastRow > 0) {
+            // Fill the remaining space in the last row first
+            const fieldsToAddToLastRow = Math.min(spaceInLastRow, fieldsToAdd);
+            
+            for (let i = 0; i < fieldsToAddToLastRow; i++) {
+                const ticketGroup = document.createElement('div');
+                ticketGroup.className = 'form-group ticket-field-group';
+                ticketGroup.style.flex = '1 1 33.333% !important';
+                ticketGroup.style.minWidth = '0 !important';
+                ticketGroup.style.maxWidth = '33.333% !important';
+                ticketGroup.style.boxSizing = 'border-box !important';
+                
+                const ticketInput = document.createElement('input');
+                // Use text input with numeric inputmode for 7th-10th prizes to show number pad on mobile
+                const numberPadPrizes = ['7th', '8th', '9th', '10th'];
+                ticketInput.type = 'text';
+                
+                // Add inputmode for number pad on mobile
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.setAttribute('inputmode', 'numeric');
+                }
+                ticketInput.name = `${prizeType}_ticket_number[]`;
+                ticketInput.id = `${prizeType}_ticket_${Date.now()}_lastrow_${i}`;
+                ticketInput.className = 'form-control';
+                
+                // Add 4-digit validation for 7th-10th prizes
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.setAttribute('maxlength', '4');
+                    ticketInput.setAttribute('placeholder', '4 digits');
+                    ticketInput.setAttribute('title', 'Enter exactly 4 digits');
+                    ticketInput.setAttribute('pattern', '[0-9]{4}');
+                    
+                    // Add input filtering to allow only digits and limit to 4 characters
+                    ticketInput.addEventListener('input', function(e) {
+                        // Remove any non-digit characters
+                        let value = this.value.replace(/\D/g, '');
+                        // Limit to 4 digits
+                        if (value.length > 4) {
+                            value = value.slice(0, 4);
+                        }
+                        this.value = value;
+                    });
+                }
+                
+                // Add event listeners
+                ticketInput.addEventListener('input', () => {
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                });
+                
+                // Add real-time 4-digit validation for 7th-10th prizes
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.addEventListener('input', function() {
+                        // Clear error on input
+                        clearInputError(this);
+                        // Validate after a short delay
+                        clearTimeout(this.validationTimeout);
+                        this.validationTimeout = setTimeout(() => {
+                            validateFourDigitInput(this, prizeType);
+                        }, 500);
+                    });
+                    
+                    // Also validate on blur
+                    ticketInput.addEventListener('blur', function() {
+                        validateFourDigitInput(this, prizeType);
+                    });
+                }
+                
+                // Apply no spaces functionality
+                applyNoSpacesToInput(ticketInput);
+                
+                // Set up auto-save for 4th-10th prizes
+                const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+                if (autoSavePrizes.includes(prizeType)) {
+                    setupAutoSaveForInput(ticketInput, prizeType);
+                }
+                
+                ticketGroup.appendChild(ticketInput);
+                lastRow.appendChild(ticketGroup);
+            }
+            
+            fieldsToAdd -= fieldsToAddToLastRow;
         }
     }
     
-    // Create individual ticket fields
-    for (let i = 0; i < numFields; i++) {
-        const fieldIndex = currentFieldCount + i;
-        const rowIndex = Math.floor(fieldIndex / fieldsPerRow);
-        const positionInRow = fieldIndex % fieldsPerRow;
+    // Now create new rows for any remaining fields
+    if (fieldsToAdd > 0) {
+        const numNewRows = Math.ceil(fieldsToAdd / fieldsPerRow);
         
-        // Check if we need a new row or if we can add to existing row
-        let targetRow;
-        const existingRows = entriesContainer.querySelectorAll('.form-row.ticket-row');
-        
-        if (positionInRow === 0 || !existingRows[rowIndex]) {
+        for (let rowIdx = 0; rowIdx < numNewRows; rowIdx++) {
             // Create new row
-            targetRow = document.createElement('div');
-            targetRow.className = 'form-row ticket-row';
+            const newRow = document.createElement('div');
+            newRow.className = 'form-row ticket-row';
+            newRow.style.display = 'flex !important';
+            newRow.style.flexWrap = 'nowrap !important';
+            newRow.style.maxWidth = '100% !important';
             
-            // Extra safeguard: ensure row doesn't exceed 3 fields
-            targetRow.setAttribute('data-max-fields', '3');
+            // Determine how many fields in this row
+            const remainingFields = fieldsToAdd - (rowIdx * fieldsPerRow);
+            const fieldsInThisRow = Math.min(fieldsPerRow, remainingFields);
             
-            // Create new entry container if this is the first field being added
-            if (fieldIndex === 0) {
-                const newEntry = document.createElement('div');
-                newEntry.className = 'prize-entry';
-                newEntry.setAttribute('data-entry-index', 0);
-                newEntry.appendChild(targetRow);
-                entriesContainer.appendChild(newEntry);
-            } else {
-                // Add to existing entry or create new one
-                let targetEntry = entriesContainer.querySelector('.prize-entry');
-                if (!targetEntry) {
-                    targetEntry = document.createElement('div');
-                    targetEntry.className = 'prize-entry';
-                    targetEntry.setAttribute('data-entry-index', 0);
-                    entriesContainer.appendChild(targetEntry);
+            // Create fields for this row
+            for (let fieldIdx = 0; fieldIdx < fieldsInThisRow; fieldIdx++) {
+                const ticketGroup = document.createElement('div');
+                ticketGroup.className = 'form-group ticket-field-group';
+                ticketGroup.style.flex = '1 1 33.333% !important';
+                ticketGroup.style.minWidth = '0 !important';
+                ticketGroup.style.maxWidth = '33.333% !important';
+                ticketGroup.style.boxSizing = 'border-box !important';
+                
+                const ticketInput = document.createElement('input');
+                // Use text input with numeric inputmode for 7th-10th prizes to show number pad on mobile
+                const numberPadPrizes = ['7th', '8th', '9th', '10th'];
+                ticketInput.type = 'text';
+                
+                // Add inputmode for number pad on mobile
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.setAttribute('inputmode', 'numeric');
                 }
-                targetEntry.appendChild(targetRow);
+                ticketInput.name = `${prizeType}_ticket_number[]`;
+                ticketInput.id = `${prizeType}_ticket_${Date.now()}_${rowIdx}_${fieldIdx}`;
+                ticketInput.className = 'form-control';
+                
+                // Add 4-digit validation for 7th-10th prizes
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.setAttribute('maxlength', '4');
+                    ticketInput.setAttribute('placeholder', '4 digits');
+                    ticketInput.setAttribute('title', 'Enter exactly 4 digits');
+                    ticketInput.setAttribute('pattern', '[0-9]{4}');
+                    
+                    // Add input filtering to allow only digits and limit to 4 characters
+                    ticketInput.addEventListener('input', function(e) {
+                        // Remove any non-digit characters
+                        let value = this.value.replace(/\D/g, '');
+                        // Limit to 4 digits
+                        if (value.length > 4) {
+                            value = value.slice(0, 4);
+                        }
+                        this.value = value;
+                    });
+                }
+                
+                // Add event listeners
+                ticketInput.addEventListener('input', () => {
+                    isDirty = true;
+                    notifyPreviewUpdate();
+                });
+                
+                // Add real-time 4-digit validation for 7th-10th prizes
+                if (numberPadPrizes.includes(prizeType)) {
+                    ticketInput.addEventListener('input', function() {
+                        // Clear error on input
+                        clearInputError(this);
+                        // Validate after a short delay
+                        clearTimeout(this.validationTimeout);
+                        this.validationTimeout = setTimeout(() => {
+                            validateFourDigitInput(this, prizeType);
+                        }, 500);
+                    });
+                    
+                    // Also validate on blur
+                    ticketInput.addEventListener('blur', function() {
+                        validateFourDigitInput(this, prizeType);
+                    });
+                }
+                
+                // Apply no spaces functionality
+                applyNoSpacesToInput(ticketInput);
+                
+                // Set up auto-save for 4th-10th prizes
+                const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+                if (autoSavePrizes.includes(prizeType)) {
+                    setupAutoSaveForInput(ticketInput, prizeType);
+                }
+                
+                ticketGroup.appendChild(ticketInput);
+                newRow.appendChild(ticketGroup);
             }
-        } else {
-            // Use existing row
-            targetRow = existingRows[rowIndex];
-        }
-        
-        // Safety check: ensure we don't add more than 3 fields to any row
-        const currentFieldsInRow = targetRow.querySelectorAll('.form-group.ticket-field-group').length;
-        if (currentFieldsInRow >= 3) {
-            console.warn('Attempted to add more than 3 fields to a row. Creating new row instead.');
-            targetRow = document.createElement('div');
-            targetRow.className = 'form-row ticket-row';
-            targetRow.setAttribute('data-max-fields', '3');
             
-            let targetEntry = entriesContainer.querySelector('.prize-entry');
-            if (!targetEntry) {
-                targetEntry = document.createElement('div');
-                targetEntry.className = 'prize-entry';
-                targetEntry.setAttribute('data-entry-index', 0);
-                entriesContainer.appendChild(targetEntry);
-            }
-            targetEntry.appendChild(targetRow);
+            // Add the completed row to the target entry (where the last row was found)
+            targetEntry.appendChild(newRow);
         }
-        
-        // Create the ticket field group
-        const ticketGroup = document.createElement('div');
-        ticketGroup.className = 'form-group ticket-field-group';
-        
-        const ticketInput = document.createElement('input');
-        ticketInput.type = 'text';
-        ticketInput.name = `${prizeType}_ticket_number[]`;
-        ticketInput.id = `${prizeType}_ticket_${fieldIndex}`;
-        ticketInput.className = 'form-control';
-        
-        // Add event listeners
-        ticketInput.addEventListener('input', () => {
-            isDirty = true;
-            notifyPreviewUpdate();
-        });
-        
-        // Apply no spaces functionality
-        applyNoSpacesToInput(ticketInput);
-        
-        // Set up auto-save for 4th-10th prizes
-        const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-        if (autoSavePrizes.includes(prizeType)) {
-            setupAutoSaveForInput(ticketInput, prizeType);
-        }
-        
-        ticketGroup.appendChild(ticketInput);
-        targetRow.appendChild(ticketGroup);
     }
     
     // Mark form as dirty and update preview
@@ -798,6 +956,9 @@ function processBulkEntries(prizeType) {
             
             const formRow = document.createElement('div');
             formRow.className = 'form-row ticket-row';
+            formRow.style.display = 'flex !important';
+            formRow.style.flexWrap = 'nowrap !important';
+            formRow.style.maxWidth = '100% !important';
             
             // Add amount field logic:
             // - Only add visible amount field if this is the very first entry in the entire container
@@ -857,6 +1018,9 @@ function processBulkEntries(prizeType) {
                 if (rowIndex > 0) {
                     currentFormRow = document.createElement('div');
                     currentFormRow.className = 'form-row ticket-row';
+                    currentFormRow.style.display = 'flex !important';
+                    currentFormRow.style.flexWrap = 'nowrap !important';
+                    currentFormRow.style.maxWidth = '100% !important';
                     entry.appendChild(currentFormRow);
                 }
                 
@@ -864,12 +1028,42 @@ function processBulkEntries(prizeType) {
                 for (let fieldIndex = 0; fieldIndex < 3; fieldIndex++) {
                     const ticketGroup = document.createElement('div');
                     ticketGroup.className = 'form-group ticket-field-group';
+                    ticketGroup.style.flex = '1 1 33.333% !important';
+                    ticketGroup.style.minWidth = '0 !important';
+                    ticketGroup.style.maxWidth = '33.333% !important';
+                    ticketGroup.style.boxSizing = 'border-box !important';
                     
                     const ticketInput = document.createElement('input');
+                    // Use text input with numeric inputmode for 7th-10th prizes to show number pad on mobile
+                    const numberPadPrizes = ['7th', '8th', '9th', '10th'];
                     ticketInput.type = 'text';
+                    
+                    // Add inputmode for number pad on mobile
+                    if (numberPadPrizes.includes(prizeType)) {
+                        ticketInput.setAttribute('inputmode', 'numeric');
+                    }
                     ticketInput.name = `${prizeType}_ticket_number[]`;
                     ticketInput.id = `${prizeType}_ticket_bulk_${(hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex}_${rowIndex}_${fieldIndex}`;
                     ticketInput.className = 'form-control';
+                    
+                    // Add 4-digit validation for 7th-10th prizes
+                    if (numberPadPrizes.includes(prizeType)) {
+                        ticketInput.setAttribute('maxlength', '4');
+                        ticketInput.setAttribute('placeholder', '4 digits');
+                        ticketInput.setAttribute('title', 'Enter exactly 4 digits');
+                        ticketInput.setAttribute('pattern', '[0-9]{4}');
+                        
+                        // Add input filtering to allow only digits and limit to 4 characters
+                        ticketInput.addEventListener('input', function(e) {
+                            // Remove any non-digit characters
+                            let value = this.value.replace(/\D/g, '');
+                            // Limit to 4 digits
+                            if (value.length > 4) {
+                                value = value.slice(0, 4);
+                            }
+                            this.value = value;
+                        });
+                    }
                     
                     // Calculate ticket index for this field
                     const ticketIndex = (rowIndex * 3) + fieldIndex;
@@ -881,6 +1075,13 @@ function processBulkEntries(prizeType) {
                     
                     applyNoSpacesToInput(ticketInput);
                     ticketInput.setAttribute('data-bulk-field', 'true');
+                    
+                    // Add real-time 4-digit validation for 7th-10th prizes in bulk entry
+                    if (numberPadPrizes.includes(prizeType)) {
+                        ticketInput.addEventListener('input', function() {
+                            validateFourDigitInput(this, prizeType);
+                        });
+                    }
                     
                     // Set up event listeners for form changes
                     ticketInput.addEventListener('change', () => {
@@ -1050,6 +1251,7 @@ function processBulkEntries(prizeType) {
 
     notifyPreviewUpdate();
 }
+
 
 /**
  * Set up change tracking on form elements
@@ -1763,6 +1965,139 @@ function applyNoSpacesToInput(input) {
         
         // Handle blur to clean up any remaining spaces
         input.addEventListener('blur', removeSpaces);
+    }
+}
+
+/**
+ * Validate 4-digit input for 7th-10th prizes with enhanced error messaging
+ */
+function validateFourDigitInput(input, prizeType) {
+    const value = input.value.trim();
+    
+    // Clear any existing error styling
+    clearInputError(input);
+    
+    // If empty, just show default placeholder
+    if (value === '') {
+        input.title = 'Enter exactly 4 digits';
+        return;
+    }
+    
+    // Check for non-numeric characters
+    if (!/^\d+$/.test(value)) {
+        showInputError(input, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
+        return;
+    }
+    
+    // Check length - must be exactly 4 digits
+    if (value.length !== 4) {
+        if (value.length < 4) {
+            showInputError(input, `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digit${value.length === 1 ? '' : 's'}. Please add ${4 - value.length} more digit${4 - value.length === 1 ? '' : 's'}.`);
+        } else {
+            showInputError(input, `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digits. Please remove ${value.length - 4} digit${value.length - 4 === 1 ? '' : 's'}.`);
+        }
+        return;
+    }
+    
+    // If we reach here, validation passed
+    input.title = `${prizeType} prize ticket number: ${value} ✓`;
+}
+
+/**
+ * Show error styling and message for input validation
+ */
+function showInputError(input, message) {
+    // Apply error styling
+    input.style.borderColor = '#dc3545';
+    input.style.backgroundColor = '#fff5f5';
+    input.style.boxShadow = '0 0 0 0.2rem rgba(220, 53, 69, 0.25)';
+    input.title = message;
+    
+    // Show inline error message
+    showInlineErrorMessage(input, message);
+}
+
+/**
+ * Clear error styling from input
+ */
+function clearInputError(input) {
+    input.style.borderColor = '';
+    input.style.backgroundColor = '';
+    input.style.boxShadow = '';
+    
+    // Clear inline error message
+    clearInlineErrorMessage(input);
+}
+
+/**
+ * Show inline error message below input
+ */
+function showInlineErrorMessage(input, message) {
+    // Remove existing error message
+    clearInlineErrorMessage(input);
+    
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'inline-error-message';
+    errorDiv.innerHTML = `<span class="error-icon">❌</span> ${message}`;
+    errorDiv.style.cssText = `
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        border-radius: 0 0 4px 4px;
+        padding: 8px 12px;
+        font-size: 12px;
+        line-height: 1.4;
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        animation: slideDown 0.2s ease-out;
+        word-wrap: break-word;
+    `;
+    
+    // Add animation keyframes if not already added
+    if (!document.getElementById('validation-animations')) {
+        const style = document.createElement('style');
+        style.id = 'validation-animations';
+        style.textContent = `
+            @keyframes slideDown {
+                from { opacity: 0; transform: translateY(-5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Make parent position relative to position error message
+    const parent = input.parentElement;
+    if (parent && window.getComputedStyle(parent).position === 'static') {
+        parent.style.position = 'relative';
+    }
+    
+    parent.appendChild(errorDiv);
+}
+
+/**
+ * Clear inline error message
+ */
+function clearInlineErrorMessage(input) {
+    const parent = input.parentElement;
+    if (parent) {
+        const existingError = parent.querySelector('.inline-error-message');
+        if (existingError) {
+            existingError.style.animation = 'fadeOut 0.2s ease-out';
+            setTimeout(() => {
+                if (existingError.parentNode) {
+                    existingError.parentNode.removeChild(existingError);
+                }
+            }, 200);
+        }
     }
 }
 

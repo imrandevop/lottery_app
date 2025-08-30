@@ -169,6 +169,15 @@ def handle_form_submission(request):
             ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
             places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
             
+            # SERVER-SIDE VALIDATION: Check 4-digit requirement for 7th-10th prizes
+            four_digit_prizes = ['7th', '8th', '9th', '10th']
+            if prize_type in four_digit_prizes:
+                for ticket in ticket_numbers:
+                    if ticket and (not re.match(r'^\d{4}$', ticket) or len(ticket) != 4):
+                        prize_name = f'{prize_type.capitalize()}'
+                        messages.error(request, f'⚠️ {prize_name} prize requires exactly 4 digits! Ticket "{ticket}" is invalid. Please correct it before saving.')
+                        return redirect(request.path)
+            
             # Handle special logic for consolation and 4th-10th prizes
             special_prizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
             
@@ -482,6 +491,15 @@ def handle_edit_form_submission(request, lottery_result):
             prize_amounts = clean_list_data(request.POST.getlist(f'{prize_type}_prize_amount[]'))
             ticket_numbers = clean_list_data(request.POST.getlist(f'{prize_type}_ticket_number[]'))
             places = clean_list_data(request.POST.getlist(f'{prize_type}_place[]'))
+            
+            # SERVER-SIDE VALIDATION: Check 4-digit requirement for 7th-10th prizes
+            four_digit_prizes = ['7th', '8th', '9th', '10th']
+            if prize_type in four_digit_prizes:
+                for ticket in ticket_numbers:
+                    if ticket and (not re.match(r'^\d{4}$', ticket) or len(ticket) != 4):
+                        prize_name = f'{prize_type.capitalize()}'
+                        messages.error(request, f'⚠️ {prize_name} prize requires exactly 4 digits! Ticket "{ticket}" is invalid. Please correct it before saving.')
+                        return redirect(request.path)
             
             
             # Handle special logic for consolation and 4th-10th prizes

@@ -260,6 +260,21 @@
     height: 42px;
 }
 
+/* Special styling for 4-digit ticket inputs (7th-10th prizes) */
+.lottery-form-container input[type="text"][maxlength="4"][inputmode="numeric"] {
+    text-align: center;
+    font-weight: 500;
+    letter-spacing: 1px;
+}
+
+.lottery-form-container input[type="text"][maxlength="4"][inputmode="numeric"]::placeholder {
+    text-align: center;
+    font-weight: normal;
+    letter-spacing: normal;
+    color: #6c757d;
+    font-style: italic;
+}
+
 .lottery-form-container .form-control:focus {
     outline: none;
     border-color: #80bdff;
