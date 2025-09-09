@@ -523,19 +523,14 @@ function addMultipleFields(prizeType, numFields) {
                     notifyPreviewUpdate();
                 });
                 
-                // Add real-time 4-digit validation for 7th-10th prizes
+                // Add 4-digit validation for 7th-10th prizes
                 if (numberPadPrizes.includes(prizeType)) {
                     ticketInput.addEventListener('input', function() {
                         // Clear error on input
                         clearInputError(this);
-                        // Validate after a short delay
-                        clearTimeout(this.validationTimeout);
-                        this.validationTimeout = setTimeout(() => {
-                            validateFourDigitInput(this, prizeType);
-                        }, 500);
                     });
                     
-                    // Also validate on blur
+                    // Validate on blur (when moving to next field)
                     ticketInput.addEventListener('blur', function() {
                         validateFourDigitInput(this, prizeType);
                     });
@@ -621,19 +616,14 @@ function addMultipleFields(prizeType, numFields) {
                     notifyPreviewUpdate();
                 });
                 
-                // Add real-time 4-digit validation for 7th-10th prizes
+                // Add 4-digit validation for 7th-10th prizes
                 if (numberPadPrizes.includes(prizeType)) {
                     ticketInput.addEventListener('input', function() {
                         // Clear error on input
                         clearInputError(this);
-                        // Validate after a short delay
-                        clearTimeout(this.validationTimeout);
-                        this.validationTimeout = setTimeout(() => {
-                            validateFourDigitInput(this, prizeType);
-                        }, 500);
                     });
                     
-                    // Also validate on blur
+                    // Validate on blur (when moving to next field)
                     ticketInput.addEventListener('blur', function() {
                         validateFourDigitInput(this, prizeType);
                     });
@@ -1076,9 +1066,15 @@ function processBulkEntries(prizeType) {
                     applyNoSpacesToInput(ticketInput);
                     ticketInput.setAttribute('data-bulk-field', 'true');
                     
-                    // Add real-time 4-digit validation for 7th-10th prizes in bulk entry
+                    // Add 4-digit validation for 7th-10th prizes in bulk entry
                     if (numberPadPrizes.includes(prizeType)) {
                         ticketInput.addEventListener('input', function() {
+                            // Clear error on input
+                            clearInputError(this);
+                        });
+                        
+                        // Validate on blur (when moving to next field)
+                        ticketInput.addEventListener('blur', function() {
                             validateFourDigitInput(this, prizeType);
                         });
                     }

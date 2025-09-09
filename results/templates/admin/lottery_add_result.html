@@ -332,6 +332,8 @@ document.addEventListener('DOMContentLoaded', function() {
         form.addEventListener('submit', function(e) {
             console.log('Form submission - checking 4-digit validation');
             const fourDigitPrizes = ['7th', '8th', '9th', '10th'];
+            let validationFailed = false;
+            
             for (const prizeType of fourDigitPrizes) {
                 const inputs = document.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
                 for (const input of inputs) {
@@ -339,19 +341,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (value !== '') {
                         // Check for non-numeric characters
                         if (!/^\d+$/.test(value)) {
-                            e.preventDefault();
+                            validationFailed = true;
                             const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
                             alert(`ERROR: ${prizeTypeName} prize ticket "${value}" contains invalid characters. Only numbers (0-9) are allowed.`);
                             if (typeof showInputError === 'function') {
                                 showInputError(input, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
                             }
                             input.focus();
-                            return false;
+                            break;
                         }
                         
                         // Check if exactly 4 digits
                         if (value.length !== 4) {
-                            e.preventDefault();
+                            validationFailed = true;
                             const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
                             let message = '';
                             if (value.length < 4) {
@@ -367,11 +369,22 @@ document.addEventListener('DOMContentLoaded', function() {
                                 showInputError(input, detailMessage);
                             }
                             input.focus();
-                            return false;
+                            break;
                         }
                     }
                 }
+                if (validationFailed) break;
             }
+            
+            // If validation failed, prevent form submission
+            if (validationFailed) {
+                e.preventDefault();
+                return false;
+            }
+            
+            // If validation passed, allow the form to continue to the main handler
+            // The validateAndSubmitWithNotification function in lottery_admin.js will handle the actual submission
+            console.log('4-digit validation passed, allowing main form handler to proceed');
         });
     }
 });
