@@ -10,6 +10,63 @@ const entryCounters = {};
 let isDirty = false;
 
 /**
+ * Get the next ticket number for a specific prize type (4th-10th only)
+ */
+function getNextTicketNumber(prizeType) {
+    const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    if (!numberedPrizes.includes(prizeType)) {
+        return null;
+    }
+    
+    const entriesContainer = document.getElementById(prizeType + '-entries');
+    if (!entriesContainer) {
+        return 1;
+    }
+    
+    const existingTickets = entriesContainer.querySelectorAll('.ticket-field-group');
+    return existingTickets.length + 1;
+}
+
+/**
+ * Renumber all existing ticket fields for a prize type (4th-10th only)
+ */
+function renumberTicketFields(prizeType) {
+    const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    if (!numberedPrizes.includes(prizeType)) {
+        return;
+    }
+    
+    const entriesContainer = document.getElementById(prizeType + '-entries');
+    if (!entriesContainer) {
+        return;
+    }
+    
+    const ticketGroups = entriesContainer.querySelectorAll('.ticket-field-group');
+    ticketGroups.forEach((ticketGroup, index) => {
+        // Remove existing number label if present
+        const existingLabel = ticketGroup.querySelector('.ticket-number-label');
+        if (existingLabel) {
+            existingLabel.remove();
+        }
+        
+        // Add new number label
+        const numberLabel = document.createElement('span');
+        numberLabel.textContent = index + 1;
+        numberLabel.className = 'ticket-number-label';
+        // Simple white text in black circle - works for both light and dark modes
+                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
+        
+        ticketGroup.style.position = 'relative';
+        const ticketInput = ticketGroup.querySelector('input');
+        if (ticketInput) {
+            ticketInput.style.paddingLeft = '25px';
+        }
+        
+        ticketGroup.insertBefore(numberLabel, ticketGroup.firstChild);
+    });
+}
+
+/**
  * Initialize the lottery admin interface - ENHANCED VERSION ONLY
  */
 function initLotteryAdmin() {
@@ -36,6 +93,12 @@ function initLotteryAdmin() {
 
     // Check if we're in edit mode and load existing entries
     loadExistingPrizeEntries();
+    
+    // Add numbering to existing ticket fields for 4th-10th prizes
+    const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    numberedPrizes.forEach(prizeType => {
+        renumberTicketFields(prizeType);
+    });
     
     // Set default prize amounts for 1st, 2nd, 3rd prizes (only for new entries, not edit mode)
     setDefaultPrizeAmounts();
@@ -172,7 +235,6 @@ function validateAndSubmitWithNotification(e) {
                 if (!/^\d+$/.test(value)) {
                     const prizeTypeName = prizeType.charAt(0).toUpperCase() + prizeType.slice(1);
                     showNotification(`❌ FORM BLOCKED: ${prizeTypeName} prize ticket "${value}" contains invalid characters. Only numbers (0-9) are allowed.`, 'error');
-                    showInputError(ticketInput, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
                     ticketInput.focus();
                     validationFailed = true;
                     break;
@@ -193,7 +255,6 @@ function validateAndSubmitWithNotification(e) {
                     }
                     
                     showNotification(errorMessage, 'error');
-                    showInputError(ticketInput, detailMessage);
                     ticketInput.focus();
                     validationFailed = true;
                     break;
@@ -531,8 +592,15 @@ function addMultipleFields(prizeType, numFields) {
                     });
                     
                     // Validate on blur (when moving to next field)
-                    ticketInput.addEventListener('blur', function() {
-                        validateFourDigitInput(this, prizeType);
+                    ticketInput.addEventListener('blur', function(e) {
+                        // Only validate if moving to another element, not if clicking outside the form area
+                        setTimeout(() => {
+                            const activeElement = document.activeElement;
+                            // Only validate if focus moved to another input field or form element
+                            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'BUTTON' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA')) {
+                                validateFourDigitInput(this, prizeType);
+                            }
+                        }, 10);
                     });
                 }
                 
@@ -543,6 +611,21 @@ function addMultipleFields(prizeType, numFields) {
                 const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
                 if (autoSavePrizes.includes(prizeType)) {
                     setupAutoSaveForInput(ticketInput, prizeType);
+                }
+                
+                // Add numbering for 4th-10th prizes
+                const ticketNumber = getNextTicketNumber(prizeType);
+                if (ticketNumber !== null) {
+                    const numberLabel = document.createElement('span');
+                    numberLabel.textContent = ticketNumber;
+                    numberLabel.className = 'ticket-number-label';
+                    // Simple white text in black circle - works for both light and dark modes
+                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
+                    
+                    ticketGroup.style.position = 'relative';
+                    ticketInput.style.paddingLeft = '25px';
+                    
+                    ticketGroup.appendChild(numberLabel);
                 }
                 
                 ticketGroup.appendChild(ticketInput);
@@ -624,8 +707,15 @@ function addMultipleFields(prizeType, numFields) {
                     });
                     
                     // Validate on blur (when moving to next field)
-                    ticketInput.addEventListener('blur', function() {
-                        validateFourDigitInput(this, prizeType);
+                    ticketInput.addEventListener('blur', function(e) {
+                        // Only validate if moving to another element, not if clicking outside the form area
+                        setTimeout(() => {
+                            const activeElement = document.activeElement;
+                            // Only validate if focus moved to another input field or form element
+                            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'BUTTON' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA')) {
+                                validateFourDigitInput(this, prizeType);
+                            }
+                        }, 10);
                     });
                 }
                 
@@ -636,6 +726,21 @@ function addMultipleFields(prizeType, numFields) {
                 const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
                 if (autoSavePrizes.includes(prizeType)) {
                     setupAutoSaveForInput(ticketInput, prizeType);
+                }
+                
+                // Add numbering for 4th-10th prizes
+                const ticketNumber = getNextTicketNumber(prizeType);
+                if (ticketNumber !== null) {
+                    const numberLabel = document.createElement('span');
+                    numberLabel.textContent = ticketNumber;
+                    numberLabel.className = 'ticket-number-label';
+                    // Simple white text in black circle - works for both light and dark modes
+                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
+                    
+                    ticketGroup.style.position = 'relative';
+                    ticketInput.style.paddingLeft = '25px';
+                    
+                    ticketGroup.appendChild(numberLabel);
                 }
                 
                 ticketGroup.appendChild(ticketInput);
@@ -650,6 +755,9 @@ function addMultipleFields(prizeType, numFields) {
     // Mark form as dirty and update preview
     isDirty = true;
     notifyPreviewUpdate();
+    
+    // Renumber all ticket fields for 4th-10th prizes after adding new fields
+    renumberTicketFields(prizeType);
 }
 
 /**
@@ -757,6 +865,9 @@ function clearAllFields(prizeType) {
     if (hasExtraFields) clearedActions.push(`${fieldCount - 3} extra fields removed`);
     
     showNotification(`${prizeType} prize: ${clearedActions.join(', ')}. Reset to 3 fields.`, 'success');
+    
+    // Renumber remaining ticket fields for 4th-10th prizes
+    renumberTicketFields(prizeType);
 }
 
 
@@ -1060,6 +1171,21 @@ function processBulkEntries(prizeType) {
                     const ticketValue = ticketIndex < entryTickets.length ? entryTickets[ticketIndex].trim() : '';
                     ticketInput.value = ticketValue;
                     
+                    // Add numbering for 4th-10th prizes
+                    const ticketNumber = getNextTicketNumber(prizeType);
+                    if (ticketNumber !== null) {
+                        const numberLabel = document.createElement('span');
+                        numberLabel.textContent = ticketNumber;
+                        numberLabel.className = 'ticket-number-label';
+                        // Simple white text in black circle - works for both light and dark modes
+                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
+                        
+                        ticketGroup.style.position = 'relative';
+                        ticketInput.style.paddingLeft = '25px';
+                        
+                        ticketGroup.appendChild(numberLabel);
+                    }
+                    
                     ticketGroup.appendChild(ticketInput);
                     currentFormRow.appendChild(ticketGroup);
                     
@@ -1074,8 +1200,15 @@ function processBulkEntries(prizeType) {
                         });
                         
                         // Validate on blur (when moving to next field)
-                        ticketInput.addEventListener('blur', function() {
-                            validateFourDigitInput(this, prizeType);
+                        ticketInput.addEventListener('blur', function(e) {
+                            // Only validate if moving to another element, not if clicking outside the form area
+                            setTimeout(() => {
+                                const activeElement = document.activeElement;
+                                // Only validate if focus moved to another input field or form element
+                                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'BUTTON' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA')) {
+                                    validateFourDigitInput(this, prizeType);
+                                }
+                            }, 10);
                         });
                     }
                     
@@ -1246,6 +1379,9 @@ function processBulkEntries(prizeType) {
     }
 
     notifyPreviewUpdate();
+    
+    // Renumber all ticket fields for 4th-10th prizes after bulk processing
+    renumberTicketFields(prizeType);
 }
 
 
@@ -1979,19 +2115,15 @@ function validateFourDigitInput(input, prizeType) {
         return;
     }
     
-    // Check for non-numeric characters
+    // Check for non-numeric characters  
     if (!/^\d+$/.test(value)) {
-        showInputError(input, `${prizeType} prize ticket must contain only numbers (0-9). Letters and special characters are not allowed.`);
+        // Just clear any existing errors, don't show new inline errors
         return;
     }
     
     // Check length - must be exactly 4 digits
     if (value.length !== 4) {
-        if (value.length < 4) {
-            showInputError(input, `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digit${value.length === 1 ? '' : 's'}. Please add ${4 - value.length} more digit${4 - value.length === 1 ? '' : 's'}.`);
-        } else {
-            showInputError(input, `${prizeType} prize requires exactly 4 digits. You entered ${value.length} digits. Please remove ${value.length - 4} digit${value.length - 4 === 1 ? '' : 's'}.`);
-        }
+        // Just clear any existing errors, don't show new inline errors
         return;
     }
     
@@ -2153,6 +2285,26 @@ function autoSaveTicket(ticketInput, prizeType) {
     // Don't save empty ticket numbers
     if (!ticketNumber) {
         return;
+    }
+    
+    // Validate 4-digit requirement for 7th-10th prizes before auto-saving
+    const fourDigitPrizes = ['7th', '8th', '9th', '10th'];
+    if (fourDigitPrizes.includes(prizeType)) {
+        // Check for non-numeric characters
+        if (!/^\d+$/.test(ticketNumber)) {
+            showAutoSaveError(ticketInput, `${prizeType} prize ticket must contain only numbers (0-9). Auto-save cancelled.`);
+            return;
+        }
+        
+        // Check length - must be exactly 4 digits
+        if (ticketNumber.length !== 4) {
+            if (ticketNumber.length < 4) {
+                showAutoSaveError(ticketInput, `${prizeType} prize requires exactly 4 digits. You entered ${ticketNumber.length} digit${ticketNumber.length === 1 ? '' : 's'}. Auto-save cancelled.`);
+            } else {
+                showAutoSaveError(ticketInput, `${prizeType} prize requires exactly 4 digits. You entered ${ticketNumber.length} digits. Auto-save cancelled.`);
+            }
+            return;
+        }
     }
     
     // Get result ID (required for auto-save)
