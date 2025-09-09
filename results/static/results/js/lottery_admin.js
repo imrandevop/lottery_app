@@ -9,62 +9,83 @@
 const entryCounters = {};
 let isDirty = false;
 
-/**
- * Get the next ticket number for a specific prize type (4th-10th only)
- */
-function getNextTicketNumber(prizeType) {
-    const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-    if (!numberedPrizes.includes(prizeType)) {
-        return null;
-    }
-    
-    const entriesContainer = document.getElementById(prizeType + '-entries');
-    if (!entriesContainer) {
-        return 1;
-    }
-    
-    const existingTickets = entriesContainer.querySelectorAll('.ticket-field-group');
-    return existingTickets.length + 1;
-}
 
 /**
  * Renumber all existing ticket fields for a prize type (4th-10th only)
  */
 function renumberTicketFields(prizeType) {
+    console.log(`[DEBUG] renumberTicketFields called for ${prizeType}`);
     const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     if (!numberedPrizes.includes(prizeType)) {
+        console.log(`[DEBUG] ${prizeType} not in numbered prizes list`);
         return;
     }
     
     const entriesContainer = document.getElementById(prizeType + '-entries');
     if (!entriesContainer) {
+        console.log(`[DEBUG] No entries container found for ${prizeType}`);
         return;
     }
     
-    const ticketGroups = entriesContainer.querySelectorAll('.ticket-field-group');
-    ticketGroups.forEach((ticketGroup, index) => {
-        // Remove existing number label if present
-        const existingLabel = ticketGroup.querySelector('.ticket-number-label');
-        if (existingLabel) {
-            existingLabel.remove();
+    // Remove existing ticket number labels ONLY from this prize type
+    const existingLabels = entriesContainer.querySelectorAll('.ticket-number-label');
+    console.log(`[DEBUG] Removing ${existingLabels.length} existing labels from ${prizeType}`);
+    existingLabels.forEach(label => {
+        label.remove();
+        console.log(`[DEBUG] Removed existing label from ${prizeType}`);
+    });
+    
+    // Find ALL ticket number inputs directly
+    const ticketInputs = entriesContainer.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+    console.log(`[DEBUG] ${prizeType}: Found ${ticketInputs.length} ticket inputs to number`);
+    
+    // Number each ticket input sequentially
+    ticketInputs.forEach((input, index) => {
+        const formGroup = input.closest('.form-group') || input.parentElement;
+        if (!formGroup) {
+            console.log(`[DEBUG] No form group found for input ${index + 1}`);
+            return;
         }
         
-        // Add new number label
+        // Create number label
         const numberLabel = document.createElement('span');
-        numberLabel.textContent = index + 1;
+        numberLabel.textContent = index + 1; // 1, 2, 3, 4, 5, 6...
         numberLabel.className = 'ticket-number-label';
-        // Simple white text in black circle - works for both light and dark modes
-                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
+        numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
         
-        ticketGroup.style.position = 'relative';
-        const ticketInput = ticketGroup.querySelector('input');
-        if (ticketInput) {
-            ticketInput.style.paddingLeft = '25px';
-        }
+        // Ensure proper styling
+        formGroup.style.position = 'relative';
+        input.style.paddingLeft = '25px';
         
-        ticketGroup.insertBefore(numberLabel, ticketGroup.firstChild);
+        // Insert the number label
+        formGroup.insertBefore(numberLabel, formGroup.firstChild);
+        
+        console.log(`[DEBUG] Added number ${index + 1} to ticket input`);
     });
 }
+
+/**
+ * Test function to manually renumber 6th prize fields - for debugging
+ */
+function testRenumber6th() {
+    console.log('[DEBUG] Manually calling renumberTicketFields for 6th prize');
+    renumberTicketFields('6th');
+}
+
+/**
+ * Renumber all prize types
+ */
+function renumberAllPrizes() {
+    console.log('[DEBUG] Renumbering all prize types');
+    const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    numberedPrizes.forEach(prizeType => {
+        renumberTicketFields(prizeType);
+    });
+}
+
+// Make functions globally available for testing in console
+window.testRenumber6th = testRenumber6th;
+window.renumberAllPrizes = renumberAllPrizes;
 
 /**
  * Initialize the lottery admin interface - ENHANCED VERSION ONLY
@@ -96,15 +117,23 @@ function initLotteryAdmin() {
     
     // Add numbering to existing ticket fields for 4th-10th prizes
     const numberedPrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-    numberedPrizes.forEach(prizeType => {
-        renumberTicketFields(prizeType);
-    });
+    
+    // Add a small delay to ensure DOM is fully rendered
+    setTimeout(() => {
+        console.log('[DEBUG] Starting initial numbering after DOM load');
+        numberedPrizes.forEach(prizeType => {
+            renumberTicketFields(prizeType);
+        });
+    }, 100);
     
     // Set default prize amounts for 1st, 2nd, 3rd prizes (only for new entries, not edit mode)
     setDefaultPrizeAmounts();
     
     // Set up auto-save for ticket number inputs (4th-10th prizes only)
     setupAutoSaveForTicketInputs();
+
+    // Apply center text alignment to existing ticket inputs for 1st-5th prizes
+    applyCenterTextAlignmentToExistingInputs();
 
     // Add ENHANCED form submission handler (only one)
     const form = document.getElementById('lotteryForm');
@@ -559,6 +588,12 @@ function addMultipleFields(prizeType, numFields) {
                 ticketInput.id = `${prizeType}_ticket_${Date.now()}_lastrow_${i}`;
                 ticketInput.className = 'form-control';
                 
+                // Add center text alignment for 1st-5th prizes
+                const centerAlignPrizes = ['1st', '2nd', '3rd', '4th', '5th'];
+                if (centerAlignPrizes.includes(prizeType)) {
+                    ticketInput.style.textAlign = 'center';
+                }
+                
                 // Add 4-digit validation for 7th-10th prizes
                 if (numberPadPrizes.includes(prizeType)) {
                     ticketInput.setAttribute('maxlength', '4');
@@ -613,20 +648,9 @@ function addMultipleFields(prizeType, numFields) {
                     setupAutoSaveForInput(ticketInput, prizeType);
                 }
                 
-                // Add numbering for 4th-10th prizes
-                const ticketNumber = getNextTicketNumber(prizeType);
-                if (ticketNumber !== null) {
-                    const numberLabel = document.createElement('span');
-                    numberLabel.textContent = ticketNumber;
-                    numberLabel.className = 'ticket-number-label';
-                    // Simple white text in black circle - works for both light and dark modes
-                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
-                    
-                    ticketGroup.style.position = 'relative';
-                    ticketInput.style.paddingLeft = '25px';
-                    
-                    ticketGroup.appendChild(numberLabel);
-                }
+                // Numbering will be handled by renumberTicketFields function
+                ticketGroup.style.position = 'relative';
+                ticketInput.style.paddingLeft = '25px';
                 
                 ticketGroup.appendChild(ticketInput);
                 lastRow.appendChild(ticketGroup);
@@ -674,6 +698,12 @@ function addMultipleFields(prizeType, numFields) {
                 ticketInput.id = `${prizeType}_ticket_${Date.now()}_${rowIdx}_${fieldIdx}`;
                 ticketInput.className = 'form-control';
                 
+                // Add center text alignment for 1st-5th prizes
+                const centerAlignPrizes = ['1st', '2nd', '3rd', '4th', '5th'];
+                if (centerAlignPrizes.includes(prizeType)) {
+                    ticketInput.style.textAlign = 'center';
+                }
+                
                 // Add 4-digit validation for 7th-10th prizes
                 if (numberPadPrizes.includes(prizeType)) {
                     ticketInput.setAttribute('maxlength', '4');
@@ -728,20 +758,9 @@ function addMultipleFields(prizeType, numFields) {
                     setupAutoSaveForInput(ticketInput, prizeType);
                 }
                 
-                // Add numbering for 4th-10th prizes
-                const ticketNumber = getNextTicketNumber(prizeType);
-                if (ticketNumber !== null) {
-                    const numberLabel = document.createElement('span');
-                    numberLabel.textContent = ticketNumber;
-                    numberLabel.className = 'ticket-number-label';
-                    // Simple white text in black circle - works for both light and dark modes
-                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
-                    
-                    ticketGroup.style.position = 'relative';
-                    ticketInput.style.paddingLeft = '25px';
-                    
-                    ticketGroup.appendChild(numberLabel);
-                }
+                // Numbering will be handled by renumberTicketFields function
+                ticketGroup.style.position = 'relative';
+                ticketInput.style.paddingLeft = '25px';
                 
                 ticketGroup.appendChild(ticketInput);
                 newRow.appendChild(ticketGroup);
@@ -1147,6 +1166,12 @@ function processBulkEntries(prizeType) {
                     ticketInput.id = `${prizeType}_ticket_bulk_${(hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex}_${rowIndex}_${fieldIndex}`;
                     ticketInput.className = 'form-control';
                     
+                    // Add center text alignment for 1st-5th prizes
+                    const centerAlignPrizes = ['1st', '2nd', '3rd', '4th', '5th'];
+                    if (centerAlignPrizes.includes(prizeType)) {
+                        ticketInput.style.textAlign = 'center';
+                    }
+                    
                     // Add 4-digit validation for 7th-10th prizes
                     if (numberPadPrizes.includes(prizeType)) {
                         ticketInput.setAttribute('maxlength', '4');
@@ -1171,20 +1196,9 @@ function processBulkEntries(prizeType) {
                     const ticketValue = ticketIndex < entryTickets.length ? entryTickets[ticketIndex].trim() : '';
                     ticketInput.value = ticketValue;
                     
-                    // Add numbering for 4th-10th prizes
-                    const ticketNumber = getNextTicketNumber(prizeType);
-                    if (ticketNumber !== null) {
-                        const numberLabel = document.createElement('span');
-                        numberLabel.textContent = ticketNumber;
-                        numberLabel.className = 'ticket-number-label';
-                        // Simple white text in black circle - works for both light and dark modes
-                    numberLabel.style.cssText = 'position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; color: white; font-weight: bold; z-index: 1; background: #000; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;';
-                        
-                        ticketGroup.style.position = 'relative';
-                        ticketInput.style.paddingLeft = '25px';
-                        
-                        ticketGroup.appendChild(numberLabel);
-                    }
+                    // Numbering will be handled by renumberTicketFields function
+                    ticketGroup.style.position = 'relative';
+                    ticketInput.style.paddingLeft = '25px';
                     
                     ticketGroup.appendChild(ticketInput);
                     currentFormRow.appendChild(ticketGroup);
@@ -2262,6 +2276,24 @@ function showSpaceNotification() {
     setTimeout(() => {
         notification.style.opacity = '0';
     }, 1500);
+}
+
+/**
+ * Apply center text alignment to existing ticket inputs for 1st-5th prizes
+ */
+function applyCenterTextAlignmentToExistingInputs() {
+    const centerAlignPrizes = ['1st', '2nd', '3rd', '4th', '5th'];
+    
+    centerAlignPrizes.forEach(prizeType => {
+        const entriesContainer = document.getElementById(prizeType + '-entries');
+        if (!entriesContainer) return;
+        
+        // Find all ticket number inputs for this prize type
+        const ticketInputs = entriesContainer.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+        ticketInputs.forEach(ticketInput => {
+            ticketInput.style.textAlign = 'center';
+        });
+    });
 }
 
 // Initialize when DOM is loaded - SINGLE INITIALIZATION

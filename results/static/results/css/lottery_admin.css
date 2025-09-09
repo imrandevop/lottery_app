@@ -84,10 +84,10 @@
     box-sizing: border-box !important;
 }
 
-/* Hide any fields beyond the 3rd in a row */
-.form-row.ticket-row .form-group:nth-child(n+4) {
+/* Allow all ticket fields to be visible - removed hiding rule */
+/* .form-row.ticket-row .form-group:nth-child(n+4) {
     display: none !important;
-}
+} */
 
 /* Clear button styling */
 .clear-btn {
@@ -258,6 +258,20 @@
     transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
     box-sizing: border-box;
     height: 42px;
+}
+
+/* Center text in ALL ticket number input fields */
+input[name*="_ticket_number"] {
+    text-align: center !important;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+input[name*="_ticket_number"]::placeholder {
+    text-align: center !important;
+    font-weight: normal;
+    letter-spacing: normal;
+    color: #6c757d;
 }
 
 /* Special styling for 4-digit ticket inputs (7th-10th prizes) */
@@ -1054,9 +1068,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row on ultra small screens */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         padding: 6px 4px !important;
@@ -1080,9 +1094,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row on large screens */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         padding: 12px 15px !important;
@@ -1106,9 +1120,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row on medium screens */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         padding: 11px 10px !important;
@@ -1144,9 +1158,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         width: 100% !important;
@@ -1221,9 +1235,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row on mobile */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         width: 100% !important;
@@ -1267,9 +1281,9 @@ body.change-form .bottom-action-buttons {
     }
     
     /* Ensure no more than 3 fields per row even on small screens */
-    .form-row.ticket-row .form-group:nth-child(n+4) {
+    /* .form-row.ticket-row .form-group:nth-child(n+4) {
         display: none !important;
-    }
+    } */
     
     .form-row.ticket-row .form-control {
         width: 100% !important;
