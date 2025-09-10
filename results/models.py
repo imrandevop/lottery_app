@@ -869,3 +869,52 @@ def daily_cash_awarded_post_save_handler(sender, instance, created, **kwargs):
                 
     except Exception as e:
         logger.error(f"❌ Error in cash withdrawal signal handler: {e}")
+
+
+class PeoplesPrediction(models.Model):
+    """
+    Model to store peoples' single digit predictions
+    Data auto-deletes after 1 day (3:00 PM to next day 3:00 PM)
+    """
+    peoples_prediction = models.CharField(max_length=1, help_text="Single digit prediction (0-9)")
+    user_ip = models.GenericIPAddressField(null=True, blank=True, help_text="User IP address for tracking")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "People's Prediction"
+        verbose_name_plural = "People's Predictions"
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Prediction: {self.peoples_prediction} at {self.created_at}"
+    
+    @classmethod
+    def cleanup_old_predictions(cls):
+        """
+        Remove predictions older than 1 day (3:00 PM to next day 3:00 PM cycle)
+        """
+        from datetime import datetime, timedelta, time
+        import pytz
+        
+        india_tz = pytz.timezone('Asia/Kolkata')
+        current_datetime = timezone.now().astimezone(india_tz)
+        current_date = current_datetime.date()
+        current_time = current_datetime.time()
+        
+        # Calculate the cutoff datetime (yesterday 3:00 PM)
+        if current_time >= time(15, 0):  # After 3:00 PM today
+            cutoff_date = current_date
+        else:  # Before 3:00 PM today
+            cutoff_date = current_date - timedelta(days=1)
+        
+        cutoff_datetime = datetime.combine(cutoff_date, time(15, 0))
+        cutoff_datetime = india_tz.localize(cutoff_datetime)
+        
+        # Delete old predictions
+        deleted_count = cls.objects.filter(created_at__lt=cutoff_datetime).count()
+        cls.objects.filter(created_at__lt=cutoff_datetime).delete()
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old people's predictions")
+        
+        return deleted_count

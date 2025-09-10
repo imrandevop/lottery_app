@@ -10,14 +10,13 @@ from django.utils import timezone
 from datetime import date,time
 from django.utils.timezone import now, localtime
 import uuid
-from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PredictionHistory
+from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, PeoplesPrediction
 from .models import PrizeEntry, LiveVideo
 from django.db.models import Q, Sum
 from .serializers import LotteryResultSerializer, LotteryResultDetailSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TicketCheckSerializer, NewsSerializer
-from .prediction_engine import LotteryPredictionEngine
-from .serializers import LotteryPredictionRequestSerializer, LiveVideoSerializer
+from .serializers import LiveVideoSerializer
 from datetime import timedelta
 import pytz
 from rest_framework.permissions import AllowAny
@@ -1026,566 +1025,183 @@ def latest_news(request):
 
 
 #<---------------PREDICTION SECTION ---------------->
-class PredictionRateThrottle(AnonRateThrottle):
-    scope = 'prediction'
 
 class LotteryPredictionAPIView(APIView):
     """
-    API View for lottery number prediction with stable predictions and accuracy tracking
+    API View for lottery repeated numbers from last 30 days
     """
-    throttle_classes = [PredictionRateThrottle]
-    throttle_scope = 'prediction'
-    
-    # Kerala Lottery day mapping
-    LOTTERY_DAYS = {
-        'M': 'sunday',     # Samrudhi
-        'B': 'monday',     # Bhagyathara  
-        'S': 'tuesday',    # Sthree Sakthi
-        'D': 'wednesday',  # Dhanalekshmi
-        'P': 'thursday',   # Karunya Plus
-        'R': 'friday',     # Suvarna Keralam
-        'K': 'saturday',   # Karunya
-    }
 
-    def get_lottery_day(self, lottery_name):
-        """Get the scheduled day for a lottery based on its code"""
-        try:
-            lottery = Lottery.objects.get(name__iexact=lottery_name)
-            lottery_code = lottery.code.upper() if lottery.code else None
-            return self.LOTTERY_DAYS.get(lottery_code) if lottery_code else None
-        except Lottery.DoesNotExist:
-            return None
 
-    def should_generate_new_prediction(self, lottery_name, prize_type):
+
+
+
+    def get_repeated_numbers_last_30_days(self):
         """
-        Determine if we need to generate new predictions based on:
-        1. New result published since last prediction
-        2. 3:00 PM IST on lottery's scheduled day has passed
+        Get repeated last 4 digits from all lotteries and all 4th-10th prize types from last 30 days
         """
-        india_tz = pytz.timezone('Asia/Kolkata')
-        current_datetime = timezone.now().astimezone(india_tz)
-        current_date = current_datetime.date()
-        current_time = current_datetime.time()
-        result_publish_time = time(15, 0)  # 3:00 PM IST
+        from datetime import datetime, timedelta
+        from collections import Counter
         
-        # Get the most recent prediction for this lottery and prize type
-        latest_prediction = PredictionHistory.objects.filter(
-            lottery_name__iexact=lottery_name,
-            prize_type=prize_type
-        ).order_by('-prediction_date').first()
+        # Calculate 30 days ago
+        thirty_days_ago = datetime.now().date() - timedelta(days=30)
         
-        if not latest_prediction:
-            return True  # No previous prediction exists
+        # Get all 4-digit numbers from 4th-10th prizes across all lotteries from last 30 days
+        prize_entries = PrizeEntry.objects.filter(
+            lottery_result__date__gte=thirty_days_ago,
+            lottery_result__is_published=True,
+            prize_type__in=['4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        ).values_list('ticket_number', flat=True)
         
-        # Get the lottery day
-        lottery_day = self.get_lottery_day(lottery_name)
-        if not lottery_day:
-            return True  # Unknown lottery, generate new prediction
+        # Extract last 4 digits and count frequencies
+        last_4_digits = []
+        for ticket_number in prize_entries:
+            if ticket_number:
+                ticket_str = str(ticket_number).strip()
+                if len(ticket_str) >= 4:
+                    last_4 = ticket_str[-4:]
+                    if last_4.isdigit():
+                        last_4_digits.append(last_4.zfill(4))
         
-        # Check if there's a new published result since the last prediction
-        try:
-            lottery = Lottery.objects.get(name__iexact=lottery_name)
-            latest_result = LotteryResult.objects.filter(
-                lottery=lottery,
-                is_published=True,
-                date__gte=latest_prediction.prediction_date.date()
-            ).order_by('-date', '-updated_at').first()
-            
-            if latest_result and latest_result.updated_at > latest_prediction.prediction_date:
-                return True  # New result published since last prediction
-        except Lottery.DoesNotExist:
-            return True
+        # Count frequencies
+        frequency_counter = Counter(last_4_digits)
         
-        # Check if we've passed 3:00 PM on the lottery's scheduled day
-        prediction_date = latest_prediction.prediction_date.astimezone(india_tz).date()
+        # Convert to required format and sort by count (highest first), limit to 9 numbers
+        repeated_numbers = [
+            {"number": number, "count": count} 
+            for number, count in frequency_counter.most_common()
+            if count > 1  # Only include numbers that appeared more than once
+        ][:9]  # Limit to maximum 9 numbers
         
-        # Find the next lottery day after the prediction was made
-        days_of_week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        lottery_day_index = days_of_week.index(lottery_day)
-        
-        # Calculate days since prediction
-        days_since_prediction = (current_date - prediction_date).days
-        
-        if days_since_prediction >= 7:
-            return True  # More than a week has passed
-        
-        # Check if it's the lottery day and past 3:00 PM
-        current_day = current_date.strftime('%A').lower()
-        if current_day == lottery_day and current_time >= result_publish_time:
-            # Check if we haven't generated a prediction for this cycle yet
-            if prediction_date < current_date:
-                return True
-        
-        return False
+        return repeated_numbers
 
-    def get_stable_prediction(self, lottery_name, prize_type):
-        """Get stable prediction with caching - MUCH FASTER"""
-        if self.should_generate_new_prediction(lottery_name, prize_type):
-            # Generate new prediction
-            try:
-                engine = LotteryPredictionEngine()
-                # Use the new cached method
-                result = engine.predict_with_cache(lottery_name, prize_type, method='ensemble')
-                
-                # Store new prediction
-                PredictionHistory.objects.create(
-                    lottery_name=lottery_name,
-                    prize_type=prize_type,
-                    predicted_numbers=result['predictions'],
-                    prediction_date=timezone.now()
-                )
-                
-                return result
-            except Exception as e:
-                raise e
-        else:
-            # Check cache first before database
-            from results.utils.cache_utils import get_cached_prediction
-            cached_result = get_cached_prediction(lottery_name, prize_type)
-            
-            if cached_result:
-                return cached_result
-            
-            # Return existing stable prediction from database
-            latest_prediction = PredictionHistory.objects.filter(
-                lottery_name__iexact=lottery_name,
-                prize_type=prize_type
-            ).order_by('-prediction_date').first()
-            
-            if latest_prediction:
-                # Recreate the result format and cache it
-                engine = LotteryPredictionEngine()
-                repeated_numbers = []
-                if prize_type != 'consolation':
-                    repeated_numbers = engine.get_repeated_numbers(lottery_name, prize_type, 12)
-                
-                result = {
-                    'predictions': latest_prediction.predicted_numbers,
-                    'repeated_numbers': repeated_numbers,
-                    'confidence': 0.65,
-                    'method': 'ensemble',
-                    'historical_data_count': 0,
-                    'lottery_code': None
-                }
-                
-                # Cache this result
-                from results.utils.cache_utils import cache_prediction
-                cache_prediction(lottery_name, prize_type, result, timeout=3600)
-                
-                return result
-            else:
-                # Fallback - generate new
-                engine = LotteryPredictionEngine()
-                result = engine.predict_with_cache(lottery_name, prize_type, method='ensemble')
-                
-                PredictionHistory.objects.create(
-                    lottery_name=lottery_name,
-                    prize_type=prize_type,
-                    predicted_numbers=result['predictions'],
-                    prediction_date=timezone.now()
-                )
-                
-                return result
-
-    # Fixed accuracy calculation method - replace the existing one
-
-
-    def calculate_prediction_accuracy(self, lottery_name, prize_type):
+    def get_repeated_single_digits_last_7_days(self):
         """
-        FIXED: Calculate accuracy with proper format handling
+        Get repeated single digits (last digit of ticket numbers) from all lotteries 
+        and all 4th-10th prize types from last 7 days
+        """
+        from datetime import datetime, timedelta
+        from collections import Counter
+        
+        # Calculate 7 days ago
+        seven_days_ago = datetime.now().date() - timedelta(days=7)
+        
+        # Get all ticket numbers from 4th-10th prizes across all lotteries from last 7 days
+        prize_entries = PrizeEntry.objects.filter(
+            lottery_result__date__gte=seven_days_ago,
+            lottery_result__is_published=True,
+            prize_type__in=['4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        ).values_list('ticket_number', flat=True)
+        
+        # Extract last digit and count frequencies
+        last_digits = []
+        for ticket_number in prize_entries:
+            if ticket_number:
+                ticket_str = str(ticket_number).strip()
+                if ticket_str and ticket_str[-1].isdigit():
+                    last_digits.append(ticket_str[-1])
+        
+        # Count frequencies
+        frequency_counter = Counter(last_digits)
+        
+        # Convert to required format and sort by count (highest first), limit to top 4
+        repeated_single_digits = [
+            {"digit": digit, "count": count} 
+            for digit, count in frequency_counter.most_common(4)
+        ]
+        
+        return repeated_single_digits
+
+    def get_peoples_predictions(self):
+        """
+        Get top 4 most repeated peoples predictions from current day cycle (3:00 PM to next day 3:00 PM)
+        """
+        from collections import Counter
+        
+        # Clean up old predictions first
+        PeoplesPrediction.cleanup_old_predictions()
+        
+        # Get all current predictions
+        predictions = PeoplesPrediction.objects.all().values_list('peoples_prediction', flat=True)
+        
+        # Count frequencies
+        frequency_counter = Counter(predictions)
+        
+        # Convert to required format and sort by count (highest first), limit to top 4
+        peoples_predictions = [
+            {"digit": digit, "count": count} 
+            for digit, count in frequency_counter.most_common(4)
+        ]
+        
+        return peoples_predictions
+
+    def get(self, request):
+        """
+        Get repeated numbers from last 30 days and repeated single digits from last 7 days across all lotteries
         """
         try:
-            lottery = Lottery.objects.get(name__iexact=lottery_name)
+            # Get repeated numbers from last 30 days
+            repeated_numbers = self.get_repeated_numbers_last_30_days()
             
-            # Get the most recently published result
-            latest_result = LotteryResult.objects.filter(
-                lottery=lottery,
-                is_published=True
-            ).order_by('-date', '-updated_at').first()
+            # Get repeated single digits from last 7 days
+            repeated_single_digits = self.get_repeated_single_digits_last_7_days()
             
-            if not latest_result:
-                return None
+            # Get peoples predictions
+            peoples_predictions = self.get_peoples_predictions()
             
-            # Get the most recent prediction before this result
-            prediction = PredictionHistory.objects.filter(
-                lottery_name__iexact=lottery_name,
-                prize_type=prize_type,
-                prediction_date__lte=latest_result.updated_at
-            ).order_by('-prediction_date').first()
-            
-            if not prediction:
-                return None
-            
-            # FIXED: Get winning numbers for the EXACT prize type only
-            winning_numbers = list(PrizeEntry.objects.filter(
-                lottery_result=latest_result,
-                prize_type=prize_type  # Exact match only
-            ).values_list('ticket_number', flat=True))
-            
-            if not winning_numbers:
-                return None
-            
-            # FIXED: Format winning numbers based on prize type
-            winning_formatted = []
-            for num in winning_numbers:
-                if num:
-                    num_str = str(num).strip().upper()
-                    
-                    if prize_type in ['1st', '2nd', '3rd']:
-                        # For 1st-3rd prizes: use full format (e.g., "DU350667")
-                        if len(num_str) >= 6:  # Valid full format
-                            winning_formatted.append(num_str)
-                    else:
-                        # For 4th-10th prizes: ensure 4-digit format with leading zeros
-                        if len(num_str) <= 4 and num_str.isdigit():
-                            winning_formatted.append(num_str.zfill(4))
-            
-            if not winning_formatted:
-                return None
-            
-            # FIXED: Format predicted numbers to match winning number format
-            predicted_numbers = prediction.predicted_numbers
-            if not predicted_numbers:
-                return None
-            
-            predicted_formatted = []
-            for pred_num in predicted_numbers:
-                pred_str = str(pred_num).strip().upper()
-                
-                if prize_type in ['1st', '2nd', '3rd']:
-                    # For 1st-3rd prizes: use full format as is
-                    predicted_formatted.append(pred_str)
-                else:
-                    # For 4th-10th prizes: extract last 4 digits and zero-pad
-                    pred_last_4 = pred_str[-4:] if len(pred_str) >= 4 else pred_str
-                    if pred_last_4.isdigit():
-                        predicted_formatted.append(pred_last_4.zfill(4))
-            
-            # Compare predictions with winning numbers
-            accuracy_results = {
-                "100%": [],
-                "75%": [],
-                "50%": [],
-                "25%": []
-            }
-            
-            perfect_matches = 0
-            total_accuracy_points = 0
-            
-            for pred_num in predicted_formatted:
-                best_match_percentage = 0
-                
-                for winning_num in winning_formatted:
-                    if prize_type in ['1st', '2nd', '3rd']:
-                        # Full format comparison for 1st-3rd prizes
-                        if pred_num == winning_num:
-                            match_percentage = 100
-                        elif len(pred_num) >= 6 and len(winning_num) >= 6:
-                            # Partial matching: check how many positions match
-                            min_len = min(len(pred_num), len(winning_num))
-                            match_count = sum(1 for i in range(min_len) 
-                                            if pred_num[i] == winning_num[i])
-                            
-                            if match_count == min_len:
-                                match_percentage = 100
-                            elif match_count >= min_len * 0.75:
-                                match_percentage = 75
-                            elif match_count >= min_len * 0.5:
-                                match_percentage = 50
-                            elif match_count >= min_len * 0.25:
-                                match_percentage = 25
-                            else:
-                                match_percentage = 0
-                        else:
-                            match_percentage = 0
-                    else:
-                        # 4-digit comparison for 4th-10th prizes
-                        match_count = sum(1 for i, digit in enumerate(pred_num) 
-                                        if i < len(winning_num) and digit == winning_num[i])
-                        
-                        if match_count == 4:
-                            match_percentage = 100
-                        elif match_count == 3:
-                            match_percentage = 75
-                        elif match_count == 2:
-                            match_percentage = 50
-                        elif match_count == 1:
-                            match_percentage = 25
-                        else:
-                            match_percentage = 0
-                    
-                    best_match_percentage = max(best_match_percentage, match_percentage)
-                
-                # Categorize the prediction
-                if best_match_percentage == 100:
-                    accuracy_results["100%"].append(pred_num)
-                    perfect_matches += 1
-                    total_accuracy_points += 100
-                elif best_match_percentage == 75:
-                    accuracy_results["75%"].append(pred_num)
-                    total_accuracy_points += 75
-                elif best_match_percentage == 50:
-                    accuracy_results["50%"].append(pred_num)
-                    total_accuracy_points += 50
-                elif best_match_percentage == 25:
-                    accuracy_results["25%"].append(pred_num)
-                    total_accuracy_points += 25
-            
-            # Calculate overall accuracy percentage
-            total_predictions = len(predicted_formatted)
-            overall_accuracy = (total_accuracy_points / (total_predictions * 100)) * 100 if total_predictions > 0 else 0
-            
-            return {
-                "date": str(latest_result.date),
-                "summary": {
-                    "perfect_match_count": perfect_matches,
-                    "overall_accuracy_percent": round(overall_accuracy, 2)
-                },
-                "digit_accuracy": accuracy_results
-            }
-            
-        except Lottery.DoesNotExist:
-            return None
-        except Exception as e:
-            return None
-    
-    def calculate_comprehensive_accuracy(self, lottery_name, prize_type):
-        """
-        BONUS: Calculate accuracy showing ALL matches, not just best matches
-        This gives a more complete picture of prediction performance
-        """
-        try:
-            lottery = Lottery.objects.get(name__iexact=lottery_name)
-            
-            # Get the most recently published result
-            latest_result = LotteryResult.objects.filter(
-                lottery=lottery,
-                is_published=True
-            ).order_by('-date', '-updated_at').first()
-            
-            if not latest_result:
-                return None
-            
-            # Get all predictions for this lottery/prize type in the last 30 days
-            from datetime import timedelta
-            cutoff_date = latest_result.date - timedelta(days=30)
-            
-            predictions = PredictionHistory.objects.filter(
-                lottery_name__iexact=lottery_name,
-                prize_type=prize_type,
-                prediction_date__gte=cutoff_date,
-                prediction_date__lte=latest_result.updated_at
-            ).order_by('-prediction_date')
-            
-            if not predictions:
-                return None
-            
-            # Get winning numbers
-            winning_entries = PrizeEntry.objects.filter(
-                lottery_result=latest_result,
-                prize_type=prize_type
-            ).values_list('ticket_number', flat=True)
-            
-            winning_numbers = [str(num).strip() for num in winning_entries if num]
-            
-            comprehensive_results = {
-                "all_matches": {
-                    "100%": [],
-                    "75%": [],
-                    "50%": [],
-                    "25%": [],
-                    "0%": []
-                },
-                "prediction_history": []
-            }
-            
-            # Analyze each prediction
-            for prediction in predictions:
-                prediction_analysis = {
-                    "prediction_date": prediction.prediction_date.isoformat(),
-                    "predicted_numbers": prediction.predicted_numbers,
-                    "matches": []
-                }
-                
-                for pred_num in prediction.predicted_numbers:
-                    pred_str = str(pred_num).strip().upper()
-                    
-                    # Format based on prize type
-                    if prize_type in ['1st', '2nd', '3rd']:
-                        pred_compare = pred_str
-                    else:
-                        pred_compare = pred_str[-4:] if len(pred_str) >= 4 else pred_str.zfill(4)
-                    
-                    # Check against all winning numbers
-                    all_matches_for_this_pred = []
-                    
-                    for winning_num in winning_numbers:
-                        winning_str = str(winning_num).strip().upper()
-                        
-                        if prize_type in ['1st', '2nd', '3rd']:
-                            winning_compare = winning_str
-                            max_len = max(len(pred_compare), len(winning_compare))
-                            pred_padded = pred_compare.ljust(max_len, '0')[:max_len]
-                            winning_padded = winning_compare.ljust(max_len, '0')[:max_len]
-                            match_count = sum(1 for p, w in zip(pred_padded, winning_padded) if p == w)
-                            total_positions = max_len
-                        else:
-                            winning_compare = winning_str[-4:] if len(winning_str) >= 4 else winning_str.zfill(4)
-                            match_count = sum(1 for p, w in zip(pred_compare, winning_compare) if p == w)
-                            total_positions = 4
-                        
-                        if total_positions > 0:
-                            match_ratio = match_count / total_positions
-                            
-                            if match_ratio == 1.0:
-                                match_percentage = 100
-                            elif match_ratio >= 0.75:
-                                match_percentage = 75
-                            elif match_ratio >= 0.5:
-                                match_percentage = 50
-                            elif match_ratio >= 0.25:
-                                match_percentage = 25
-                            else:
-                                match_percentage = 0
-                            
-                            if match_percentage > 0:
-                                all_matches_for_this_pred.append({
-                                    "winning_number": winning_compare,
-                                    "match_percentage": match_percentage,
-                                    "matches": match_count,
-                                    "total_positions": total_positions
-                                })
-                    
-                    # Record ALL matches for this prediction
-                    for match in all_matches_for_this_pred:
-                        percentage_key = f"{match['match_percentage']}%"
-                        comprehensive_results["all_matches"][percentage_key].append({
-                            "predicted": pred_compare,
-                            "winning": match["winning_number"],
-                            "match_count": match["matches"],
-                            "total_positions": match["total_positions"]
-                        })
-                    
-                    # If no matches found, record as 0%
-                    if not all_matches_for_this_pred:
-                        comprehensive_results["all_matches"]["0%"].append({
-                            "predicted": pred_compare,
-                            "no_matches": True
-                        })
-                    
-                    prediction_analysis["matches"] = all_matches_for_this_pred
-                
-                comprehensive_results["prediction_history"].append(prediction_analysis)
-            
-            # Calculate comprehensive statistics
-            total_matches = sum(len(matches) for matches in comprehensive_results["all_matches"].values())
-            
-            comprehensive_stats = {
-                "total_comparisons": total_matches,
-                "match_distribution": {
-                    percentage: len(matches) for percentage, matches in comprehensive_results["all_matches"].items()
-                }
-            }
-            
-            return {
-                "date": str(latest_result.date),
-                "prize_type": prize_type,
-                "winning_numbers": winning_numbers,
-                "comprehensive_stats": comprehensive_stats,
-                "all_matches": comprehensive_results["all_matches"],
-                "recent_predictions": comprehensive_results["prediction_history"][:3]  # Last 3 predictions
-            }
-            
-        except Exception as e:
-            return {
-                "error": f"Comprehensive accuracy calculation failed: {str(e)}"
-            }
-        
-    def get_accuracy_explanation(self, prize_type, comparison_method):
-        """
-        Provide clear explanation of how accuracy is calculated
-        """
-        explanations = {
-            'full_format': {
-                '1st': 'Compares full ticket format (e.g., "KR123456") against 1st prize winner',
-                '2nd': 'Compares full ticket format (e.g., "KA789012") against 2nd prize winner', 
-                '3rd': 'Compares full ticket format (e.g., "KN345678") against 3rd prize winner'
-            },
-            'last_4_digits': {
-                '4th': 'Compares last 4 digits against 4th prize winners',
-                '5th': 'Compares last 4 digits against 5th prize winners',
-                '6th': 'Compares last 4 digits against 6th prize winners',
-                '7th': 'Compares last 4 digits against 7th prize winners',
-                '8th': 'Compares last 4 digits against 8th prize winners',
-                '9th': 'Compares last 4 digits against 9th prize winners',
-                '10th': 'Compares last 4 digits against 10th prize winners'
-            }
-        }
-        
-        method_explanations = explanations.get(comparison_method, {})
-        return method_explanations.get(prize_type, f'Compares predicted numbers against {prize_type} prize winners using {comparison_method} method')
-
-
-
-
-    def post(self, request):
-        """
-        Generate stable lottery predictions with accuracy tracking
-        KEEPS EXACT SAME RESPONSE FORMAT
-        """
-        # Validate input
-        serializer = LotteryPredictionRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'status': 'error',
-                'message': 'Invalid input data',
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        lottery_name = serializer.validated_data['lottery_name']
-        prize_type = serializer.validated_data['prize_type']
-        
-        try:
-            # Get stable prediction
-            result = self.get_stable_prediction(lottery_name, prize_type)
-            
-            # Calculate accuracy for the most recent result (FIXED INTERNALLY)
-            accuracy_data = self.calculate_prediction_accuracy(lottery_name, prize_type)
-            
-            # Build response data (KEEPING EXISTING STRUCTURE)
+            # Build response data
             response_data = {
                 'status': 'success',
-                'lottery_name': lottery_name,
-                'prize_type': prize_type,
-                'predicted_numbers': result['predictions'],
+                'repeated_numbers': repeated_numbers,
+                'repeated_single_digits': repeated_single_digits,
+                'peoples_predictions': peoples_predictions
             }
-            
-            # Add repeated numbers for all prize types EXCEPT consolation
-            if prize_type != 'consolation':
-                response_data['repeated_numbers'] = result.get('repeated_numbers', [])
-            
-            # Add accuracy field (SAME NAME AND STRUCTURE)
-            if accuracy_data:
-                response_data['yesterday_prediction_accuracy'] = accuracy_data
-            
-            # Add note at the end
-            response_data['note'] = 'Predictions are based on statistical analysis of historical data. Lottery outcomes are random and these predictions are for entertainment purposes only.'
             
             return Response(response_data, status=status.HTTP_200_OK)
             
-        except ValueError as e:
-            # Handle lottery not found error
+        except Exception as e:
+            # Handle any unexpected errors
             return Response({
                 'status': 'error',
-                'message': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'message': f'Failed to get repeated numbers: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        """
+        Store people's single digit prediction
+        Expected body: {"peoples_prediction": "5"}
+        """
+        try:
+            # Get prediction from request
+            peoples_prediction = request.data.get('peoples_prediction')
+            
+            # Get user IP for tracking
+            user_ip = self.get_client_ip(request)
+            
+            # Store the prediction
+            PeoplesPrediction.objects.create(
+                peoples_prediction=str(peoples_prediction),
+                user_ip=user_ip
+            )
+            
+            return Response({
+                'status': 'success'
+            }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            # Handle any other unexpected errors
+            # Handle any unexpected errors
             return Response({
                 'status': 'error',
-                'message': f'Prediction generation failed: {str(e)}'
+                'message': f'Failed to store prediction: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def get_client_ip(self, request):
+        """Get client IP address from request"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
 
 
