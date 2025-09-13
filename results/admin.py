@@ -131,12 +131,29 @@ class LotteryResultForm(ModelForm):
 
 class LotteryResultAdmin(admin.ModelAdmin):
     form = LotteryResultForm
-    list_display = ['lottery', 'draw_number', 'date', 'is_bumper', 'is_published', 
-                   'results_ready_notification', 'notification_sent', 'created_at']
+    list_display = ['lottery', 'draw_number', 'date', 'is_bumper', 'is_published',
+                   'results_ready_notification', 'notification_status_display', 'created_at']
     list_filter = ['lottery', 'is_bumper', 'is_published', 'results_ready_notification', 'notification_sent', 'date']
     search_fields = ['draw_number', 'lottery__name']
     inlines = [PrizeEntryInline]
     
+    # Add visual indicator for notification status
+    def notification_status_display(self, obj):
+        """Show notification status with visual indicator"""
+        if obj.results_ready_notification:
+            if obj.notification_sent:
+                return format_html(
+                    '<span style="color: #28a745; font-weight: bold;">✅ Sent</span>'
+                )
+            else:
+                return format_html(
+                    '<span style="color: #ffc107; font-weight: bold;">⏳ Sending...</span><br>'
+                    '<small style="color: #6c757d;">Notification is being sent in background</small>'
+                )
+        return format_html('<span style="color: #6c757d;">➖ Not requested</span>')
+
+    notification_status_display.short_description = 'Notification Status'
+
     # Add notification field to fieldsets
     def get_fieldsets(self, request, obj=None):
         fieldsets = [
@@ -145,7 +162,7 @@ class LotteryResultAdmin(admin.ModelAdmin):
             }),
             ('Status & Notifications', {
                 'fields': ('is_published', 'is_bumper', 'results_ready_notification'),
-                'description': 'Check "Notify users" to send push notification when saving'
+                'description': '⚡ FAST: Notifications now sent in background - page responds immediately!'
             }),
         ]
         if obj:  # Edit mode - show notification status
