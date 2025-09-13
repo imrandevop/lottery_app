@@ -351,87 +351,13 @@ class FcmToken(models.Model):
         return f"{self.name} ({self.phone_number})"
     
 
-# Add this to the end of your models.py file
+# IMPORTANT: LotteryResult signal handlers have been moved to signals.py
+# to prevent duplicate signal registration and infinite loops.
+# All notification and cache logic is now consolidated in signals.py
+
+# Import signals for remaining handlers
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-
-@receiver(pre_save, sender=LotteryResult)
-def lottery_result_pre_save_handler(sender, instance, **kwargs):
-    """
-    Store the original published state before save
-    """
-    if instance.pk:
-        try:
-            old_instance = LotteryResult.objects.get(pk=instance.pk)
-            instance._original_published = old_instance.is_published
-            instance._original_results_ready = old_instance.results_ready_notification
-        except LotteryResult.DoesNotExist:
-            instance._original_published = False
-            instance._original_results_ready = False
-    else:
-        instance._original_published = False
-        instance._original_results_ready = False
-
-@receiver(post_save, sender=LotteryResult)
-def lottery_result_notification_handler(sender, instance, created, **kwargs):
-    """
-    Automatically send notifications when lottery results are published
-    """
-    try:
-        from .services.fcm_service import FCMService
-        import logging
-        
-        logger = logging.getLogger('lottery_app')
-        
-        if created:
-            # New result created - send notification only if published
-            if instance.is_published:
-                logger.info(f"📱 New lottery result created and published: {instance.lottery.name}")
-                result = FCMService.send_new_result_notification(
-                    lottery_name=instance.lottery.name
-                )
-                logger.info(f"📤 New result notification sent: {result}")
-        else:
-            # Existing result updated - check if is_published changed from False to True
-            if (hasattr(instance, '_original_published') and 
-                not instance._original_published and 
-                instance.is_published):
-                
-                logger.info(f"📱 Lottery result published (False→True): {instance.lottery.name}")
-                result = FCMService.send_new_result_notification(
-                    lottery_name=instance.lottery.name
-                )
-                logger.info(f"📤 Publication notification sent: {result}")
-        
-        # Handle results_ready_notification independently
-        if hasattr(instance, '_original_results_ready'):
-            if (instance.results_ready_notification and 
-                not instance._original_results_ready and
-                not instance.notification_sent):
-                
-                # Checkbox was just checked - send notification
-                logger.info(f"📱 Results ready notification triggered: {instance.lottery.name}")
-                result = FCMService.send_result_ready_notification(
-                    lottery_name=instance.lottery.name,
-                    draw_number=instance.draw_number
-                )
-                logger.info(f"📤 Results ready notification sent: {result}")
-                
-                # Mark notification as sent
-                instance.notification_sent = True
-                instance.save(update_fields=['notification_sent'])
-                
-            elif (not instance.results_ready_notification and 
-                  instance._original_results_ready and
-                  instance.notification_sent):
-                
-                # Checkbox was just unchecked - reset notification_sent
-                logger.info(f"🔄 Results ready notification reset: {instance.lottery.name}")
-                instance.notification_sent = False
-                instance.save(update_fields=['notification_sent'])
-            
-    except Exception as e:
-        logger.error(f"❌ Error in lottery notification handler: {e}")
 
 
 #<---------------------POINTS SECTION--------------------->
