@@ -87,8 +87,229 @@ class FCMService:
                 cls._initialized = True
     
     @classmethod
+    def send_to_all_users_batched(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
+        """
+        SCALABLE: Send notifications using Firebase batch messaging
+        Handles 10,000+ users efficiently using multicast messages
+        """
+        try:
+            from firebase_admin import messaging
+            from results.models import FcmToken
+            import logging
+            import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            logger = logging.getLogger('lottery_app')
+
+            # Initialize Firebase if needed
+            cls._initialize_firebase()
+
+            # Get all active FCM tokens in batches
+            batch_size = 500  # Firebase multicast limit
+            active_tokens = FcmToken.objects.filter(
+                is_active=True,
+                notifications_enabled=True
+            ).values_list('fcm_token', flat=True)
+
+            total_tokens = active_tokens.count()
+
+            if total_tokens == 0:
+                logger.warning("No active FCM tokens found")
+                return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
+
+            logger.info(f"📊 Sending notifications to {total_tokens} users using batch processing")
+
+            # Use fallback image if no image provided
+            if not image_url:
+                image_url = cls.FALLBACK_IMAGE
+
+            # Build the message template
+            message_template = cls._build_multicast_message(title, body, data, image_url)
+
+            # Process in batches using thread pool for parallel processing
+            total_success = 0
+            total_failure = 0
+
+            # Create batches of tokens
+            token_batches = []
+            for i in range(0, total_tokens, batch_size):
+                batch_tokens = list(active_tokens[i:i + batch_size])
+                token_batches.append(batch_tokens)
+
+            logger.info(f"📦 Created {len(token_batches)} batches of max {batch_size} tokens each")
+
+            # Use ThreadPoolExecutor for parallel batch processing
+            max_workers = min(10, len(token_batches))  # Max 10 concurrent batches
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all batch jobs
+                future_to_batch = {
+                    executor.submit(cls._send_batch_multicast, message_template, batch_tokens, batch_idx): batch_idx
+                    for batch_idx, batch_tokens in enumerate(token_batches)
+                }
+
+                # Collect results as they complete
+                for future in as_completed(future_to_batch):
+                    batch_idx = future_to_batch[future]
+                    try:
+                        batch_result = future.result()
+                        total_success += batch_result['success_count']
+                        total_failure += batch_result['failure_count']
+
+                        logger.info(f"✅ Batch {batch_idx + 1} completed: "
+                                  f"{batch_result['success_count']} success, "
+                                  f"{batch_result['failure_count']} failed")
+
+                    except Exception as e:
+                        logger.error(f"❌ Batch {batch_idx + 1} failed: {e}")
+                        total_failure += len(token_batches[batch_idx])
+
+            success_rate = (total_success / total_tokens * 100) if total_tokens > 0 else 0
+
+            logger.info(f"🎯 Batch notification completed: {total_success}/{total_tokens} "
+                       f"({success_rate:.1f}% success rate)")
+
+            return {
+                'success_count': total_success,
+                'failure_count': total_failure,
+                'total_tokens': total_tokens,
+                'success_rate': success_rate,
+                'message': f'Sent to {total_success}/{total_tokens} devices ({success_rate:.1f}% success)'
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Batch notification system failed: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+
+            # Fallback to old method for small user bases
+            if total_tokens < 100:
+                logger.info("🔄 Falling back to sequential method for small user base")
+                return cls.send_to_all_users_sequential(title, body, data, image_url)
+
+            return {
+                'success_count': 0,
+                'failure_count': total_tokens,
+                'message': f'Batch system failed: {str(e)}'
+            }
+
+    @classmethod
+    def _build_multicast_message(cls, title: str, body: str, data: Dict = None, image_url: str = None):
+        """Build Firebase multicast message template"""
+        from firebase_admin import messaging
+
+        # Android-specific configuration
+        android_config = messaging.AndroidConfig(
+            priority='high',
+            notification=messaging.AndroidNotification(
+                channel_id='default_channel',
+                sound='default',
+                icon='ic_notification',
+                color='#FF6B6B',
+                image=image_url,
+                click_action='FLUTTER_NOTIFICATION_CLICK',
+                tag='lottery_notification'
+            ),
+            data={
+                'image_url': image_url,
+                'big_picture': 'true'
+            }
+        )
+
+        # iOS-specific configuration
+        apns_config = messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(
+                    alert=messaging.ApsAlert(title=title, body=body),
+                    sound='default',
+                    badge=1,
+                    thread_id='lottery_results'
+                )
+            ),
+            headers={
+                'apns-push-type': 'alert',
+                'apns-priority': '10'
+            }
+        )
+
+        return {
+            'notification': messaging.Notification(title=title, body=body),
+            'data': {**{k: str(v) for k, v in (data or {}).items()}},
+            'android': android_config,
+            'apns': apns_config
+        }
+
+    @classmethod
+    def _send_batch_multicast(cls, message_template: Dict, tokens: List[str], batch_idx: int) -> Dict:
+        """Send multicast message to a batch of tokens"""
+        try:
+            from firebase_admin import messaging
+            import logging
+
+            logger = logging.getLogger('lottery_app')
+
+            # Create multicast message
+            multicast_message = messaging.MulticastMessage(
+                tokens=tokens,
+                **message_template
+            )
+
+            # Send multicast (up to 500 tokens at once)
+            response = messaging.send_multicast(multicast_message)
+
+            # Process response
+            success_count = response.success_count
+            failure_count = response.failure_count
+
+            # Log failed tokens for debugging (optional)
+            if response.responses:
+                failed_tokens = []
+                for idx, resp in enumerate(response.responses):
+                    if not resp.success:
+                        failed_tokens.append({
+                            'token_preview': tokens[idx][:20] + '...',
+                            'error': str(resp.exception) if resp.exception else 'Unknown'
+                        })
+
+                if failed_tokens:
+                    logger.warning(f"⚠️ Batch {batch_idx + 1} had {len(failed_tokens)} failed tokens")
+
+            return {
+                'success_count': success_count,
+                'failure_count': failure_count,
+                'batch_size': len(tokens)
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Multicast batch {batch_idx + 1} failed: {e}")
+            return {
+                'success_count': 0,
+                'failure_count': len(tokens),
+                'batch_size': len(tokens)
+            }
+
+    @classmethod
     def send_to_all_users(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
-        """Send notification to all active users with image support"""
+        """
+        Smart notification dispatcher:
+        - Uses batched multicast for 100+ users (scalable)
+        - Uses sequential for <100 users (simple)
+        """
+        from results.models import FcmToken
+
+        # Check user count to decide method
+        user_count = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
+
+        if user_count >= 100:
+            # Use scalable batch system for larger user bases
+            return cls.send_to_all_users_batched(title, body, data, image_url)
+        else:
+            # Use simple sequential for smaller user bases
+            return cls.send_to_all_users_sequential(title, body, data, image_url)
+
+    @classmethod
+    def send_to_all_users_sequential(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
+        """LEGACY: Send notification to all active users sequentially (for small user bases)"""
         try:
             from firebase_admin import messaging
             from results.models import FcmToken
