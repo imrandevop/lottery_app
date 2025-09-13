@@ -171,6 +171,10 @@ class LotteryResultAdmin(admin.ModelAdmin):
     class Media:
         js = ('results/js/no_spaces_admin.js',)
     
+    def get_queryset(self, request):
+        """Optimize queryset to prevent N+1 queries"""
+        return super().get_queryset(request).select_related('lottery')
+    
     # Keep your existing URL overrides for custom add/edit views
     def get_urls(self):
         urls = super().get_urls()
@@ -195,6 +199,10 @@ class PrizeEntryAdmin(admin.ModelAdmin):
     list_display = ['lottery_result', 'prize_type', 'ticket_number', 'prize_amount', 'place']
     list_filter = ['prize_type', 'lottery_result__lottery']
     search_fields = ['ticket_number', 'lottery_result__draw_number']
+    
+    def get_queryset(self, request):
+        """Optimize queryset to prevent N+1 queries"""
+        return super().get_queryset(request).select_related('lottery_result', 'lottery_result__lottery')
     
     class Media:
         js = ('results/js/no_spaces_admin.js',)
@@ -384,7 +392,7 @@ class LiveVideoAdmin(admin.ModelAdmin):
     # Custom methods to enhance admin experience
     def get_queryset(self, request):
         """Optimize queryset for admin list view"""
-        return super().get_queryset(request).select_related()
+        return super().get_queryset(request)
     
     def formfield_for_choice_field(self, db_field, request, **kwargs):
         """Customize choice field display"""

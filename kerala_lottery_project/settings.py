@@ -194,7 +194,7 @@ if DATABASE_URL:
         DATABASES['default']['OPTIONS'] = {
             'sslmode': 'require',
         }
-        print("Applied DigitalOcean SSL configuration with connection pooling")
+        print("Applied DigitalOcean SSL configuration")
 else:
     # Use local database configuration
     print("Using local database configuration")

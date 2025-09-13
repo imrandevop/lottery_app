@@ -63,7 +63,7 @@ class LotteryResultListView(generics.ListAPIView):
         if result_date:
             queryset = queryset.filter(date=result_date)
             
-        return queryset.order_by('-date', '-created_at')
+        return queryset.order_by('-date', '-created_at')[:15]
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
