@@ -70,11 +70,14 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
             # Existing result updated
 
             # Check if is_published changed from False to True
+
+
+
             if (hasattr(instance, '_original_published') and
                 not instance._original_published and
                 instance.is_published):
 
-                logger.info(f"📱 Lottery result published (False→True): {instance.lottery.name}")
+                logger.info(f"Lottery result published (False→True): {instance.lottery.name}")
 
                 # PERFORMANCE FIX: Send asynchronously
                 import threading
@@ -82,9 +85,9 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
                 def send_publication_async():
                     try:
                         result = FCMService.send_new_result_notification(instance.lottery.name)
-                        logger.info(f"✅ Background publication notification sent: {result}")
+                        logger.info(f"Background publication notification sent: {result}")
                     except Exception as e:
-                        logger.error(f"❌ Background publication notification failed: {e}")
+                        logger.error(f"Background publication notification failed: {e}")
 
                 threading.Thread(
                     target=send_publication_async,
@@ -92,54 +95,60 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
                     daemon=True
                 ).start()
 
-                logger.info(f"🚀 Publication notification queued in background")
+                logger.info(f"Publication notification queued in background")
 
             # Check if results_ready_notification was just checked
-            if (hasattr(instance, '_original_results_ready') and
-                hasattr(instance, '_original_notification_sent') and
-                not instance._original_results_ready and
-                instance.results_ready_notification and
-                not instance._original_notification_sent and
-                not instance.notification_sent):
+            # Simplified logic: send notification if checkbox is checked and not already sent
+            if (instance.results_ready_notification and
+                not instance.notification_sent and
+                instance.is_published):
 
-                logger.info(f"📱 Result ready notification triggered: {instance.lottery.name}")
+                # For existing records, only send if this is a new request
+                should_send = True
+                if hasattr(instance, '_original_results_ready'):
+                    # If notification was already requested before, don't send again
+                    if instance._original_results_ready and getattr(instance, '_original_notification_sent', False):
+                        should_send = False
 
-                # PERFORMANCE FIX: Send notifications asynchronously in background
-                # This makes admin interface respond immediately
-                import threading
+                if should_send:
+                    logger.info(f"Result ready notification triggered: {instance.lottery.name}")
 
-                def send_notification_async():
-                    """Background thread function for sending notifications"""
-                    try:
-                        logger.info(f"🔄 Starting background notification for: {instance.lottery.name}")
+                    # PERFORMANCE FIX: Send notifications asynchronously in background
+                    # This makes admin interface respond immediately
+                    import threading
 
-                        result = FCMService.send_result_ready_notification(
-                            instance.lottery.name,
-                            instance.draw_number
-                        )
+                    def send_notification_async():
+                        """Background thread function for sending notifications"""
+                        try:
+                            logger.info(f"Starting background notification for: {instance.lottery.name}")
 
-                        # Mark as sent after successful delivery
-                        LotteryResult.objects.filter(pk=instance.pk).update(notification_sent=True)
+                            result = FCMService.send_result_ready_notification(
+                                instance.lottery.name,
+                                instance.draw_number
+                            )
 
-                        logger.info(f"✅ Background notification completed: {result}")
+                            # Mark as sent after successful delivery
+                            LotteryResult.objects.filter(pk=instance.pk).update(notification_sent=True)
 
-                    except Exception as e:
-                        logger.error(f"❌ Background notification failed: {e}")
-                        # Don't mark as sent if failed, so admin can retry
+                            logger.info(f"Background notification completed: {result}")
 
-                # Start background thread (non-blocking)
-                notification_thread = threading.Thread(
-                    target=send_notification_async,
-                    name=f"NotificationThread-{instance.lottery.name}-{instance.pk}",
-                    daemon=True  # Thread dies when main process exits
-                )
-                notification_thread.start()
+                        except Exception as e:
+                            logger.error(f"Background notification failed: {e}")
+                            # Don't mark as sent if failed, so admin can retry
 
-                logger.info(f"🚀 Notification queued in background for: {instance.lottery.name}")
+                    # Start background thread (non-blocking)
+                    notification_thread = threading.Thread(
+                        target=send_notification_async,
+                        name=f"NotificationThread-{instance.lottery.name}-{instance.pk}",
+                        daemon=True  # Thread dies when main process exits
+                    )
+                    notification_thread.start()
+
+                    logger.info(f"Notification queued in background for: {instance.lottery.name}")
                 # Admin interface returns immediately here!
 
     except Exception as e:
-        logger.error(f"❌ Error in lottery_result_post_save_handler: {e}")
+        logger.error(f"Error in lottery_result_post_save_handler: {e}")
         import traceback
-        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
 

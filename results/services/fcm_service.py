@@ -117,7 +117,7 @@ class FCMService:
                 logger.warning("No active FCM tokens found")
                 return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
 
-            logger.info(f"📊 Sending notifications to {total_tokens} users using batch processing")
+            logger.info(f"Sending notifications to {total_tokens} users using batch processing")
 
             # Use fallback image if no image provided
             if not image_url:
@@ -522,7 +522,7 @@ class FCMService:
             'image_url': image_url
         }
         
-        logger.info(f"📸 Sending notification for {lottery_name} with image: {image_url}")
+        logger.info(f"Sending notification for {lottery_name} with image: {image_url}")
         
         return cls.send_to_all_users(title, body, data, image_url)
     
@@ -543,7 +543,7 @@ class FCMService:
             'image_url': image_url
         }
         
-        logger.info(f"📸 Sending ready notification for {lottery_name} with image: {image_url}")
+        logger.info(f"Sending ready notification for {lottery_name} with image: {image_url}")
         
         return cls.send_to_all_users(title, body, data, image_url)
 
@@ -561,6 +561,6 @@ class FCMService:
             'click_action': 'OPEN_RESULTS'
         }
         
-        logger.info(f"🧪 Testing notification with image: {image_url}")
+        logger.info(f"Testing notification with image: {image_url}")
         
         return cls.send_to_all_users(title, body, data, image_url)
