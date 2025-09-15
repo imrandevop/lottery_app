@@ -2,7 +2,7 @@
 from django.urls import path
 from .admin_views import add_result_view, edit_result_view, auto_save_ticket
 from . import views
-from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, test_send_notification, firebase_status, list_fcm_tokens, test_send_with_details, clear_test_tokens, test_send_direct, debug_fcm_tokens, clean_invalid_tokens, test_notification_batch
+from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token, debug_fcm_register, test_send_notification, firebase_status, list_fcm_tokens, test_send_with_details, clear_test_tokens, test_send_direct, debug_fcm_tokens, clean_invalid_tokens, test_notification_batch, debug_batch_methods
 app_name = 'results'
 
 urlpatterns = [
@@ -46,6 +46,7 @@ urlpatterns = [
     path('fcm/debug-tokens/', debug_fcm_tokens, name='debug_fcm_tokens'),
     path('fcm/clean-invalid/', clean_invalid_tokens, name='clean_invalid_tokens'),
     path('fcm/test-batch/', test_notification_batch, name='test_notification_batch'),
+    path('fcm/debug-methods/', debug_batch_methods, name='debug_batch_methods'),
 
     
    

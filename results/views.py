@@ -2033,6 +2033,72 @@ def test_notification_batch(request):
         }, status=500)
 
 @csrf_exempt
+def debug_batch_methods(request):
+    """Debug both batch and sequential notification methods"""
+    try:
+        from results.services.fcm_service import FCMService
+        from results.models import FcmToken
+
+        # Get active token count
+        active_count = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
+
+        results = {
+            'active_tokens': active_count,
+            'method_used': 'batched' if active_count >= 100 else 'sequential',
+            'tests': {}
+        }
+
+        # Test 1: Force sequential method (should work)
+        try:
+            sequential_result = FCMService.send_to_all_users_sequential(
+                'Test Sequential',
+                'Testing sequential method directly',
+                {'type': 'test'},
+                FCMService.FALLBACK_IMAGE
+            )
+            results['tests']['sequential_direct'] = sequential_result
+        except Exception as e:
+            results['tests']['sequential_direct'] = {'error': str(e)}
+
+        # Test 2: Force batched method (might fail)
+        try:
+            batched_result = FCMService.send_to_all_users_batched(
+                'Test Batched',
+                'Testing batched method directly',
+                {'type': 'test'},
+                FCMService.FALLBACK_IMAGE
+            )
+            results['tests']['batched_direct'] = batched_result
+        except Exception as e:
+            results['tests']['batched_direct'] = {'error': str(e)}
+
+        # Test 3: Main routing method
+        try:
+            main_result = FCMService.send_to_all_users(
+                'Test Main',
+                'Testing main routing method',
+                {'type': 'test'},
+                FCMService.FALLBACK_IMAGE
+            )
+            results['tests']['main_routing'] = main_result
+        except Exception as e:
+            results['tests']['main_routing'] = {'error': str(e)}
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Batch method analysis completed',
+            'data': results
+        })
+
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }, status=500)
+
+@csrf_exempt
 def clear_test_tokens(request):
     """Clear all test/fake FCM tokens"""
     try:
