@@ -547,20 +547,3 @@ class FCMService:
         
         return cls.send_to_all_users(title, body, data, image_url)
 
-    @classmethod
-    def test_notification_with_image(cls, lottery_name: str = "KARUNYA") -> Dict:
-        """Test method to send a sample notification with image"""
-        title = "🧪 Test Notification"
-        body = f"Testing {lottery_name} notification with image support"
-        
-        image_url = cls._get_lottery_image(lottery_name)
-        
-        data = {
-            'type': 'test',
-            'lottery_name': lottery_name,
-            'click_action': 'OPEN_RESULTS'
-        }
-        
-        logger.info(f"Testing notification with image: {image_url}")
-        
-        return cls.send_to_all_users(title, body, data, image_url)

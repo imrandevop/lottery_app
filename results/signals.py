@@ -47,7 +47,7 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
         if created:
             # New result created - send notification only if published
             if instance.is_published:
-                logger.info(f"📱 New lottery result created and published: {instance.lottery.name}")
+                logger.info(f"New lottery result created and published: {instance.lottery.name}")
 
                 # PERFORMANCE FIX: Send asynchronously
                 import threading
@@ -55,9 +55,9 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
                 def send_new_result_async():
                     try:
                         result = FCMService.send_new_result_notification(instance.lottery.name)
-                        logger.info(f"✅ Background new result notification sent: {result}")
+                        logger.info(f"Background new result notification sent: {result}")
                     except Exception as e:
-                        logger.error(f"❌ Background new result notification failed: {e}")
+                        logger.error(f"Background new result notification failed: {e}")
 
                 threading.Thread(
                     target=send_new_result_async,
@@ -65,7 +65,7 @@ def lottery_result_post_save_handler(sender, instance, created, **kwargs):
                     daemon=True
                 ).start()
 
-                logger.info(f"🚀 New result notification queued in background")
+                logger.info(f"New result notification queued in background")
         else:
             # Existing result updated
 
