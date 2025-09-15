@@ -1845,6 +1845,194 @@ def test_send_with_details(request):
         })
 
 @csrf_exempt
+def debug_fcm_tokens(request):
+    """Debug FCM token validity in production"""
+    try:
+        from results.models import FcmToken
+        from firebase_admin import messaging
+
+        # Get total counts
+        total_tokens = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
+
+        # Get sample tokens to test
+        sample_tokens = list(FcmToken.objects.filter(is_active=True, notifications_enabled=True)[:10])
+
+        results = {
+            'total_active_tokens': total_tokens,
+            'sample_tests': [],
+            'error_summary': {},
+        }
+
+        # Test sample tokens
+        for i, token_obj in enumerate(sample_tokens):
+            token_result = {
+                'index': i + 1,
+                'user_name': token_obj.name,
+                'phone': token_obj.phone_number,
+                'token_preview': token_obj.fcm_token[:30] + '...',
+                'created_at': str(token_obj.created_at),
+                'last_used': str(token_obj.last_used) if token_obj.last_used else 'Never',
+                'status': 'unknown',
+                'error': None
+            }
+
+            try:
+                # Test individual token
+                message = messaging.Message(
+                    notification=messaging.Notification(title='Debug Test', body='Token validation test'),
+                    token=token_obj.fcm_token
+                )
+                response = messaging.send(message)
+                token_result['status'] = 'success'
+                token_result['message_id'] = response
+
+            except Exception as e:
+                token_result['status'] = 'failed'
+                token_result['error'] = str(e)
+
+                # Categorize error types
+                error_type = 'unknown'
+                if 'not a valid FCM registration token' in str(e):
+                    error_type = 'invalid_format'
+                elif 'Requested entity was not found' in str(e):
+                    error_type = 'token_not_found'
+                elif 'registration token is not a valid' in str(e):
+                    error_type = 'expired_or_uninstalled'
+                elif 'Invalid registration token' in str(e):
+                    error_type = 'invalid_token'
+
+                token_result['error_type'] = error_type
+
+                # Count error types
+                if error_type in results['error_summary']:
+                    results['error_summary'][error_type] += 1
+                else:
+                    results['error_summary'][error_type] = 1
+
+            results['sample_tests'].append(token_result)
+
+        # Add recommendations
+        recommendations = []
+        if results['error_summary'].get('expired_or_uninstalled', 0) > 0:
+            recommendations.append('Users need to refresh FCM tokens - tokens are expired')
+        if results['error_summary'].get('invalid_format', 0) > 0:
+            recommendations.append('Some tokens have invalid format - may be test data')
+        if results['error_summary'].get('token_not_found', 0) > 0:
+            recommendations.append('Tokens not found in Firebase - users may have uninstalled app')
+        if len(results['error_summary']) == 0:
+            recommendations.append('All sample tokens are working - check batch size limits')
+
+        results['recommendations'] = recommendations
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'FCM token analysis completed',
+            'data': results
+        })
+
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }, status=500)
+
+@csrf_exempt
+def clean_invalid_tokens(request):
+    """Clean invalid FCM tokens from database"""
+    try:
+        from results.models import FcmToken
+        from firebase_admin import messaging
+
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST method required'}, status=405)
+
+        # Get all active tokens
+        active_tokens = FcmToken.objects.filter(is_active=True)
+        total_checked = 0
+        invalid_count = 0
+        cleaned_tokens = []
+
+        # Test each token (limit to first 50 for safety)
+        for token_obj in active_tokens[:50]:  # Limit for performance
+            total_checked += 1
+
+            try:
+                # Test token validity without actually sending
+                message = messaging.Message(
+                    notification=messaging.Notification(title='Validation', body='Test'),
+                    token=token_obj.fcm_token
+                )
+                # Don't send, just validate the token format
+                messaging.send(message, dry_run=True)  # dry_run=True validates without sending
+
+            except Exception as e:
+                # Check if it's a token validity error
+                error_str = str(e).lower()
+                if any(err in error_str for err in ['not a valid', 'not found', 'invalid', 'unregistered']):
+                    token_obj.is_active = False
+                    token_obj.save()
+                    invalid_count += 1
+
+                    cleaned_tokens.append({
+                        'name': token_obj.name,
+                        'phone': token_obj.phone_number,
+                        'token_preview': token_obj.fcm_token[:20] + '...',
+                        'error': str(e)
+                    })
+
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Token cleanup completed',
+            'data': {
+                'total_checked': total_checked,
+                'invalid_cleaned': invalid_count,
+                'remaining_active': FcmToken.objects.filter(is_active=True).count(),
+                'cleaned_tokens': cleaned_tokens
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }, status=500)
+
+@csrf_exempt
+def test_notification_batch(request):
+    """Test sending notification to a small batch"""
+    try:
+        from results.services.fcm_service import FCMService
+        from results.models import FcmToken
+
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST method required'}, status=405)
+
+        # Get active token count
+        active_count = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
+
+        # Test with enterprise system
+        result = FCMService.send_new_result_notification('KARUNYA')
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Batch notification test completed',
+            'active_tokens': active_count,
+            'notification_result': result
+        })
+
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }, status=500)
+
+@csrf_exempt
 def clear_test_tokens(request):
     """Clear all test/fake FCM tokens"""
     try:
