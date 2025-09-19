@@ -1288,101 +1288,198 @@ class LotteryWinningPercentageAPI(APIView):
             fallback = f"{lottery_number}_{timezone.now().date()}"
             return int(hashlib.md5(fallback.encode()).hexdigest()[:8], 16)
     
-    def get_all_winning_numbers(self):
-        """Get ALL winning numbers from ALL lotteries"""
-        try:
-            # Get all winning numbers from all lotteries (last 2 years)
-            two_years_ago = timezone.now().date() - timedelta(days=730)
-            
-            all_winners = PrizeEntry.objects.filter(
-                lottery_result__is_published=True,
-                lottery_result__date__gte=two_years_ago,
-                prize_type__in=['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
-            ).values('ticket_number')
-            
-            return list(all_winners)
-            
-        except Exception as e:
-            logger.error(f"Error fetching all winning numbers: {e}")
-            return []
-    
-    def calculate_entertainment_percentage(self, lottery_number, all_winning_numbers):
-        """Calculate percentage for entertainment - changes daily at 3 PM"""
+    def analyze_pattern_category(self, four_digit_number):
+        """
+        Analyze 4-digit number and categorize based on fancy patterns
+        Returns list of pattern categories the number belongs to
+        """
+        patterns = []
+        digits = [int(d) for d in four_digit_number]
+        digit_str = four_digit_number
+
+        # 1. Repeating Patterns (ABAB, AABB, ABBA, AAAB, BAAA)
+        if (digits[0] == digits[2] and digits[1] == digits[3]):  # ABAB
+            patterns.append("Repeating_ABAB")
+        elif (digits[0] == digits[1] and digits[2] == digits[3]):  # AABB
+            patterns.append("Repeating_AABB")
+        elif (digits[0] == digits[3] and digits[1] == digits[2]):  # ABBA
+            patterns.append("Repeating_ABBA")
+        elif (digits[0] == digits[1] == digits[2] and digits[3] != digits[0]):  # AAAB
+            patterns.append("Repeating_AAAB")
+        elif (digits[1] == digits[2] == digits[3] and digits[0] != digits[1]):  # BAAA
+            patterns.append("Repeating_BAAA")
+
+        # 2. Round Numbers (X000, X00Y, XX00)
+        if digit_str.endswith('000'):  # X000
+            patterns.append("Round_X000")
+        elif digit_str[1:3] == '00':  # X00Y
+            patterns.append("Round_X00Y")
+        elif digit_str.endswith('00'):  # XX00
+            patterns.append("Round_XX00")
+
+        # 3. Sequential Patterns
+        # Ascending (1234, 2345, etc.)
+        is_ascending = all(digits[i] + 1 == digits[i + 1] for i in range(3))
+        # Descending (4321, 5432, etc.)
+        is_descending = all(digits[i] - 1 == digits[i + 1] for i in range(3))
+        # Mixed sequential (1324, 2143, etc.) - contains consecutive digits but not in order
+        sorted_digits = sorted(digits)
+        is_mixed_sequential = (not is_ascending and not is_descending and
+                             all(sorted_digits[i] + 1 == sorted_digits[i + 1] for i in range(3)))
+
+        if is_ascending:
+            patterns.append("Sequential_Ascending")
+        elif is_descending:
+            patterns.append("Sequential_Descending")
+        elif is_mixed_sequential:
+            patterns.append("Sequential_Mixed")
+
+        # 4. Leading Zero Patterns (000X, 00XY, 0XXX)
+        if digit_str.startswith('000'):  # 000X
+            patterns.append("LeadingZero_000X")
+        elif digit_str.startswith('00'):  # 00XY
+            patterns.append("LeadingZero_00XY")
+        elif digit_str.startswith('0'):  # 0XXX
+            patterns.append("LeadingZero_0XXX")
+
+        # 5. Double Digit Patterns (AABB, BBAA) - already covered in repeating but separate category
+        if (digits[0] == digits[1] and digits[2] == digits[3]):  # AABB
+            patterns.append("DoubleDigit_AABB")
+        elif (digits[2] == digits[3] and digits[0] == digits[1]):  # BBAA (same as AABB)
+            patterns.append("DoubleDigit_BBAA")
+
+        # 6. Mirror/Palindrome Patterns (ABBA, BAAB)
+        if digits[0] == digits[3] and digits[1] == digits[2]:
+            patterns.append("Mirror_Palindrome")
+
+        # 7. Triple Digits (AAAB, BAAA, ABAA, AABA)
+        digit_counts = {str(i): digit_str.count(str(i)) for i in range(10)}
+        if 3 in digit_counts.values():
+            patterns.append("Triple_Digits")
+
+        # 8. Regular Random Numbers (if no fancy patterns detected)
+        if not patterns:
+            patterns.append("Regular_Random")
+
+        return patterns
+
+    def calculate_pattern_based_percentage(self, lottery_number):
+        """
+        Calculate percentage based on fancy pattern analysis
+        Fancy patterns get VERY HIGH chance to win (75-90% range)
+        Regular random numbers get lower chance (15-35% range)
+        """
         try:
             if not self.number_pattern.match(lottery_number):
                 return 25.0
-            
-            # Get daily seed (changes at 3 PM)
+
+            # Extract last 4 digits
+            four_digits = lottery_number[-4:]
+
+            # Get daily seed for consistency
             seed = self.get_daily_seed(lottery_number)
             import random
             random.seed(seed)
-            
-            target_last_4 = lottery_number[4:]  # Last 4 digits
-            
-            # Start with base random percentage (10-85%)
-            base_percentage = random.randint(10, 85)
-            
-            # Get frequency boost from historical data
-            frequency_boost = 0
-            if all_winning_numbers:
-                frequency_count = 0
-                total_numbers = 0
-                
-                for entry in all_winning_numbers:
-                    ticket_num = str(entry['ticket_number']).upper().strip()
-                    if self.number_pattern.match(ticket_num):
-                        total_numbers += 1
-                        if ticket_num[4:] == target_last_4:
-                            frequency_count += 1
-                
-                if total_numbers > 0:
-                    frequency_rate = frequency_count / total_numbers
-                    # Convert frequency to boost (-10 to +10 range)
-                    frequency_boost = int((frequency_rate * 1000) - 5)  # Can be negative
-                    frequency_boost = max(-10, min(frequency_boost, 10))  # Limit to ±10
-            
-            # Apply frequency boost
-            final_percentage = base_percentage + frequency_boost
-            
-            # Add small random variation for more entertainment
-            variation = random.randint(-3, 3)
-            final_percentage += variation
-            
-            # Ensure stays within 10-85% range
-            final_percentage = max(10, min(final_percentage, 85))
-            
+
+            # Analyze pattern categories
+            patterns = self.analyze_pattern_category(four_digits)
+
+            if "Regular_Random" in patterns:
+                # Regular random numbers get LOW chance (15-35%)
+                base_percentage = random.uniform(15, 35)
+                # Add small variation (-3 to +3)
+                variation = random.uniform(-3, 3)
+                final_percentage = base_percentage + variation
+            else:
+                # Fancy pattern numbers get VERY HIGH chance (75-90%)
+                # Base range for single pattern
+                base_percentage = random.uniform(75, 85)
+
+                # Bonus for multiple patterns (up to +10%)
+                if len(patterns) > 1:
+                    multi_pattern_bonus = min(10, len(patterns) * 2)
+                    base_percentage += multi_pattern_bonus
+
+                # Special high bonus for rare patterns
+                rare_patterns = [
+                    "Round_X000", "LeadingZero_000X", "Sequential_Ascending",
+                    "Sequential_Descending", "Triple_Digits"
+                ]
+                rare_count = sum(1 for p in patterns if any(rare in p for rare in rare_patterns))
+                if rare_count > 0:
+                    base_percentage += rare_count * 2  # +2% per rare pattern
+
+                # Add small variation (-1 to +1)
+                variation = random.uniform(-1, 1)
+                final_percentage = base_percentage + variation
+
+            # Ensure stays within range (10-90%)
+            final_percentage = max(10, min(final_percentage, 90))
+
             return float(final_percentage)
-            
+
         except Exception as e:
-            logger.error(f"Error calculating percentage: {e}")
+            logger.error(f"Error calculating pattern-based percentage: {e}")
             # Fallback calculation
             seed = hash(f"{lottery_number}_{timezone.now().date()}") % 1000000
+            import random
             random.seed(seed)
-            return float(random.randint(10, 85))
+            return float(random.randint(15, 70))
     
     def generate_message(self, percentage, lottery_number):
-        """Generate entertaining messages"""
-        last_4 = lottery_number[4:]
-        
-        if percentage >= 75:
-            messages = [
-                f"🎯 Excellent! {last_4} shows high winning potential today!",
-                f"🔥 Hot number! {last_4} has strong indicators for today!",
-                f"⭐ Great choice! {last_4} looks very promising today!"
-            ]
+        """Generate entertaining messages based on pattern analysis"""
+        last_4 = lottery_number[-4:]
+
+        # Analyze patterns for better message context
+        patterns = self.analyze_pattern_category(last_4)
+        is_fancy = "Regular_Random" not in patterns
+
+        if percentage >= 85:
+            if is_fancy:
+                messages = [
+                    f"🎯 EXCELLENT! {last_4} has PREMIUM fancy patterns - HIGH CHANCE TO WIN!",
+                    f"🔥 SUPER HOT! {last_4} shows EXCEPTIONAL pattern strength - VERY LUCKY!",
+                    f"⭐ AMAZING! {last_4} has RARE patterns with MAXIMUM potential today!"
+                ]
+            else:
+                messages = [
+                    f"🎯 Excellent! {last_4} shows high winning potential today!",
+                    f"🔥 Hot number! {last_4} has strong indicators for today!",
+                    f"⭐ Great choice! {last_4} looks very promising today!"
+                ]
+        elif percentage >= 75:
+            if is_fancy:
+                messages = [
+                    f"🚀 FANTASTIC! {last_4} has STRONG fancy patterns - HIGH WIN CHANCE!",
+                    f"💎 PREMIUM! {last_4} shows POWERFUL pattern indicators!",
+                    f"🌟 WONDERFUL! {last_4} has GREAT pattern strength for winning!"
+                ]
+            else:
+                messages = [
+                    f"👍 Good! {last_4} shows favorable signs for today!",
+                    f"✨ Nice pick! {last_4} has decent potential today!",
+                    f"🎯 Solid choice! {last_4} demonstrates good indicators!"
+                ]
         elif percentage >= 60:
-            messages = [
-                f"👍 Good! {last_4} shows favorable patterns for today!",
-                f"✨ Nice pick! {last_4} has decent potential today!",
-                f"🎯 Solid choice! {last_4} demonstrates good signs today!"
-            ]
-        elif percentage >= 45:
+            if is_fancy:
+                messages = [
+                    f"✨ GOOD! {last_4} has NICE fancy patterns - GOOD WIN POTENTIAL!",
+                    f"🎲 LUCKY! {last_4} shows FAVORABLE pattern signs!",
+                    f"👍 SOLID! {last_4} demonstrates DECENT pattern strength!"
+                ]
+            else:
+                messages = [
+                    f"⚖️ Moderate potential! {last_4} shows average indicators today.",
+                    f"📊 Fair chance! {last_4} has mixed signals for today.",
+                    f"🤔 Average choice! {last_4} shows moderate patterns today."
+                ]
+        elif percentage >= 35:
             messages = [
                 f"⚖️ Moderate potential! {last_4} shows average indicators today.",
                 f"📊 Fair chance! {last_4} has mixed signals for today.",
                 f"🤔 Average choice! {last_4} shows moderate patterns today."
             ]
-        elif percentage >= 30:
+        elif percentage >= 25:
             messages = [
                 f"📉 Below average! {last_4} has limited potential today.",
                 f"⚠️ Low-moderate! {last_4} shows weak patterns for today.",
@@ -1394,7 +1491,7 @@ class LotteryWinningPercentageAPI(APIView):
                 f"🚫 Weak choice! {last_4} has unfavorable patterns today.",
                 f"💭 Try different number! {last_4} shows limited promise today."
             ]
-        
+
         # Use consistent message selection based on percentage
         seed = hash(f"{percentage}{lottery_number}") % len(messages)
         return messages[seed]
@@ -1455,13 +1552,8 @@ class LotteryWinningPercentageAPI(APIView):
                     'status': 'error'
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Get ALL winning numbers from ALL lotteries
-            all_winning_numbers = self.get_all_winning_numbers()
-            
-            # Calculate entertainment percentage (changes daily at 3 PM)
-            percentage = self.calculate_entertainment_percentage(
-                lottery_number, all_winning_numbers
-            )
+            # Calculate pattern-based percentage (changes daily at 3 PM)
+            percentage = self.calculate_pattern_based_percentage(lottery_number)
             
             # Generate message
             message = self.generate_message(percentage, lottery_number)
