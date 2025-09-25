@@ -20,10 +20,10 @@ class FlippingCounter {
         this.createCounterHTML();
         this.fetchUserCount();
         
-        // Start 10-second API polling
+        // Start 30-second API polling
         setInterval(() => {
             this.fetchUserCount();
-        }, 10000);
+        }, 30000);
     }
 
     createCounterHTML() {
