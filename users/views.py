@@ -3,8 +3,8 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from .serializers import UserRegistrationSerializer, UserLoginSerializer
-from .models import User
+from .serializers import UserRegistrationSerializer, UserLoginSerializer, LotteryPurchaseSerializer, LotteryStatisticsSerializer
+from .models import User, LotteryPurchase
 from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -66,5 +66,86 @@ def user_count_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class LotteryPurchaseView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LotteryPurchaseSerializer(data=request.data)
+        if serializer.is_valid():
+            lottery_purchase = serializer.save()
+            return Response({
+                'user_id': lottery_purchase.user_id,
+                'lottery_number': lottery_purchase.lottery_number,
+                'lottery_name': lottery_purchase.lottery_name,
+                'ticket_price': lottery_purchase.ticket_price,
+                'purchase_date': lottery_purchase.purchase_date,
+                'message': 'Lottery purchase recorded successfully'
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            'message': 'Failed to record lottery purchase',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
+class LotteryStatisticsView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LotteryStatisticsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'message': 'Invalid data',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user_id = serializer.validated_data['user_id']
+
+        # Get all lottery purchases for this user
+        purchases = LotteryPurchase.objects.filter(user_id=user_id)
+
+        # Update win status for all purchases
+        for purchase in purchases:
+            purchase.check_win_status()
+
+        # Refresh purchases after status update
+        purchases = LotteryPurchase.objects.filter(user_id=user_id)
+
+        # Calculate statistics
+        total_tickets = purchases.count()
+        total_expense = sum(float(p.ticket_price) for p in purchases)
+
+        winning_purchases = purchases.filter(is_winner=True)
+        total_winnings = sum(float(p.winnings or 0) for p in winning_purchases)
+
+        win_rate = (winning_purchases.count() / total_tickets * 100) if total_tickets > 0 else 0
+        net_result = total_winnings - total_expense
+
+        # Prepare lottery entries
+        lottery_entries = []
+        for idx, purchase in enumerate(purchases, 1):
+            status_value = purchase.check_win_status()
+
+            lottery_entries.append({
+                "lottery_unique_id": str(purchase.lottery_unique_id) if purchase.lottery_unique_id else None,
+                "sl_no": idx,
+                "lottery_number": purchase.lottery_number,
+                "lottery_name": purchase.lottery_name,
+                "price": float(purchase.ticket_price),
+                "purchase_date": str(purchase.purchase_date),
+                "winnings": float(purchase.winnings) if purchase.winnings else None,
+                "status": status_value
+            })
+
+        response_data = {
+            "user_id": user_id,
+            "challenge_statistics": {
+                "total_expense": total_expense,
+                "total_winnings": total_winnings,
+                "total_tickets": total_tickets,
+                "win_rate": round(win_rate, 1),
+                "net_result": net_result
+            },
+            "lottery_entries": lottery_entries
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)

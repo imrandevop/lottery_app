@@ -82,3 +82,70 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.username:
             self.username = f"user_{self.phone_number}"
         super().save(*args, **kwargs)
+
+
+class LotteryPurchase(models.Model):
+    user_id = models.CharField(max_length=20, help_text="User identifier")
+    lottery_number = models.CharField(max_length=10, help_text="Lottery ticket number")
+    lottery_name = models.CharField(max_length=100, help_text="Name of the lottery")
+    ticket_price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price of the lottery ticket")
+    purchase_date = models.DateField(help_text="Date of purchase")
+    lottery_unique_id = models.UUIDField(null=True, blank=True, help_text="Lottery result unique ID for checking wins")
+    winnings = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Prize amount if won")
+    is_winner = models.BooleanField(default=False, help_text="Whether this ticket won any prize")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['user_id', 'lottery_number', 'purchase_date']
+        ordering = ['-purchase_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.user_id} - {self.lottery_name} ({self.lottery_number})"
+
+    def check_win_status(self):
+        """Check if this ticket won based on lottery results"""
+        if not self.lottery_unique_id:
+            return "pending"
+
+        try:
+            from results.models import LotteryResult, PrizeEntry
+
+            # Get the lottery result
+            lottery_result = LotteryResult.objects.get(
+                unique_id=self.lottery_unique_id,
+                is_published=True
+            )
+
+            # Check if ticket won any prize
+            last_4_digits = self.lottery_number[-4:] if len(self.lottery_number) >= 4 else self.lottery_number
+
+            # Check full ticket match
+            full_match = PrizeEntry.objects.filter(
+                ticket_number=self.lottery_number,
+                lottery_result=lottery_result
+            ).first()
+
+            # Check last 4 digits match
+            partial_match = PrizeEntry.objects.filter(
+                ticket_number=last_4_digits,
+                lottery_result=lottery_result
+            ).exclude(ticket_number=self.lottery_number).first()
+
+            winning_prize = full_match or partial_match
+
+            if winning_prize:
+                # Update winning status
+                self.is_winner = True
+                self.winnings = winning_prize.prize_amount
+                self.save(update_fields=['is_winner', 'winnings'])
+                return "won"
+            else:
+                # Not a winner
+                self.is_winner = False
+                self.winnings = None
+                self.save(update_fields=['is_winner', 'winnings'])
+                return "lost"
+
+        except:
+            # Result not found or not published yet
+            return "pending"
