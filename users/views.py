@@ -72,8 +72,29 @@ class LotteryPurchaseView(APIView):
     def post(self, request):
         serializer = LotteryPurchaseSerializer(data=request.data)
         if serializer.is_valid():
+            is_deleted = serializer.validated_data.get('is_deleted', False)
+            record_id = serializer.validated_data.get('id')
+
+            # Handle delete operation
+            if is_deleted and record_id:
+                try:
+                    lottery_purchase = LotteryPurchase.objects.get(
+                        id=record_id,
+                        user_id=serializer.validated_data['user_id']
+                    )
+                    lottery_purchase.delete()
+                    return Response({
+                        'message': 'Lottery purchase deleted successfully'
+                    }, status=status.HTTP_200_OK)
+                except LotteryPurchase.DoesNotExist:
+                    return Response({
+                        'message': 'Record not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+
+            # Handle create operation (existing functionality)
             lottery_purchase = serializer.save()
             return Response({
+                'id': lottery_purchase.id,
                 'user_id': lottery_purchase.user_id,
                 'lottery_number': lottery_purchase.lottery_number,
                 'lottery_name': lottery_purchase.lottery_name,
@@ -126,6 +147,7 @@ class LotteryStatisticsView(APIView):
             status_value = purchase.check_win_status()
 
             lottery_entries.append({
+                "id": purchase.id,
                 "lottery_unique_id": str(purchase.lottery_unique_id) if purchase.lottery_unique_id else None,
                 "sl_no": idx,
                 "lottery_number": purchase.lottery_number,
