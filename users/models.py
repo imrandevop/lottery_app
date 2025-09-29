@@ -104,17 +104,40 @@ class LotteryPurchase(models.Model):
 
     def check_win_status(self):
         """Check if this ticket won based on lottery results"""
-        if not self.lottery_unique_id:
+        from results.models import LotteryResult, PrizeEntry, Lottery
+        from datetime import date
+
+        # Get lottery code from first letter of ticket number
+        lottery_code = self.lottery_number[0].upper() if self.lottery_number else None
+        if not lottery_code:
             return "pending"
 
         try:
-            from results.models import LotteryResult, PrizeEntry
-
-            # Get the lottery result
-            lottery_result = LotteryResult.objects.get(
-                unique_id=self.lottery_unique_id,
+            # Find lottery result by lottery code and purchase date
+            lottery = Lottery.objects.get(code=lottery_code)
+            lottery_result = LotteryResult.objects.filter(
+                lottery=lottery,
+                date=self.purchase_date,
                 is_published=True
-            )
+            ).first()
+
+            # Auto-update lottery_unique_id if result found
+            if lottery_result and not self.lottery_unique_id:
+                self.lottery_unique_id = lottery_result.unique_id
+                self.save(update_fields=['lottery_unique_id'])
+
+            # If no result found
+            if not lottery_result:
+                today = date.today()
+                if self.purchase_date < today:
+                    # Past date but no result in DB - show as lost
+                    self.is_winner = False
+                    self.winnings = None
+                    self.save(update_fields=['is_winner', 'winnings'])
+                    return "lost"
+                else:
+                    # Today or future date - pending
+                    return "pending"
 
             # Check if ticket won any prize
             last_4_digits = self.lottery_number[-4:] if len(self.lottery_number) >= 4 else self.lottery_number
@@ -146,6 +169,9 @@ class LotteryPurchase(models.Model):
                 self.save(update_fields=['is_winner', 'winnings'])
                 return "lost"
 
-        except:
-            # Result not found or not published yet
+        except Lottery.DoesNotExist:
+            # Invalid lottery code
+            return "pending"
+        except Exception:
+            # Other errors
             return "pending"
