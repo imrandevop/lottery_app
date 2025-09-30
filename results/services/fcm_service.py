@@ -300,7 +300,7 @@ class FCMService:
         # Check user count to decide method
         user_count = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
 
-        if user_count >= 500:  # Increased threshold - use sequential for most cases
+        if user_count >= 100:  # Use batched for 100+ users
             # Use scalable batch system for larger user bases
             return cls.send_to_all_users_batched(title, body, data, image_url)
         else:
