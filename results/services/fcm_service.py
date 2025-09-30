@@ -292,54 +292,58 @@ class FCMService:
     def send_to_all_users(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
         """
         Smart notification dispatcher:
-        - Uses batched multicast for 100+ users (scalable)
-        - Uses sequential for <100 users (simple)
+        - FIXED: Always use sequential method due to Firebase HTTP/2 SSL issues in production
+        - Batched method causes protocol violations on some servers
         """
         from results.models import FcmToken
 
-        # Check user count to decide method
-        user_count = FcmToken.objects.filter(is_active=True, notifications_enabled=True).count()
-
-        if user_count >= 100:  # Use batched for 100+ users
-            # Use scalable batch system for larger user bases
-            return cls.send_to_all_users_batched(title, body, data, image_url)
-        else:
-            # Use simple sequential for smaller user bases (works reliably)
-            return cls.send_to_all_users_sequential(title, body, data, image_url)
+        # PRODUCTION FIX: Always use sequential method to avoid HTTP/2 SSL protocol issues
+        # The batched multicast method is causing "EOF occurred in violation of protocol" errors
+        logger.info("Using sequential method to avoid Firebase HTTP/2 protocol issues")
+        return cls.send_to_all_users_sequential(title, body, data, image_url)
 
     @classmethod
     def send_to_all_users_sequential(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
-        """LEGACY: Send notification to all active users sequentially (for small user bases)"""
+        """OPTIMIZED: Send notifications using parallel threading for speed"""
         try:
             from firebase_admin import messaging
             from results.models import FcmToken
             from django.utils import timezone
             import logging
-            
+            import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import time
+
             logger = logging.getLogger('lottery_app')
-            
+
             # Initialize Firebase if needed
             cls._initialize_firebase()
-            
+
             # Get all active FCM tokens
             active_tokens = list(FcmToken.objects.filter(
                 is_active=True,
                 notifications_enabled=True
             ).values_list('fcm_token', flat=True))
-            
+
             if not active_tokens:
                 logger.warning("No active FCM tokens found")
                 return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
-            
+
             # Use fallback image if no image provided
             if not image_url:
                 image_url = cls.FALLBACK_IMAGE
-            
-            # Send using proven working direct method with images
+
+            logger.info(f"🚀 FAST MODE: Sending to {len(active_tokens)} users using {min(20, len(active_tokens))} parallel threads")
+
+            # Thread-safe counters
             success_count = 0
             failure_count = 0
-            
-            for token in active_tokens:
+            success_lock = threading.Lock()
+            failure_lock = threading.Lock()
+
+            def send_single_notification(token):
+                """Send notification to a single token (thread-safe)"""
+                nonlocal success_count, failure_count
                 try:
                     # Create base notification without image (to ensure proper icon display)
                     notification = messaging.Notification(
@@ -398,32 +402,63 @@ class FCMService:
                     )
                     
                     response = messaging.send(message)
-                    success_count += 1
-                    logger.info(f"✅ Notification sent with image: {response}")
-                    
+                    with success_lock:
+                        success_count += 1
+                    return True
+
                 except Exception as e:
-                    failure_count += 1
-                    logger.error(f"❌ Notification failed: {e}")
-                    
+                    with failure_lock:
+                        failure_count += 1
+                    error_str = str(e)
+
                     # Deactivate invalid tokens
-                    if "not a valid FCM registration token" in str(e) or "Requested entity was not found" in str(e):
+                    if ("not a valid FCM registration token" in error_str or
+                        "Requested entity was not found" in error_str or
+                        "registration-token-not-registered" in error_str):
                         FcmToken.objects.filter(fcm_token=token).update(is_active=False)
-                        logger.info(f"🗑️ Deactivated invalid token")
-            
-            # Update last_used for successful tokens
+
+                    # Small delay for rate limiting
+                    time.sleep(0.05)
+                    return False
+
+            # 🚀 PARALLEL EXECUTION: Use ThreadPoolExecutor for speed
+            start_time = time.time()
+            max_workers = min(20, len(active_tokens))  # Max 20 concurrent threads
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all notification jobs
+                future_to_token = {
+                    executor.submit(send_single_notification, token): token
+                    for token in active_tokens
+                }
+
+                # Wait for completion with progress logging
+                completed = 0
+                for future in as_completed(future_to_token):
+                    completed += 1
+                    if completed % 100 == 0:  # Log progress every 100 notifications
+                        logger.info(f"📊 Progress: {completed}/{len(active_tokens)} notifications processed")
+
+            elapsed_time = time.time() - start_time
+            rate = len(active_tokens) / elapsed_time if elapsed_time > 0 else 0
+
+            # Update last_used for successful tokens (if any succeeded)
             if success_count > 0:
                 FcmToken.objects.filter(
                     fcm_token__in=active_tokens,
                     is_active=True
                 ).update(last_used=timezone.now())
-            
-            logger.info(f"📱 Notification summary: {success_count} success, {failure_count} failed")
-            
+
+            logger.info(f"🚀 FAST NOTIFICATION COMPLETE: {success_count} success, {failure_count} failed")
+            logger.info(f"⚡ Performance: {len(active_tokens)} notifications in {elapsed_time:.2f}s ({rate:.1f}/sec)")
+
             return {
                 'success_count': success_count,
                 'failure_count': failure_count,
-                'message': f'Sent to {success_count}/{len(active_tokens)} devices',
-                'image_url': image_url
+                'message': f'Sent to {success_count}/{len(active_tokens)} devices in {elapsed_time:.2f}s ({rate:.1f}/sec)',
+                'image_url': image_url,
+                'elapsed_time': elapsed_time,
+                'notifications_per_second': rate
             }
             
         except Exception as e:
