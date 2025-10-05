@@ -191,8 +191,8 @@
                     
                     <!-- Bulk Entry Section -->
                     <div id="{{ prize_type }}-bulk" class="bulk-entry-section" style="display: none;">
-                        {% if prize_type in "consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
-                            <!-- Special bulk entry format for consolation and 4th-10th prizes -->
+                        {% if prize_type in "2nd,3rd,consolation,4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                            <!-- Special bulk entry format for 2nd, 3rd, consolation and 4th-10th prizes -->
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="{{ prize_type }}-bulk-amount">Prize Amount (₹)</label>
@@ -202,8 +202,8 @@
                             <label for="{{ prize_type }}-bulk-textarea">Ticket Numbers (Space separated, numbers only - any length)</label>
                             <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="1234 56789 123456 7890"></textarea>
                         {% else %}
-                            <!-- Original bulk entry format for 1st, 2nd, 3rd prizes -->
-                            <label for="{{ prize_type }}-bulk-textarea">Bulk Entry 
+                            <!-- Original bulk entry format for 1st prize -->
+                            <label for="{{ prize_type }}-bulk-textarea">Bulk Entry
                                 (Format: amount,ticket_number,place per line)
                             </label>
                             <textarea class="bulk-textarea" id="{{ prize_type }}-bulk-textarea" placeholder="1000,AB123456,Mumbai&#10;1000,CD789012,Delhi"></textarea>

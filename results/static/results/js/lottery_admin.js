@@ -780,12 +780,95 @@ function addMultipleFields(prizeType, numFields) {
 }
 
 /**
+ * Add full entry with amount, ticket, and place fields (for 1st, 2nd, 3rd prizes)
+ */
+function addFullEntry(prizeType) {
+    const entriesContainer = document.getElementById(prizeType + '-entries');
+    if (!entriesContainer) return;
+
+    const entryCount = entriesContainer.querySelectorAll('.prize-entry').length;
+
+    // Create new entry
+    const newEntry = document.createElement('div');
+    newEntry.className = 'prize-entry';
+    newEntry.setAttribute('data-entry-index', entryCount);
+
+    const formRow = document.createElement('div');
+    formRow.className = 'form-row';
+
+    // Amount field
+    const amountGroup = document.createElement('div');
+    amountGroup.className = 'form-group';
+    const amountLabel = document.createElement('label');
+    amountLabel.textContent = 'Prize Amount (₹)';
+    const amountInput = document.createElement('input');
+    amountInput.type = 'number';
+    amountInput.name = `${prizeType}_prize_amount[]`;
+    amountInput.className = 'form-control';
+    amountInput.onwheel = function() { this.blur(); };
+    amountGroup.appendChild(amountLabel);
+    amountGroup.appendChild(amountInput);
+
+    // Ticket field
+    const ticketGroup = document.createElement('div');
+    ticketGroup.className = 'form-group';
+    const ticketLabel = document.createElement('label');
+    ticketLabel.textContent = 'Ticket Number';
+    const ticketInput = document.createElement('input');
+    ticketInput.type = 'text';
+    ticketInput.name = `${prizeType}_ticket_number[]`;
+    ticketInput.className = 'form-control';
+    ticketGroup.appendChild(ticketLabel);
+    ticketGroup.appendChild(ticketInput);
+
+    // Place field (for 1st, 2nd, 3rd)
+    const placeGroup = document.createElement('div');
+    placeGroup.className = 'form-group';
+    const placeLabel = document.createElement('label');
+    placeLabel.textContent = 'Place';
+    const placeInput = document.createElement('input');
+    placeInput.type = 'text';
+    placeInput.name = `${prizeType}_place[]`;
+    placeInput.className = 'form-control';
+    placeGroup.appendChild(placeLabel);
+    placeGroup.appendChild(placeInput);
+
+    // Add all fields to row
+    formRow.appendChild(amountGroup);
+    formRow.appendChild(ticketGroup);
+    formRow.appendChild(placeGroup);
+
+    // Add row to entry
+    newEntry.appendChild(formRow);
+
+    // Add event listeners
+    [amountInput, ticketInput, placeInput].forEach(input => {
+        applyNoSpacesToInput(input);
+        input.addEventListener('change', () => {
+            isDirty = true;
+            notifyPreviewUpdate();
+        });
+    });
+
+    // Add entry to container
+    entriesContainer.appendChild(newEntry);
+
+    // Mark form as dirty
+    isDirty = true;
+    notifyPreviewUpdate();
+}
+
+/**
  * Add entry to prize section (simplified - adds exactly 3 fields per call)
  */
 function addEntry(prizeType) {
-    // Always add exactly 3 fields to maintain consistent 3-per-row layout
-    // This ensures perfect responsive behavior across all devices
-    addMultipleFields(prizeType, 3);
+    // For 1st, 2nd, 3rd prizes - add full entry with amount, ticket, place
+    if (['1st', '2nd', '3rd'].includes(prizeType)) {
+        addFullEntry(prizeType);
+    } else {
+        // For consolation, 4th-10th - add 3 ticket fields
+        addMultipleFields(prizeType, 3);
+    }
 }
 
 /**
@@ -900,7 +983,7 @@ function toggleBulkEntry(prizeType) {
     
     if (!isVisible) {
         setTimeout(() => {
-            const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+            const specialPrizes = ['2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
             if (specialPrizes.includes(prizeType)) {
                 const amountInput = document.getElementById(prizeType + '-bulk-amount');
                 if (amountInput) amountInput.focus();
@@ -938,7 +1021,7 @@ function processBulkEntries(prizeType) {
     }
     
     // Don't clear existing entries - we want to append to them
-    const specialPrizes = ['consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    const specialPrizes = ['2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
     const isSpecialPrize = specialPrizes.includes(prizeType);
     
     // Get current entry count to continue numbering
@@ -1016,40 +1099,52 @@ function processBulkEntries(prizeType) {
         
         const invalidCount = rawTicketNumbers.length - ticketNumbers.length;
         
-        // Strategy: First fill existing empty ticket fields, then create new entries as needed
+        // Strategy: For 2nd & 3rd, clear existing normal entries and create fresh bulk entries
+        // For consolation/4th-10th, fill existing empty ticket fields, then create new entries
         let ticketIndex = 0; // Track position in ticketNumbers array
         let currentEntryIdx = hasEmptyFirstEntry ? -1 : 0; // Start from first existing entry
-        
-        // If we have an empty first entry, we'll replace it instead of appending
-        if (hasEmptyFirstEntry) {
-            entriesContainer.removeChild(entriesContainer.children[0]);
-            currentEntryIdx = -1; // Signal that we need to create the first entry
-        }
-        
-        // First, fill existing entries' empty ticket fields
-        if (!hasEmptyFirstEntry && currentEntryCount > 0) {
-            for (let entryIdx = 0; entryIdx < currentEntryCount && ticketIndex < ticketNumbers.length; entryIdx++) {
-                const existingEntry = entriesContainer.children[entryIdx];
-                const ticketInputs = existingEntry.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
-                
-                // Fill empty ticket fields in this existing entry
-                for (let fieldIdx = 0; fieldIdx < ticketInputs.length && ticketIndex < ticketNumbers.length; fieldIdx++) {
-                    if (!ticketInputs[fieldIdx].value.trim()) {
-                        ticketInputs[fieldIdx].value = ticketNumbers[ticketIndex];
-                        ticketIndex++;
-                        successCount++;
-                        
-                        // Set up event listeners for the newly filled field
-                        applyNoSpacesToInput(ticketInputs[fieldIdx]);
-                        ticketInputs[fieldIdx].addEventListener('change', () => {
-                            isDirty = true;
-                            notifyPreviewUpdate();
-                        });
-                        
-                        // Set up auto-save for 4th-10th prizes
-                        const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-                        if (autoSavePrizes.includes(prizeType)) {
-                            setupAutoSaveForInput(ticketInputs[fieldIdx], prizeType);
+
+        // Special handling for 2nd & 3rd prizes - clear normal mode entries and start fresh
+        const needsFreshStart = ['2nd', '3rd'].includes(prizeType);
+
+        if (needsFreshStart) {
+            // Clear all existing entries for 2nd & 3rd when using bulk mode
+            while (entriesContainer.firstChild) {
+                entriesContainer.removeChild(entriesContainer.firstChild);
+            }
+            currentEntryIdx = -1;
+        } else {
+            // For consolation/4th-10th: If we have an empty first entry, we'll replace it
+            if (hasEmptyFirstEntry) {
+                entriesContainer.removeChild(entriesContainer.children[0]);
+                currentEntryIdx = -1; // Signal that we need to create the first entry
+            }
+
+            // First, fill existing entries' empty ticket fields (consolation/4th-10th only)
+            if (!hasEmptyFirstEntry && currentEntryCount > 0) {
+                for (let entryIdx = 0; entryIdx < currentEntryCount && ticketIndex < ticketNumbers.length; entryIdx++) {
+                    const existingEntry = entriesContainer.children[entryIdx];
+                    const ticketInputs = existingEntry.querySelectorAll(`input[name="${prizeType}_ticket_number[]"]`);
+
+                    // Fill empty ticket fields in this existing entry
+                    for (let fieldIdx = 0; fieldIdx < ticketInputs.length && ticketIndex < ticketNumbers.length; fieldIdx++) {
+                        if (!ticketInputs[fieldIdx].value.trim()) {
+                            ticketInputs[fieldIdx].value = ticketNumbers[ticketIndex];
+                            ticketIndex++;
+                            successCount++;
+
+                            // Set up event listeners for the newly filled field
+                            applyNoSpacesToInput(ticketInputs[fieldIdx]);
+                            ticketInputs[fieldIdx].addEventListener('change', () => {
+                                isDirty = true;
+                                notifyPreviewUpdate();
+                            });
+
+                            // Set up auto-save for 4th-10th prizes
+                            const autoSavePrizes = ['4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+                            if (autoSavePrizes.includes(prizeType)) {
+                                setupAutoSaveForInput(ticketInputs[fieldIdx], prizeType);
+                            }
                         }
                     }
                 }
@@ -1072,17 +1167,18 @@ function processBulkEntries(prizeType) {
             // Create new entry
             const entry = document.createElement('div');
             entry.className = 'prize-entry';
-            entry.setAttribute('data-entry-index', (hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex);
-            
+            // For 2nd & 3rd (needsFreshStart), always start from 0. For others, use existing logic
+            entry.setAttribute('data-entry-index', needsFreshStart ? newEntryIndex : ((hasEmptyFirstEntry ? 0 : currentEntryCount) + newEntryIndex));
+
             const formRow = document.createElement('div');
             formRow.className = 'form-row ticket-row';
             formRow.style.display = 'flex !important';
             formRow.style.flexWrap = 'nowrap !important';
             formRow.style.maxWidth = '100% !important';
-            
+
             // Add amount field logic:
             // - Only add visible amount field if this is the very first entry in the entire container
-            const isVeryFirstEntry = (hasEmptyFirstEntry && newEntryIndex === 0) || (currentEntryCount === 0 && newEntryIndex === 0);
+            const isVeryFirstEntry = needsFreshStart ? (newEntryIndex === 0) : ((hasEmptyFirstEntry && newEntryIndex === 0) || (currentEntryCount === 0 && newEntryIndex === 0));
             
             if (isVeryFirstEntry) {
                 const prizeGroup = document.createElement('div');
