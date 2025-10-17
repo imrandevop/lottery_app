@@ -5,7 +5,7 @@ from django import forms
 from django.http import JsonResponse
 from django.urls import path
 from django.utils.html import format_html
-from .models import User
+from .models import User, Feedback
 from .signals import get_user_count
 
 class UserCreationForm(forms.ModelForm):
@@ -93,4 +93,11 @@ class UserAdmin(BaseUserAdmin):
         return super().changelist_view(request, extra_context=extra_context)
 
 admin.site.register(User, UserAdmin)
+
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+	list_display = ('phone_number', 'screen_name', 'created_at')
+	search_fields = ('phone_number', 'screen_name', 'message')
+	list_filter = ('created_at',)
 

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, LotteryPurchase
+from .models import User, LotteryPurchase, Feedback
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
@@ -111,4 +111,10 @@ class LotteryStatisticsSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("User does not exist.")
         return value
+
+
+class FeedbackSerializer(serializers.ModelSerializer):
+	class Meta:
+		model = Feedback
+		fields = ['phone_number', 'screen_name', 'message']
 

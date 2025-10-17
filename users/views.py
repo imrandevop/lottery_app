@@ -3,8 +3,8 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from .serializers import UserRegistrationSerializer, UserLoginSerializer, LotteryPurchaseSerializer, LotteryStatisticsSerializer
-from .models import User, LotteryPurchase
+from .serializers import UserRegistrationSerializer, UserLoginSerializer, LotteryPurchaseSerializer, LotteryStatisticsSerializer, FeedbackSerializer
+from .models import User, LotteryPurchase, Feedback
 from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -171,3 +171,17 @@ class LotteryStatisticsView(APIView):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class FeedbackView(APIView):
+	permission_classes = [AllowAny]
+
+	def post(self, request):
+		serializer = FeedbackSerializer(data=request.data)
+		if serializer.is_valid():
+			Feedback.objects.create(**serializer.validated_data)
+			return Response({
+				'success': True,
+				'message': 'Feedback received'
+			}, status=status.HTTP_201_CREATED)
+		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
