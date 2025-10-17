@@ -90,22 +90,7 @@
                             <label for="date">Date</label>
                             <input type="date" name="date" id="date" class="form-control" value="{% if lottery_result %}{{ lottery_result.date|date:'Y-m-d' }}{% endif %}" required>
                         </div>
-                        <div class="form-group">
-                            <div class="checkbox-container">
-                                <div class="checkbox-group">
-                                    <input type="checkbox" name="is_published" id="published" {% if lottery_result and lottery_result.is_published %}checked{% endif %}>
-                                    <label for="published">Mark as declared</label>
-                                </div>
-                                <div class="checkbox-group">
-                                    <input type="checkbox" name="is_bumper" id="bumper" {% if lottery_result and lottery_result.is_bumper %}checked{% endif %}>
-                                    <label for="bumper">Is bumper</label>
-                                </div>
-                                <div class="checkbox-group">
-                                    <input type="checkbox" name="results_ready_notification" id="notify" {% if lottery_result and lottery_result.results_ready_notification %}checked{% endif %}>
-                                    <label for="notify">Notify</label>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Checkboxes moved to bottom fixed bar -->
                     </div>
                 </div>
             </div>
@@ -225,6 +210,20 @@
 
 <!-- ========== FIXED BOTTOM ACTION BUTTONS ========== -->
 <div class="bottom-action-buttons">
+    <div class="bottom-checkboxes">
+        <div class="checkbox-group">
+            <input type="checkbox" name="is_published" id="published" form="lotteryForm" {% if lottery_result and lottery_result.is_published %}checked{% endif %}>
+            <label for="published">Mark as declared</label>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" name="is_bumper" id="bumper" form="lotteryForm" {% if lottery_result and lottery_result.is_bumper %}checked{% endif %}>
+            <label for="bumper">Is bumper</label>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" name="results_ready_notification" id="notify" form="lotteryForm" {% if lottery_result and lottery_result.results_ready_notification %}checked{% endif %}>
+            <label for="notify">Notify</label>
+        </div>
+    </div>
     <!-- Preview Toggle Button with multiple event handlers -->
     <button type="button" 
             class="btn preview-toggle-btn" 
