@@ -148,9 +148,12 @@ class UserActivityAdmin(admin.ModelAdmin):
 	)
 
 	def short_unique_id(self, obj):
-		"""Display shortened UUID for better readability"""
-		return f"{str(obj.unique_id)[:8]}..."
-	short_unique_id.short_description = 'Device ID'
+		"""Display shortened unique_id for better readability"""
+		unique_id_str = str(obj.unique_id)
+		if len(unique_id_str) > 20:
+			return f"{unique_id_str[:20]}..."
+		return unique_id_str
+	short_unique_id.short_description = 'Unique ID'
 
 	def first_access_display(self, obj):
 		"""Display first access time in IST"""

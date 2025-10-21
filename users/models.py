@@ -201,7 +201,7 @@ class UserActivity(models.Model):
 	]
 
 	# Primary tracking fields
-	unique_id = models.UUIDField(db_index=True, help_text="Unique identifier from mobile app (device/installation ID)")
+	unique_id = models.CharField(max_length=255, db_index=True, help_text="Unique identifier from mobile app (device/installation ID)")
 	phone_number = models.CharField(max_length=15, null=True, blank=True, db_index=True, help_text="User phone number (optional, only for apps with phone auth)")
 	app_name = models.CharField(max_length=20, choices=APP_CHOICES, db_index=True, help_text="Application name")
 

@@ -123,12 +123,13 @@ class UserActivitySerializer(serializers.Serializer):
 	"""
 	Serializer for tracking user activity
 	Request body: {
-		"unique_id": "uuid-from-mobile-app",
+		"unique_id": "any-string-from-mobile-app",
 		"phone_number": "+919876543210" (optional),
 		"app_name": "lotto" or "lotto lite"
 	}
 	"""
-	unique_id = serializers.UUIDField(
+	unique_id = serializers.CharField(
+		max_length=255,
 		required=True,
 		help_text="Unique identifier from mobile app (device/installation ID)"
 	)
@@ -144,6 +145,12 @@ class UserActivitySerializer(serializers.Serializer):
 		required=True,
 		help_text="Application name (lotto or lotto lite)"
 	)
+
+	def validate_unique_id(self, value):
+		"""Validate and trim unique_id"""
+		if not value or value.strip() == '':
+			raise serializers.ValidationError("unique_id cannot be empty")
+		return value.strip()
 
 	def validate_app_name(self, value):
 		"""Validate app name is one of the allowed values"""
