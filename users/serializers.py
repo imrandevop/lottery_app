@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, LotteryPurchase, Feedback
+from .models import User, LotteryPurchase, Feedback, UserActivity
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
@@ -118,3 +118,61 @@ class FeedbackSerializer(serializers.ModelSerializer):
 		model = Feedback
 		fields = ['phone_number', 'screen_name', 'message']
 
+
+class UserActivitySerializer(serializers.Serializer):
+	"""
+	Serializer for tracking user activity
+	Request body: {
+		"unique_id": "uuid-from-mobile-app",
+		"phone_number": "+919876543210" (optional),
+		"app_name": "lotto" or "lotto lite"
+	}
+	"""
+	unique_id = serializers.UUIDField(
+		required=True,
+		help_text="Unique identifier from mobile app (device/installation ID)"
+	)
+	phone_number = serializers.CharField(
+		max_length=15,
+		required=False,
+		allow_null=True,
+		allow_blank=True,
+		help_text="User phone number (optional, only for apps with phone auth)"
+	)
+	app_name = serializers.ChoiceField(
+		choices=['lotto', 'lotto lite'],
+		required=True,
+		help_text="Application name (lotto or lotto lite)"
+	)
+
+	def validate_app_name(self, value):
+		"""Validate app name is one of the allowed values"""
+		if value not in ['lotto', 'lotto lite']:
+			raise serializers.ValidationError(
+				"Invalid app_name. Must be 'lotto' or 'lotto lite'"
+			)
+		return value
+
+	def validate_phone_number(self, value):
+		"""Normalize phone number to consistent format if provided"""
+		if not value or value.strip() == '':
+			return None
+
+		import re
+		# Remove all non-digit characters except +
+		cleaned = re.sub(r'[^\d+]', '', str(value))
+
+		# If it starts with +91, keep as is
+		if cleaned.startswith('+91'):
+			return cleaned
+
+		# If it starts with 91, add +
+		if cleaned.startswith('91') and len(cleaned) == 12:
+			return '+' + cleaned
+
+		# If it's 10 digits, assume Indian number and add +91
+		if len(cleaned) == 10 and cleaned.isdigit():
+			return '+91' + cleaned
+
+		# Return cleaned value if we can't normalize
+		return cleaned if cleaned else None

@@ -3,11 +3,12 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from .serializers import UserRegistrationSerializer, UserLoginSerializer, LotteryPurchaseSerializer, LotteryStatisticsSerializer, FeedbackSerializer
-from .models import User, LotteryPurchase, Feedback
+from .serializers import UserRegistrationSerializer, UserLoginSerializer, LotteryPurchaseSerializer, LotteryStatisticsSerializer, FeedbackSerializer, UserActivitySerializer
+from .models import User, LotteryPurchase, Feedback, UserActivity
 from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.db import transaction
 import uuid
 import logging
 logger = logging.getLogger('lottery_app')
@@ -185,3 +186,76 @@ class FeedbackView(APIView):
 				'message': 'Feedback received'
 			}, status=status.HTTP_201_CREATED)
 		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserActivityTrackingView(APIView):
+	"""
+	API endpoint to track user activity for analytics
+	POST /users/track-activity/
+	Body: {
+		"unique_id": "uuid-from-mobile-app",
+		"phone_number": "+919876543210" (optional),
+		"app_name": "lotto" or "lotto lite"
+	}
+	"""
+	permission_classes = [AllowAny]
+
+	def post(self, request):
+		"""Track user activity and increment access count"""
+		serializer = UserActivitySerializer(data=request.data)
+
+		if not serializer.is_valid():
+			return Response({
+				'status': 'error',
+				'message': 'Invalid data',
+				'errors': serializer.errors
+			}, status=status.HTTP_400_BAD_REQUEST)
+
+		try:
+			# Get validated data
+			unique_id = serializer.validated_data['unique_id']
+			phone_number = serializer.validated_data.get('phone_number')
+			app_name = serializer.validated_data['app_name']
+
+			# Use transaction to handle concurrent requests safely
+			with transaction.atomic():
+				# Try to get existing activity record
+				activity, created = UserActivity.objects.get_or_create(
+					unique_id=unique_id,
+					app_name=app_name,
+					defaults={
+						'phone_number': phone_number,
+						'access_count': 1
+					}
+				)
+
+				if not created:
+					# Existing user - increment access count
+					activity.access_count += 1
+
+					# Update phone number if it's now provided and wasn't before
+					if phone_number and not activity.phone_number:
+						activity.phone_number = phone_number
+
+					activity.save(update_fields=['access_count', 'phone_number', 'last_access'])
+
+			# Log the activity
+			logger.info(
+				f"User activity tracked: App={app_name}, "
+				f"UniqueID={str(unique_id)[:8]}..., "
+				f"Phone={phone_number or 'None'}, "
+				f"Access#{activity.access_count}, "
+				f"New={'Yes' if created else 'No'}"
+			)
+
+			return Response({
+				'status': 'success',
+				'message': 'User activity recorded successfully'
+			}, status=status.HTTP_200_OK)
+
+		except Exception as e:
+			logger.error(f"Error tracking user activity: {str(e)}")
+			return Response({
+				'status': 'error',
+				'message': 'Failed to track user activity'
+			}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

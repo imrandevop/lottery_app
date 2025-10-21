@@ -188,3 +188,85 @@ class Feedback(models.Model):
 
 	def __str__(self):
 		return f"{self.phone_number} - {self.screen_name}"
+
+
+class UserActivity(models.Model):
+	"""
+	Track user activity and app usage for analytics
+	Supports two apps: 'lotto' and 'lotto lite'
+	"""
+	APP_CHOICES = [
+		('lotto', 'Lotto'),
+		('lotto lite', 'Lotto Lite'),
+	]
+
+	# Primary tracking fields
+	unique_id = models.UUIDField(db_index=True, help_text="Unique identifier from mobile app (device/installation ID)")
+	phone_number = models.CharField(max_length=15, null=True, blank=True, db_index=True, help_text="User phone number (optional, only for apps with phone auth)")
+	app_name = models.CharField(max_length=20, choices=APP_CHOICES, db_index=True, help_text="Application name")
+
+	# Usage tracking
+	access_count = models.IntegerField(default=1, help_text="Number of times this user accessed the app")
+	first_access = models.DateTimeField(auto_now_add=True, help_text="When user first accessed the app")
+	last_access = models.DateTimeField(auto_now=True, help_text="Last time user accessed the app")
+
+	# Metadata
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		verbose_name = "User Activity"
+		verbose_name_plural = "User Activities"
+		ordering = ['-last_access']
+		# Ensure one record per unique_id per app
+		unique_together = [['unique_id', 'app_name']]
+		indexes = [
+			models.Index(fields=['app_name', '-last_access']),
+			models.Index(fields=['phone_number', '-last_access']),
+			models.Index(fields=['unique_id', 'app_name']),
+		]
+
+	def __str__(self):
+		phone_display = self.phone_number if self.phone_number else "No Phone"
+		return f"{self.app_name} - {phone_display} (Access: {self.access_count}x)"
+
+	@classmethod
+	def get_todays_unique_users(cls, app_name):
+		"""Get count of unique users who accessed today for specific app"""
+		from django.utils import timezone
+		import pytz
+
+		ist = pytz.timezone('Asia/Kolkata')
+		today_start = timezone.now().astimezone(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+
+		return cls.objects.filter(
+			app_name=app_name,
+			last_access__gte=today_start
+		).count()
+
+	@classmethod
+	def is_new_user(cls, phone_number):
+		"""
+		Check if user is new (joined today) by checking User model's date_joined field
+		Returns: True if joined today, False if existing user, None if no phone number
+		"""
+		if not phone_number:
+			return None
+
+		try:
+			from django.utils import timezone
+			import pytz
+
+			user = User.objects.get(phone_number=phone_number)
+
+			# Get today's date in IST
+			ist = pytz.timezone('Asia/Kolkata')
+			today_start = timezone.now().astimezone(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+			user_joined = user.date_joined.astimezone(ist)
+
+			# Check if user joined today
+			return user_joined >= today_start
+
+		except User.DoesNotExist:
+			# Phone number exists in activity but not in User model - consider as new
+			return True
