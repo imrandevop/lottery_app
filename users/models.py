@@ -230,6 +230,54 @@ class UserActivity(models.Model):
 		phone_display = self.phone_number if self.phone_number else "No Phone"
 		return f"{self.app_name} - {phone_display} (Access: {self.access_count}x)"
 
+	def get_installation_date(self):
+		"""
+		Convert unique_id (milliseconds since epoch) to datetime
+		Returns: datetime object in IST or None if invalid
+		"""
+		try:
+			from datetime import datetime
+			import pytz
+
+			# Convert string to integer (milliseconds)
+			milliseconds = int(self.unique_id)
+
+			# Convert milliseconds to seconds
+			seconds = milliseconds / 1000.0
+
+			# Create datetime from timestamp
+			utc_dt = datetime.utcfromtimestamp(seconds)
+
+			# Convert to IST
+			ist = pytz.timezone('Asia/Kolkata')
+			utc_tz = pytz.UTC
+			utc_dt = utc_tz.localize(utc_dt)
+			ist_dt = utc_dt.astimezone(ist)
+
+			return ist_dt
+		except (ValueError, TypeError, OverflowError):
+			# If unique_id is not a valid timestamp, return None
+			return None
+
+	def is_installed_today(self):
+		"""
+		Check if app was installed today based on unique_id timestamp
+		Returns: True if installed today, False if older, None if can't determine
+		"""
+		from django.utils import timezone
+		import pytz
+
+		installation_date = self.get_installation_date()
+		if not installation_date:
+			return None
+
+		# Get today's date in IST
+		ist = pytz.timezone('Asia/Kolkata')
+		today_start = timezone.now().astimezone(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+
+		# Check if installation was today
+		return installation_date >= today_start
+
 	@classmethod
 	def get_todays_unique_users(cls, app_name):
 		"""Get count of unique users who accessed today for specific app"""

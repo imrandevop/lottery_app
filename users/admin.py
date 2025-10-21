@@ -111,7 +111,7 @@ class UserActivityAdmin(admin.ModelAdmin):
 	Shows: Today's unique users, Usage frequency, New/Existing user status
 	"""
 	list_display = (
-		'short_unique_id',
+		'installation_date_display',
 		'phone_number',
 		'app_name',
 		'access_count',
@@ -147,13 +147,18 @@ class UserActivityAdmin(admin.ModelAdmin):
 		}),
 	)
 
-	def short_unique_id(self, obj):
-		"""Display shortened unique_id for better readability"""
-		unique_id_str = str(obj.unique_id)
-		if len(unique_id_str) > 20:
-			return f"{unique_id_str[:20]}..."
-		return unique_id_str
-	short_unique_id.short_description = 'Unique ID'
+	def installation_date_display(self, obj):
+		"""Display installation date from unique_id (milliseconds timestamp)"""
+		installation_date = obj.get_installation_date()
+		if installation_date:
+			return installation_date.strftime('%Y-%m-%d %H:%M:%S')
+		else:
+			# Fallback to showing unique_id if not a valid timestamp
+			unique_id_str = str(obj.unique_id)
+			if len(unique_id_str) > 20:
+				return f"{unique_id_str[:20]}..."
+			return unique_id_str
+	installation_date_display.short_description = 'Installation Date'
 
 	def first_access_display(self, obj):
 		"""Display first access time in IST"""
@@ -170,36 +175,41 @@ class UserActivityAdmin(admin.ModelAdmin):
 	last_access_display.short_description = 'Last Access'
 
 	def user_status(self, obj):
-		"""Show if user is new or existing based on phone number join date"""
-		if not obj.phone_number:
-			return format_html('<span style="color: gray;">No Phone</span>')
-
-		is_new = UserActivity.is_new_user(obj.phone_number)
+		"""Show if user is new (installed today) or existing based on installation date"""
+		is_new = obj.is_installed_today()
 
 		if is_new is None:
-			return format_html('<span style="color: gray;">No Phone</span>')
+			return format_html('<span style="color: gray;">Unknown</span>')
 		elif is_new:
-			return format_html('<span style="color: green; font-weight: bold;">✓ New User</span>')
+			return format_html('<span style="color: green; font-weight: bold;">✓ New (Installed Today)</span>')
 		else:
-			return format_html('<span style="color: blue;">Existing User</span>')
+			return format_html('<span style="color: blue;">Existing</span>')
 	user_status.short_description = 'User Status'
 
 	def user_status_detail(self, obj):
 		"""Detailed user status information for detail view"""
-		if not obj.phone_number:
-			return "No phone number provided"
+		installation_date = obj.get_installation_date()
 
-		try:
-			user = User.objects.get(phone_number=obj.phone_number)
-			ist = pytz.timezone('Asia/Kolkata')
-			join_date = user.date_joined.astimezone(ist).strftime('%Y-%m-%d %H:%M:%S IST')
+		if not installation_date:
+			return "Unable to determine installation date from unique_id"
 
-			is_new = UserActivity.is_new_user(obj.phone_number)
-			status = "New User (Joined Today)" if is_new else "Existing User"
+		is_new = obj.is_installed_today()
+		status = "New User (Installed Today)" if is_new else "Existing User (Installed Earlier)"
 
-			return f"{status} - Joined: {join_date}"
-		except User.DoesNotExist:
-			return "Phone number not found in User table (considered new)"
+		installation_str = installation_date.strftime('%Y-%m-%d %H:%M:%S IST')
+
+		# Also show phone info if available
+		phone_info = ""
+		if obj.phone_number:
+			try:
+				user = User.objects.get(phone_number=obj.phone_number)
+				ist = pytz.timezone('Asia/Kolkata')
+				join_date = user.date_joined.astimezone(ist).strftime('%Y-%m-%d')
+				phone_info = f" | Phone User Joined: {join_date}"
+			except User.DoesNotExist:
+				phone_info = " | Phone: Not in User table"
+
+		return f"{status} - Installed: {installation_str}{phone_info}"
 	user_status_detail.short_description = 'User Status Details'
 
 	def changelist_view(self, request, extra_context=None):
