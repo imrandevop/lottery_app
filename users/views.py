@@ -217,6 +217,12 @@ class UserActivityTrackingView(APIView):
 			phone_number = serializer.validated_data.get('phone_number')
 			app_name = serializer.validated_data['app_name']
 
+			# Get current time in IST
+			import pytz
+			ist = pytz.timezone('Asia/Kolkata')
+			current_time = timezone.now().astimezone(ist)
+			today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+
 			# Use transaction to handle concurrent requests safely
 			with transaction.atomic():
 				# Try to get existing activity record
@@ -225,7 +231,8 @@ class UserActivityTrackingView(APIView):
 					app_name=app_name,
 					defaults={
 						'phone_number': phone_number,
-						'access_count': 1
+						'access_count': 1,
+						'first_access': current_time
 					}
 				)
 
@@ -237,7 +244,13 @@ class UserActivityTrackingView(APIView):
 					if phone_number and not activity.phone_number:
 						activity.phone_number = phone_number
 
-					activity.save(update_fields=['access_count', 'phone_number', 'last_access'])
+					# Check if first_access is from a previous day
+					first_access_ist = activity.first_access.astimezone(ist)
+					if first_access_ist < today_start:
+						# New day - reset first_access to current time
+						activity.first_access = current_time
+
+					activity.save(update_fields=['access_count', 'phone_number', 'first_access', 'last_access'])
 
 			# Log the activity
 			logger.info(

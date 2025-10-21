@@ -207,7 +207,7 @@ class UserActivity(models.Model):
 
 	# Usage tracking
 	access_count = models.IntegerField(default=1, help_text="Number of times this user accessed the app")
-	first_access = models.DateTimeField(auto_now_add=True, help_text="When user first accessed the app")
+	first_access = models.DateTimeField(help_text="First time user accessed the app today (resets daily)")
 	last_access = models.DateTimeField(auto_now=True, help_text="Last time user accessed the app")
 
 	# Metadata
