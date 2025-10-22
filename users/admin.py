@@ -104,6 +104,43 @@ class FeedbackAdmin(admin.ModelAdmin):
 	list_filter = ('created_at',)
 
 
+class UserStatusFilter(admin.SimpleListFilter):
+	"""
+	Custom filter to filter users by installation status (New vs Existing)
+	"""
+	title = 'User Status'
+	parameter_name = 'user_status'
+
+	def lookups(self, request, model_admin):
+		return (
+			('new', 'New Users (Installed Today)'),
+			('existing', 'Existing Users'),
+		)
+
+	def queryset(self, request, queryset):
+		ist = pytz.timezone('Asia/Kolkata')
+		today_start = timezone.now().astimezone(ist).replace(hour=0, minute=0, second=0, microsecond=0)
+
+		if self.value() == 'new':
+			# Filter for users installed today
+			new_user_ids = []
+			for activity in queryset:
+				if activity.is_installed_today():
+					new_user_ids.append(activity.pk)
+			return queryset.filter(pk__in=new_user_ids)
+
+		elif self.value() == 'existing':
+			# Filter for existing users (installed before today)
+			existing_user_ids = []
+			for activity in queryset:
+				is_new = activity.is_installed_today()
+				if is_new is False:  # Explicitly False, not None
+					existing_user_ids.append(activity.pk)
+			return queryset.filter(pk__in=existing_user_ids)
+
+		return queryset
+
+
 @admin.register(UserActivity)
 class UserActivityAdmin(admin.ModelAdmin):
 	"""
@@ -119,7 +156,7 @@ class UserActivityAdmin(admin.ModelAdmin):
 		'first_access_display',
 		'last_access_display'
 	)
-	list_filter = ('app_name', 'first_access', 'last_access')
+	list_filter = ('app_name', UserStatusFilter, 'first_access', 'last_access')
 	search_fields = ('unique_id', 'phone_number')
 	readonly_fields = (
 		'unique_id',
