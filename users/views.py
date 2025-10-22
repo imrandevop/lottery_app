@@ -237,18 +237,19 @@ class UserActivityTrackingView(APIView):
 				)
 
 				if not created:
-					# Existing user - increment access count
-					activity.access_count += 1
-
 					# Update phone number if it's now provided and wasn't before
 					if phone_number and not activity.phone_number:
 						activity.phone_number = phone_number
 
-					# Check if first_access is from a previous day
+					# Check if first_access is from a previous day (before today)
 					first_access_ist = activity.first_access.astimezone(ist)
 					if first_access_ist < today_start:
-						# New day - reset first_access to current time
+						# New day - reset access_count to 1 and first_access to current time
+						activity.access_count = 1
 						activity.first_access = current_time
+					else:
+						# Same day - increment access count
+						activity.access_count += 1
 
 					activity.save(update_fields=['access_count', 'phone_number', 'first_access', 'last_access'])
 
