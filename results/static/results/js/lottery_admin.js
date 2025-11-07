@@ -163,12 +163,25 @@ function initLotteryAdmin() {
  */
 function validateAndSubmitWithNotification(e) {
     e.preventDefault();
-    
+
+    // Check if auto-import URL is provided
+    const autoImportUrl = document.querySelector('input[name="auto_import_url"]');
+    const hasAutoImportUrl = autoImportUrl && autoImportUrl.value.trim() !== '';
+
+    // If using auto-import, skip all validation and submit directly
+    if (hasAutoImportUrl) {
+        console.log('Auto-import mode detected, skipping validation');
+        isDirty = false; // Don't warn about unsaved changes
+        e.target.submit();
+        return;
+    }
+
+    // === MANUAL ENTRY MODE - Perform validation ===
     // Basic validation
     const lottery = document.querySelector('select[name="lottery"]').value;
     const drawNumber = document.querySelector('input[name="draw_number"]').value;
     const date = document.querySelector('input[name="date"]').value;
-    
+
     if (!lottery || !drawNumber || !date) {
         showNotification('Please fill in all required fields in the Lottery Draw Information section.', 'error');
         return;
@@ -2741,3 +2754,242 @@ window.processBulkEntries = processBulkEntries;
 window.handlePreviewToggle = handlePreviewToggle;
 window.showNotification = showNotification;
 window.setupAutoSaveForInput = setupAutoSaveForInput;
+
+//=============================================================================
+// LIVE SCRAPING FUNCTIONALITY
+//=============================================================================
+
+let liveScrapingState = {
+    sessionId: null,
+    lotteryResultId: null,
+    isActive: false,
+    pollInterval: null
+};
+
+function initLiveScrapingControls() {
+    const startBtn = document.getElementById('start-live-scraping-btn');
+    const stopBtn = document.getElementById('stop-live-scraping-btn');
+
+    if (startBtn) {
+        startBtn.addEventListener('click', startLiveScraping);
+    }
+
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopLiveScraping);
+    }
+
+    const isEditMode = document.querySelector('input[name="result_id"]');
+    if (isEditMode) {
+        const resultId = isEditMode.value;
+        checkExistingSession(resultId);
+    }
+}
+
+function checkExistingSession(resultId) {
+    fetch(`/api/results/admin/live-status/${resultId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.has_session && data.is_active) {
+            liveScrapingState.sessionId = data.session_id;
+            liveScrapingState.lotteryResultId = resultId;
+            liveScrapingState.isActive = true;
+            updateLiveScrapingUI(data);
+            startPolling();
+        }
+    })
+    .catch(error => {
+        console.error('Error checking existing session:', error);
+    });
+}
+
+function startLiveScraping() {
+    const urlInput = document.getElementById('live_scraping_url');
+    const url = urlInput.value.trim();
+
+    if (!url) {
+        showNotification('Please enter a lottery result URL', 'error');
+        return;
+    }
+
+    if (!url.toLowerCase().includes('keralalotteries.net') &&
+        !url.toLowerCase().includes('ponkudam.com')) {
+        showNotification('Only Kerala Lotteries and Ponkudam URLs are supported', 'error');
+        return;
+    }
+
+    const startBtn = document.getElementById('start-live-scraping-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = '⏳ Starting...';
+
+    fetch('/api/results/admin/start-live-scraping/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            liveScrapingState.sessionId = data.session_id;
+            liveScrapingState.lotteryResultId = data.lottery_result_id;
+            liveScrapingState.isActive = true;
+
+            showNotification(data.message, 'success');
+
+            document.getElementById('start-live-scraping-btn').style.display = 'none';
+            document.getElementById('stop-live-scraping-btn').style.display = 'inline-block';
+            updateStatusBadge('scraping');
+
+            startPolling();
+        } else {
+            showNotification(data.error || 'Failed to start live scraping', 'error');
+            startBtn.disabled = false;
+            startBtn.textContent = '▶️ Start Live Scraping';
+        }
+    })
+    .catch(error => {
+        console.error('Error starting live scraping:', error);
+        showNotification('Network error: ' + error.message, 'error');
+        startBtn.disabled = false;
+        startBtn.textContent = '▶️ Start Live Scraping';
+    });
+}
+
+function stopLiveScraping() {
+    if (!liveScrapingState.sessionId) {
+        showNotification('No active session to stop', 'error');
+        return;
+    }
+
+    const stopBtn = document.getElementById('stop-live-scraping-btn');
+    stopBtn.disabled = true;
+    stopBtn.textContent = '⏳ Stopping...';
+
+    fetch('/api/results/admin/stop-live-scraping/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ session_id: liveScrapingState.sessionId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            liveScrapingState.isActive = false;
+
+            showNotification(data.message, 'success');
+
+            document.getElementById('stop-live-scraping-btn').style.display = 'none';
+            document.getElementById('start-live-scraping-btn').style.display = 'inline-block';
+            document.getElementById('start-live-scraping-btn').disabled = false;
+            document.getElementById('start-live-scraping-btn').textContent = '▶️ Start Live Scraping';
+            updateStatusBadge('stopped');
+
+            stopPolling();
+        } else {
+            showNotification(data.error || 'Failed to stop live scraping', 'error');
+            stopBtn.disabled = false;
+            stopBtn.textContent = '⏸️ Stop Live Scraping';
+        }
+    })
+    .catch(error => {
+        console.error('Error stopping live scraping:', error);
+        showNotification('Network error: ' + error.message, 'error');
+        stopBtn.disabled = false;
+        stopBtn.textContent = '⏸️ Stop Live Scraping';
+    });
+}
+
+function startPolling() {
+    liveScrapingState.pollInterval = setInterval(() => {
+        pollLiveStatus();
+    }, 15000);
+
+    pollLiveStatus();
+}
+
+function stopPolling() {
+    if (liveScrapingState.pollInterval) {
+        clearInterval(liveScrapingState.pollInterval);
+        liveScrapingState.pollInterval = null;
+    }
+}
+
+function pollLiveStatus() {
+    if (!liveScrapingState.lotteryResultId) return;
+
+    fetch(`/api/results/admin/live-status/${liveScrapingState.lotteryResultId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        updateLiveScrapingUI(data);
+
+        if (!data.is_active) {
+            stopPolling();
+            liveScrapingState.isActive = false;
+            document.getElementById('stop-live-scraping-btn').style.display = 'none';
+            document.getElementById('start-live-scraping-btn').style.display = 'inline-block';
+        }
+    })
+    .catch(error => {
+        console.error('Error polling status:', error);
+    });
+}
+
+function updateLiveScrapingUI(data) {
+    updateStatusBadge(data.status);
+
+    const prizesEl = document.getElementById('live-scraping-prizes');
+    if (prizesEl) {
+        prizesEl.textContent = `${data.prizes_found || 0} prizes found`;
+        prizesEl.style.display = 'inline-block';
+    }
+
+    const lastUpdatedEl = document.getElementById('live-scraping-last-updated');
+    if (lastUpdatedEl && data.last_polled_at) {
+        const lastPolled = new Date(data.last_polled_at);
+        const timeDiff = Math.floor((new Date() - lastPolled) / 1000 / 60);
+        lastUpdatedEl.textContent = `Last updated: ${timeDiff === 0 ? 'Just now' : timeDiff + ' min ago'}`;
+        lastUpdatedEl.style.display = 'inline-block';
+    }
+}
+
+function updateStatusBadge(status) {
+    const statusEl = document.getElementById('live-scraping-status');
+    if (!statusEl) return;
+
+    const statusConfig = {
+        'idle': { icon: '⭕', text: 'Idle', color: '#6c757d', bgColor: '#e9ecef' },
+        'scraping': { icon: '🟢', text: 'Scraping', color: 'white', bgColor: '#28a745' },
+        'stopped': { icon: '⏸️', text: 'Stopped', color: 'black', bgColor: '#ffc107' },
+        'completed': { icon: '✅', text: 'Completed', color: 'white', bgColor: '#6c757d' },
+        'error': { icon: '❌', text: 'Error', color: 'white', bgColor: '#dc3545' }
+    };
+
+    const config = statusConfig[status] || statusConfig['idle'];
+
+    statusEl.textContent = `${config.icon} ${config.text}`;
+    statusEl.style.color = config.color;
+    statusEl.style.backgroundColor = config.bgColor;
+    statusEl.style.display = 'inline-block';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initLiveScrapingControls();
+});
+
+window.startLiveScraping = startLiveScraping;
+window.stopLiveScraping = stopLiveScraping;
+window.initLiveScrapingControls = initLiveScrapingControls;

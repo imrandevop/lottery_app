@@ -842,5 +842,105 @@ class PeoplesPrediction(models.Model):
         
         if deleted_count > 0:
             logger.info(f"Cleaned up {deleted_count} old people's predictions")
-        
+
         return deleted_count
+
+
+#<---------------------LIVE SCRAPING SESSION--------------------->
+class LiveScrapingSession(models.Model):
+    """
+    Track live lottery result scraping sessions
+    Separate model to avoid modifying existing LotteryResult structure
+    """
+    STATUS_CHOICES = [
+        ('scraping', 'Scraping Active'),
+        ('stopped', 'Manually Stopped'),
+        ('completed', 'Completed'),
+        ('error', 'Error Occurred'),
+    ]
+
+    lottery_result = models.OneToOneField(
+        LotteryResult,
+        on_delete=models.CASCADE,
+        related_name='live_session',
+        help_text="Associated lottery result being scraped"
+    )
+    scraping_url = models.URLField(
+        max_length=1000,
+        help_text="Kerala Lottery URL to scrape"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='scraping',
+        db_index=True
+    )
+
+    # Tracking fields
+    started_at = models.DateTimeField(auto_now_add=True)
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+
+    # Stats
+    prizes_found_count = models.IntegerField(default=0)
+    poll_count = models.IntegerField(default=0)
+
+    # Control
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    # Error tracking
+    error_message = models.TextField(blank=True, null=True)
+    consecutive_errors = models.IntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Live Scraping Session"
+        verbose_name_plural = "Live Scraping Sessions"
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.lottery_result} - {self.get_status_display()}"
+
+    @classmethod
+    def get_active_session(cls):
+        """Get currently active scraping session (only one allowed at a time)"""
+        return cls.objects.filter(is_active=True, status='scraping').first()
+
+    @classmethod
+    def has_active_session(cls):
+        """Check if there's any active scraping session"""
+        return cls.objects.filter(is_active=True, status='scraping').exists()
+
+    def mark_stopped(self):
+        """Mark session as manually stopped"""
+        self.status = 'stopped'
+        self.is_active = False
+        self.stopped_at = timezone.now()
+        self.save(update_fields=['status', 'is_active', 'stopped_at'])
+
+    def mark_completed(self):
+        """Mark session as completed"""
+        self.status = 'completed'
+        self.is_active = False
+        self.stopped_at = timezone.now()
+        self.save(update_fields=['status', 'is_active', 'stopped_at'])
+
+    def mark_error(self, error_msg):
+        """Mark session as error"""
+        self.status = 'error'
+        self.error_message = error_msg
+        self.consecutive_errors += 1
+
+        # Auto-stop after 5 consecutive errors
+        if self.consecutive_errors >= 5:
+            self.is_active = False
+            self.stopped_at = timezone.now()
+
+        self.save(update_fields=['status', 'error_message', 'consecutive_errors', 'is_active', 'stopped_at'])
+
+    def update_stats(self, prizes_count):
+        """Update scraping statistics"""
+        self.prizes_found_count = prizes_count
+        self.poll_count += 1
+        self.last_polled_at = timezone.now()
+        self.consecutive_errors = 0  # Reset errors on successful poll
+        self.save(update_fields=['prizes_found_count', 'poll_count', 'last_polled_at', 'consecutive_errors'])

@@ -1,6 +1,10 @@
 #results\urls.py
 from django.urls import path
-from .admin_views import add_result_view, edit_result_view, auto_save_ticket
+from .admin_views import (
+    add_result_view, edit_result_view, auto_save_ticket,
+    start_live_scraping_view, stop_live_scraping_view, get_live_status_view,
+    poll_active_sessions_view
+)
 from . import views
 from .views import LotteryPredictionAPIView, LiveVideoListView, LotteryWinningPercentageAPI, register_fcm_token
 app_name = 'results'
@@ -9,6 +13,14 @@ urlpatterns = [
     path('admin/add-result/', add_result_view, name='add_result'),
     path('admin/edit-result/<int:result_id>/', edit_result_view, name='edit_result'),
     path('admin/auto-save-ticket/', auto_save_ticket, name='auto_save_ticket'),
+
+    # Live scraping endpoints
+    path('admin/start-live-scraping/', start_live_scraping_view, name='start_live_scraping'),
+    path('admin/stop-live-scraping/', stop_live_scraping_view, name='stop_live_scraping'),
+    path('admin/live-status/<int:result_id>/', get_live_status_view, name='get_live_status'),
+
+    # Polling endpoint for external cron service (Cron-Job.org)
+    path('api/poll-sessions/', poll_active_sessions_view, name='poll_sessions'),
 
     # List all published lottery results
     path('results/', views.LotteryResultListView.as_view(), name='lottery-results-list'),

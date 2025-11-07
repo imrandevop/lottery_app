@@ -71,8 +71,8 @@
                 <div class="section-content">
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="lottery">Select Lottery Type</label>
-                            <select name="lottery" id="lottery" class="form-control" required>
+                            <label for="lottery">Select Lottery Type <small style="color: #999;">(Optional if using Auto-Import)</small></label>
+                            <select name="lottery" id="lottery" class="form-control">
                                 <option value="">Select Lottery Type</option>
                                 {% for lottery in lotteries %}
                                 <option value="{{ lottery.id }}" {% if lottery_result and lottery_result.lottery_id == lottery.id %}selected{% endif %}>{{ lottery.name }}</option>
@@ -80,21 +80,115 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="draw_number">Enter draw number</label>
-                            <input type="text" name="draw_number" id="draw_number" class="form-control" placeholder="Enter draw number" value="{% if lottery_result %}{{ lottery_result.draw_number }}{% endif %}" required>
+                            <label for="draw_number">Enter draw number <small style="color: #999;">(Optional if using Auto-Import)</small></label>
+                            <input type="text" name="draw_number" id="draw_number" class="form-control" placeholder="Enter draw number" value="{% if lottery_result %}{{ lottery_result.draw_number }}{% endif %}">
                         </div>
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="date">Date</label>
-                            <input type="date" name="date" id="date" class="form-control" value="{% if lottery_result %}{{ lottery_result.date|date:'Y-m-d' }}{% endif %}" required>
+                            <label for="date">Date <small style="color: #999;">(Optional if using Auto-Import)</small></label>
+                            <input type="date" name="date" id="date" class="form-control" value="{% if lottery_result %}{{ lottery_result.date|date:'Y-m-d' }}{% endif %}">
                         </div>
                         <!-- Checkboxes moved to bottom fixed bar -->
                     </div>
                 </div>
             </div>
-            
+
+            <!-- ========== AUTO-IMPORT FROM URL SECTION ========== -->
+            <div class="form-section" style="background: #e8f5e9; border-left: 4px solid #4caf50;">
+                <h3 class="section-header" style="color: #2e7d32;">
+                    🌐 Auto-Import from URL (Optional)
+                </h3>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-group" style="width: 100%;">
+                            <label for="auto_import_url">
+                                Kerala Lottery Result URL
+                                <small style="color: #666;">(Leave empty for manual entry)</small>
+                            </label>
+                            <input
+                                type="url"
+                                name="auto_import_url"
+                                id="auto_import_url"
+                                class="form-control"
+                                placeholder="https://www.keralalotteries.net/2025/10/karunya-plus-kerala-lottery-result-kn-594-today-23-10-2025.html"
+                                style="width: 100%;">
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                💡 Paste a Kerala Lotteries result URL to automatically extract all prize data. The lottery name, draw number, date, and all prizes will be imported automatically.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== LIVE SCRAPING SECTION ========== -->
+            <div class="form-section" style="background: #fff3e0; border-left: 4px solid #ff9800;">
+                <h3 class="section-header" style="color: #e65100;">
+                    🔴 Live Result Scraping (Real-Time)
+                </h3>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-group" style="width: 100%;">
+                            <label for="live_scraping_url">
+                                Kerala Lottery Result URL for Live Scraping
+                                <small style="color: #666;">(Supports keralalotteries.net and ponkudam.com)</small>
+                            </label>
+                            <input
+                                type="url"
+                                id="live_scraping_url"
+                                class="form-control"
+                                placeholder="https://www.ponkudam.com/ or https://www.keralalotteries.net/..."
+                                style="width: 100%;"
+                                {% if is_edit_mode %}disabled{% endif %}>
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                🔄 Live scraping automatically polls the website every 60 seconds and updates prizes in real-time.
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Live Scraping Controls -->
+                    <div class="form-row" style="margin-top: 15px;">
+                        <div class="form-group" style="width: 100%;">
+                            <div id="live-scraping-controls" style="display: flex; gap: 10px; align-items: center;">
+                                <!-- Start Button -->
+                                <button
+                                    type="button"
+                                    id="start-live-scraping-btn"
+                                    class="btn btn-success"
+                                    style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                    ▶️ Start Live Scraping
+                                </button>
+
+                                <!-- Stop Button (hidden by default) -->
+                                <button
+                                    type="button"
+                                    id="stop-live-scraping-btn"
+                                    class="btn btn-danger"
+                                    style="display: none; background: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                    ⏸️ Stop Live Scraping
+                                </button>
+
+                                <!-- Status Badge -->
+                                <span id="live-scraping-status" style="padding: 8px 15px; border-radius: 4px; font-weight: bold; display: none;">
+                                    ⭕ Idle
+                                </span>
+
+                                <!-- Prize Counter -->
+                                <span id="live-scraping-prizes" style="color: #666; font-weight: normal; display: none;">
+                                    0 prizes found
+                                </span>
+
+                                <!-- Last Updated -->
+                                <span id="live-scraping-last-updated" style="color: #999; font-size: 0.9em; display: none;">
+                                    Last updated: Never
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ========== PRIZE SECTIONS ========== -->
             {% for prize_type, prize_name in prize_types %}
             <div class="form-section" id="{{ prize_type }}-section">

@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Read(/C:\\Users\\ANONYMOUS\\Pictures\\Screenshots/**)"
+      "Read(/C:\\Users\\ANONYMOUS\\Pictures\\Screenshots/**)",
+      "Bash(python verify_all_numbers.py:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

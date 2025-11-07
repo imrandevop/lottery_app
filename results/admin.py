@@ -3,6 +3,7 @@ from django.contrib import admin, messages
 from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveVideo, FcmToken
 from .models import DailyPointsPool, UserPointsBalance, PointsTransaction, DailyPointsAwarded
 from .models import DailyCashPool, UserCashBalance, CashTransaction, DailyCashAwarded  # Added cash back models
+from .models import LiveScrapingSession  # Live scraping model
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -104,10 +105,22 @@ class PrizeEntryInline(admin.TabularInline):
 class LotteryResultForm(ModelForm):
     # Override draw_number to prevent spaces
     draw_number = NoSpaceCharField(widget=NoSpaceTextInput(attrs={
-        'class': 'form-control', 
+        'class': 'form-control',
         'placeholder': 'Enter draw number'
     }))
-    
+
+    # NEW: Optional URL field for auto-importing results
+    auto_import_url = CharField(
+        required=False,
+        widget=TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Optional: Paste Kerala Lottery result URL to auto-import (e.g., https://www.keralalotteries.net/...)',
+            'style': 'width: 100%;'
+        }),
+        label='Auto-Import from URL',
+        help_text='Paste a Kerala Lotteries result URL to automatically extract and fill prize data. Leave empty for manual entry.'
+    )
+
     class Meta:
         model = LotteryResult
         fields = '__all__'
@@ -121,7 +134,7 @@ class LotteryResultForm(ModelForm):
                 'title': 'Send push notification to all users'
             }),
         }
-        
+
     def clean(self):
         cleaned_data = super().clean()
         # Remove spaces from draw number
@@ -136,6 +149,90 @@ class LotteryResultAdmin(admin.ModelAdmin):
     list_filter = ['lottery', 'is_bumper', 'is_published', 'results_ready_notification', 'notification_sent', 'date']
     search_fields = ['draw_number', 'lottery__name']
     inlines = [PrizeEntryInline]
+
+    def save_model(self, request, obj, form, change):
+        """
+        Override save_model to handle auto-import from URL
+        """
+        # Check if auto_import_url was provided
+        auto_import_url = form.cleaned_data.get('auto_import_url', '').strip()
+
+        if auto_import_url:
+            # Auto-import mode: scrape data from URL
+            try:
+                from .services.lottery_scraper import scrape_kerala_lottery, KeralaLotteryScraper
+
+                # Scrape the lottery data
+                self.message_user(
+                    request,
+                    f"🔄 Fetching lottery data from URL...",
+                    messages.INFO
+                )
+
+                scraped_data = scrape_kerala_lottery(auto_import_url)
+
+                # Match lottery name to existing lottery
+                scraper = KeralaLotteryScraper()
+                existing_lotteries = list(Lottery.objects.values_list('id', 'name'))
+                matched_lottery_id = scraper.match_lottery_name(
+                    scraped_data['lottery_name'],
+                    existing_lotteries
+                )
+
+                if not matched_lottery_id:
+                    self.message_user(
+                        request,
+                        f"⚠️ Could not match lottery name '{scraped_data['lottery_name']}' to existing lottery. "
+                        f"Please create a lottery with this name first or select manually.",
+                        messages.WARNING
+                    )
+                    # Fall back to manual mode
+                    super().save_model(request, obj, form, change)
+                    return
+
+                # Update obj with scraped data
+                obj.lottery_id = matched_lottery_id
+                obj.draw_number = scraped_data['draw_number']
+                obj.date = scraped_data['date']
+
+                # Save the LotteryResult first
+                super().save_model(request, obj, form, change)
+
+                # Create all prize entries
+                prizes_created = 0
+                for prize_data in scraped_data['prizes']:
+                    PrizeEntry.objects.create(
+                        lottery_result=obj,
+                        prize_type=prize_data['prize_type'],
+                        prize_amount=prize_data['prize_amount'],
+                        ticket_number=prize_data['ticket_number'],
+                        place=prize_data.get('place', '')
+                    )
+                    prizes_created += 1
+
+                self.message_user(
+                    request,
+                    f"✅ Successfully imported {scraped_data['lottery_name']} - {scraped_data['draw_number']} "
+                    f"with {prizes_created} prize entries!",
+                    messages.SUCCESS
+                )
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error during auto-import: {e}", exc_info=True)
+
+                self.message_user(
+                    request,
+                    f"❌ Auto-import failed: {str(e)}. Please try manual entry or check the URL.",
+                    messages.ERROR
+                )
+                # Don't save anything if scraping failed
+                return
+
+        else:
+            # Normal mode: manual entry
+            super().save_model(request, obj, form, change)
     
     # Add visual indicator for notification status
     def notification_status_display(self, obj):
@@ -862,6 +959,61 @@ reset_daily_cash_pool.short_description = "Reset selected cash pools to full bud
 # Add the actions to respective admin classes
 DailyPointsPoolAdmin.actions = [reset_daily_pool]
 DailyCashPoolAdmin.actions = [reset_daily_cash_pool]
+
+#<---------------LIVE SCRAPING SESSION ADMIN---------------->
+@admin.register(LiveScrapingSession)
+class LiveScrapingSessionAdmin(admin.ModelAdmin):
+    list_display = ['lottery_result', 'status_badge', 'prizes_found_count', 'poll_count', 'started_at', 'last_polled_at']
+    list_filter = ['status', 'is_active', 'started_at']
+    search_fields = ['lottery_result__draw_number', 'lottery_result__lottery__name', 'scraping_url']
+    readonly_fields = ['started_at', 'last_polled_at', 'stopped_at', 'poll_count', 'prizes_found_count', 'consecutive_errors']
+    ordering = ['-started_at']
+
+    fieldsets = (
+        ('Session Info', {
+            'fields': ('lottery_result', 'scraping_url', 'status', 'is_active')
+        }),
+        ('Statistics', {
+            'fields': ('prizes_found_count', 'poll_count', 'consecutive_errors')
+        }),
+        ('Timestamps', {
+            'fields': ('started_at', 'last_polled_at', 'stopped_at'),
+            'classes': ('collapse',)
+        }),
+        ('Error Info', {
+            'fields': ('error_message',),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def status_badge(self, obj):
+        """Display status as a colored badge"""
+        colors = {
+            'scraping': '#28a745',    # green
+            'stopped': '#ffc107',     # yellow
+            'completed': '#6c757d',   # gray
+            'error': '#dc3545'        # red
+        }
+        color = colors.get(obj.status, '#6c757d')
+        icon = '🟢' if obj.status == 'scraping' else '⏸️' if obj.status == 'stopped' else '✅' if obj.status == 'completed' else '❌'
+        return format_html(
+            '{} <span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 3px; font-size: 11px; font-weight: bold;">{}</span>',
+            icon,
+            color,
+            obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+
+    def get_readonly_fields(self, request, obj=None):
+        # Make most fields readonly after creation
+        if obj:
+            return self.readonly_fields + ['lottery_result', 'scraping_url']
+        return self.readonly_fields
+
+    def has_add_permission(self, request):
+        # Prevent manual creation - should be created through API
+        return False
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)

@@ -15,6 +15,77 @@ import logging
 
 logger = logging.getLogger('lottery_app')
 
+
+def handle_auto_import(request, url):
+    """
+    Handle automatic import of lottery results from Kerala Lotteries URL or Ponkudam URL
+    """
+    try:
+        from .services.scraper_factory import ScraperFactory
+        from .services.lottery_scraper import KeralaLotteryScraper
+
+        messages.info(request, f"🔄 Fetching lottery data from URL...")
+
+        # Scrape the lottery data
+        scraped_data = ScraperFactory.scrape_lottery_result(url)
+
+        # Match lottery name to existing lottery
+        scraper = KeralaLotteryScraper()
+        existing_lotteries = list(Lottery.objects.values_list('id', 'name'))
+        matched_lottery_id = scraper.match_lottery_name(
+            scraped_data['lottery_name'],
+            existing_lotteries
+        )
+
+        if not matched_lottery_id:
+            messages.warning(
+                request,
+                f"⚠️ Could not match lottery name '{scraped_data['lottery_name']}' to existing lottery. "
+                f"Please create a lottery with this name first or enter data manually."
+            )
+            return redirect('results:add_result')
+
+        # Create the LotteryResult
+        lottery_result = LotteryResult.objects.create(
+            lottery_id=matched_lottery_id,
+            draw_number=scraped_data['draw_number'],
+            date=scraped_data['date'],
+            is_published=request.POST.get('is_published') == 'on',
+            is_bumper=request.POST.get('is_bumper') == 'on',
+            results_ready_notification=request.POST.get('results_ready_notification') == 'on'
+        )
+
+        # Create all prize entries
+        prizes_created = 0
+        for prize_data in scraped_data['prizes']:
+            PrizeEntry.objects.create(
+                lottery_result=lottery_result,
+                prize_type=prize_data['prize_type'],
+                prize_amount=prize_data['prize_amount'],
+                ticket_number=prize_data['ticket_number'],
+                place=prize_data.get('place', '')
+            )
+            prizes_created += 1
+
+        messages.success(
+            request,
+            f"✅ Successfully imported {scraped_data['lottery_name']} - {scraped_data['draw_number']} "
+            f"with {prizes_created} prize entries!"
+        )
+
+        # Redirect to the admin list view
+        return redirect('/admin/results/lotteryresult/')
+
+    except Exception as e:
+        logger.error(f"Error during auto-import: {e}", exc_info=True)
+
+        messages.error(
+            request,
+            f"❌ Auto-import failed: {str(e)}. Please try manual entry or check the URL."
+        )
+        return redirect('results:add_result')
+
+
 def clean_spaces_from_data(data):
     """
     Helper function to remove spaces from specific fields
@@ -96,14 +167,22 @@ def add_result_view(request):
 def handle_form_submission(request):
     """Handle the form submission for adding lottery results."""
     try:
+        # Check if auto-import from URL is requested
+        auto_import_url = request.POST.get('auto_import_url', '').strip()
+
+        if auto_import_url:
+            # Handle auto-import from URL (bypass normal validation)
+            return handle_auto_import(request, auto_import_url)
+
+        # === MANUAL ENTRY MODE ===
         # Clean the POST data to remove spaces
         cleaned_post = clean_spaces_from_data(request.POST)
-        
+
         # Validate required fields
         lottery_id = cleaned_post.get('lottery')
         date = cleaned_post.get('date')
         draw_number = cleaned_post.get('draw_number')
-        
+
         if not all([lottery_id, date, draw_number]):
             messages.error(request, 'Please fill in all required fields.')
             
@@ -819,5 +898,277 @@ def auto_save_ticket(request):
             'success': False,
             'error': 'Internal server error'
         }, status=500)
+
+
+#<-----------------LIVE SCRAPING API ENDPOINTS----------------->
+@csrf_protect
+@staff_member_required
+@require_POST
+def start_live_scraping_view(request):
+    """
+    API endpoint to start live scraping for a Kerala Lottery URL
+    """
+    try:
+        # Parse JSON request body
+        data = json.loads(request.body)
+        url = data.get('url', '').strip()
+
+        if not url:
+            return JsonResponse({
+                'success': False,
+                'error': 'URL is required'
+            }, status=400)
+
+        # Validate URL is from supported lottery websites
+        from .services.scraper_factory import ScraperFactory
+
+        if not ScraperFactory.is_supported_url(url):
+            supported = ', '.join(ScraperFactory.get_supported_domains())
+            return JsonResponse({
+                'success': False,
+                'error': f'Only the following websites are supported: {supported}'
+            }, status=400)
+
+        # Start scraping using service
+        from results.services.live_lottery_scraper import LiveScraperService
+        result = LiveScraperService.start_scraping(url)
+
+        if result['success']:
+            return JsonResponse({
+                'success': True,
+                'session_id': result['session_id'],
+                'lottery_result_id': result['lottery_result_id'],
+                'message': result['message']
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result['message']
+            }, status=400)
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error in start_live_scraping: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }, status=500)
+
+
+@csrf_protect
+@staff_member_required
+@require_POST
+def stop_live_scraping_view(request):
+    """
+    API endpoint to stop an active scraping session
+    """
+    try:
+        # Parse JSON request body
+        data = json.loads(request.body)
+        session_id = data.get('session_id')
+
+        if not session_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Session ID is required'
+            }, status=400)
+
+        # Stop scraping using service
+        from results.services.live_lottery_scraper import LiveScraperService
+        result = LiveScraperService.stop_scraping(session_id)
+
+        if result['success']:
+            return JsonResponse({
+                'success': True,
+                'message': result['message']
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result['message']
+            }, status=400)
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error in stop_live_scraping: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }, status=500)
+
+
+@csrf_protect
+@staff_member_required
+def get_live_status_view(request, result_id):
+    """
+    API endpoint to get live scraping status for a lottery result
+    """
+    try:
+        from results.services.live_lottery_scraper import LiveScraperService
+        status = LiveScraperService.get_session_status(result_id)
+
+        return JsonResponse(status)
+
+    except Exception as e:
+        logger.error(f"Error in get_live_status: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'has_session': False,
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+def poll_active_sessions_view(request):
+    """
+    API endpoint to poll all active scraping sessions
+    Called by external cron service (Cron-Job.org) every 1-2 minutes
+
+    Security: Requires Bearer token authentication
+    Safety: Includes request locking and timeout protection
+
+    Returns:
+        JSON response with success status and message
+    """
+    from django.conf import settings
+    from django.db import transaction, DatabaseError
+    from results.models import LiveScrapingSession
+    import signal
+    import time
+
+    # Check for API token authentication
+    auth_header = request.headers.get('Authorization', '')
+    expected_token = getattr(settings, 'SCRAPER_API_TOKEN', None)
+
+    if not expected_token:
+        logger.error("SCRAPER_API_TOKEN not configured in settings")
+        return JsonResponse({
+            'success': False,
+            'error': 'API token not configured on server'
+        }, status=500)
+
+    if auth_header != f'Bearer {expected_token}':
+        logger.warning(f"Unauthorized polling attempt with token: {auth_header[:20]}...")
+        return JsonResponse({
+            'success': False,
+            'error': 'Unauthorized - Invalid or missing token'
+        }, status=401)
+
+    # Database-based locking to prevent concurrent polling
+    # Uses a special "lock" session record
+    lock_key = 'polling_lock'
+    lock_acquired = False
+
+    try:
+        with transaction.atomic():
+            # Try to create a lock record (will fail if already exists)
+            from django.utils import timezone
+            try:
+                # Check if lock exists and is recent (less than 2 minutes old)
+                existing_lock = LiveScrapingSession.objects.filter(
+                    scraping_url=lock_key,
+                    is_active=True
+                ).first()
+
+                if existing_lock:
+                    # Check if lock is stale (older than 2 minutes)
+                    time_diff = (timezone.now() - existing_lock.last_polled_at).total_seconds()
+                    if time_diff < 120:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'Another polling is in progress',
+                            'locked_since': existing_lock.last_polled_at.isoformat()
+                        }, status=429)
+                    else:
+                        # Stale lock, delete it
+                        logger.warning(f"Removing stale polling lock from {existing_lock.last_polled_at}")
+                        existing_lock.delete()
+
+                # Create new lock
+                lock_session = LiveScrapingSession.objects.create(
+                    lottery_result=None,
+                    scraping_url=lock_key,
+                    is_active=True,
+                    status='scraping',
+                    last_polled_at=timezone.now()
+                )
+                lock_acquired = True
+                logger.info("Polling lock acquired")
+
+            except Exception as lock_error:
+                logger.error(f"Failed to acquire lock: {lock_error}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Failed to acquire polling lock'
+                }, status=503)
+
+        # Set timeout to prevent long-running requests
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Polling exceeded 45 second timeout")
+
+        # Only set timeout on Unix-like systems (not Windows)
+        timeout_supported = hasattr(signal, 'SIGALRM')
+        if timeout_supported:
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(45)  # 45 second timeout
+
+        start_time = time.time()
+
+        try:
+            # Call the polling service (same logic as management command)
+            from results.services.live_lottery_scraper import LiveScraperService
+
+            logger.info("Starting poll cycle for active sessions")
+            LiveScraperService.poll_active_sessions()
+
+            elapsed = time.time() - start_time
+            logger.info(f"Polling completed successfully in {elapsed:.2f} seconds")
+
+            # Cancel timeout
+            if timeout_supported:
+                signal.alarm(0)
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Polling completed successfully in {elapsed:.2f}s',
+                'timestamp': timezone.now().isoformat()
+            })
+
+        except TimeoutError:
+            logger.error("Polling timeout after 45 seconds")
+            return JsonResponse({
+                'success': False,
+                'error': 'Polling timeout - took longer than 45 seconds'
+            }, status=408)
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Polling error after {elapsed:.2f}s: {e}", exc_info=True)
+
+            # Cancel timeout
+            if timeout_supported:
+                signal.alarm(0)
+
+            return JsonResponse({
+                'success': False,
+                'error': f'Polling failed: {str(e)}',
+                'elapsed_seconds': elapsed
+            }, status=500)
+
+    finally:
+        # Always release the lock
+        if lock_acquired:
+            try:
+                LiveScrapingSession.objects.filter(scraping_url=lock_key).delete()
+                logger.info("Polling lock released")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to release lock: {cleanup_error}")
 
 

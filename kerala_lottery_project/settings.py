@@ -349,6 +349,12 @@ LOTTERY_SETTINGS = {
     'DEFAULT_PAGINATION_SIZE': 20,
 }
 
+# Live Scraper API Token
+# Used by external cron services (Cron-Job.org) to authenticate polling requests
+# IMPORTANT: Set this in DigitalOcean environment variables
+# Generate a secure token using: python -c "import secrets; print(secrets.token_urlsafe(32))"
+SCRAPER_API_TOKEN = os.getenv('SCRAPER_API_TOKEN', None)
+
 # Environment-specific overrides
 if ENVIRONMENT == 'production':
     # Production-specific settings
