@@ -1,7 +1,7 @@
 # admin_views.py - Updated with simple FCM integration
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_protect, csrf_exempt
 from django.contrib import messages
 from django.contrib.admin import site
 from django.contrib.admin.sites import AdminSite
@@ -1026,12 +1026,13 @@ def get_live_status_view(request, result_id):
         }, status=500)
 
 
+@csrf_exempt
 def poll_active_sessions_view(request):
     """
     API endpoint to poll all active scraping sessions
     Called by external cron service (Cron-Job.org) every 1-2 minutes
 
-    Security: Requires Bearer token authentication
+    Security: Requires Bearer token authentication (CSRF exempt for external API calls)
     Safety: Includes request locking and timeout protection
 
     Returns:
