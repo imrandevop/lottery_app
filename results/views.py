@@ -62,8 +62,13 @@ class LotteryResultListView(generics.ListAPIView):
         result_date = self.request.query_params.get('date', None)
         if result_date:
             queryset = queryset.filter(date=result_date)
-            
-        return queryset.order_by('-date', '-created_at')[:15]
+
+        # Get results from last 30 days
+        from datetime import timedelta
+        thirty_days_ago = timezone.now().date() - timedelta(days=30)
+        queryset = queryset.filter(date__gte=thirty_days_ago)
+
+        return queryset.order_by('-date', '-created_at')
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
