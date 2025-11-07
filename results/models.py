@@ -863,7 +863,9 @@ class LiveScrapingSession(models.Model):
         LotteryResult,
         on_delete=models.CASCADE,
         related_name='live_session',
-        help_text="Associated lottery result being scraped"
+        null=True,
+        blank=True,
+        help_text="Associated lottery result being scraped (null for lock records)"
     )
     scraping_url = models.URLField(
         max_length=1000,
