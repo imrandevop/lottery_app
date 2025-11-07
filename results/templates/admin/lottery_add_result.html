@@ -202,6 +202,22 @@
                         </label>
                         <span>Bulk</span>
                     </div>
+                    {% if prize_type in "4th,5th,6th,7th,8th,9th,10th"|split:"," %}
+                    <div class="sort-checkbox-container" style="margin-left: auto;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 14px;">
+                            <input type="checkbox" name="sort_{{ prize_type }}_prize" value="on"
+                                   {% if prize_type == '4th' and lottery_result.sort_4th_prize %}checked{% endif %}
+                                   {% if prize_type == '5th' and lottery_result.sort_5th_prize %}checked{% endif %}
+                                   {% if prize_type == '6th' and lottery_result.sort_6th_prize %}checked{% endif %}
+                                   {% if prize_type == '7th' and lottery_result.sort_7th_prize %}checked{% endif %}
+                                   {% if prize_type == '8th' and lottery_result.sort_8th_prize %}checked{% endif %}
+                                   {% if prize_type == '9th' and lottery_result.sort_9th_prize %}checked{% endif %}
+                                   {% if prize_type == '10th' and lottery_result.sort_10th_prize %}checked{% endif %}
+                                   style="width: 18px; height: 18px; cursor: pointer;">
+                            <span style="color: #2196F3;">✓ Sort Numbers</span>
+                        </label>
+                    </div>
+                    {% endif %}
                 </h3>
                 <div class="section-content">
                     <!-- Normal Entry Section -->

@@ -236,7 +236,15 @@ def handle_form_submission(request):
             draw_number=draw_number,  # Already cleaned of spaces
             is_published=cleaned_post.get('is_published') == 'on',
             is_bumper=cleaned_post.get('is_bumper') == 'on',
-            results_ready_notification=cleaned_post.get('results_ready_notification') == 'on'
+            results_ready_notification=cleaned_post.get('results_ready_notification') == 'on',
+            # Sort flags for 4th-10th prizes
+            sort_4th_prize=cleaned_post.get('sort_4th_prize') == 'on',
+            sort_5th_prize=cleaned_post.get('sort_5th_prize') == 'on',
+            sort_6th_prize=cleaned_post.get('sort_6th_prize') == 'on',
+            sort_7th_prize=cleaned_post.get('sort_7th_prize') == 'on',
+            sort_8th_prize=cleaned_post.get('sort_8th_prize') == 'on',
+            sort_9th_prize=cleaned_post.get('sort_9th_prize') == 'on',
+            sort_10th_prize=cleaned_post.get('sort_10th_prize') == 'on'
         )
         
         # Process prize entries
@@ -562,6 +570,14 @@ def handle_edit_form_submission(request, lottery_result):
         lottery_result.is_published = cleaned_post.get('is_published') == 'on'
         lottery_result.is_bumper = cleaned_post.get('is_bumper') == 'on'
         lottery_result.results_ready_notification = cleaned_post.get('results_ready_notification') == 'on'
+        # Sort flags for 4th-10th prizes
+        lottery_result.sort_4th_prize = cleaned_post.get('sort_4th_prize') == 'on'
+        lottery_result.sort_5th_prize = cleaned_post.get('sort_5th_prize') == 'on'
+        lottery_result.sort_6th_prize = cleaned_post.get('sort_6th_prize') == 'on'
+        lottery_result.sort_7th_prize = cleaned_post.get('sort_7th_prize') == 'on'
+        lottery_result.sort_8th_prize = cleaned_post.get('sort_8th_prize') == 'on'
+        lottery_result.sort_9th_prize = cleaned_post.get('sort_9th_prize') == 'on'
+        lottery_result.sort_10th_prize = cleaned_post.get('sort_10th_prize') == 'on'
         lottery_result.save()
         
         # Delete existing prize entries

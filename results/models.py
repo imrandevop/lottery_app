@@ -48,7 +48,44 @@ class LotteryResult(models.Model):
         verbose_name="Notification Sent",
         help_text="Whether notification has been sent to users"
     )
-    
+
+    # Sort flags for prize types (4th-10th) - for live result entry sorting
+    sort_4th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 4th Prize",
+        help_text="Sort 4th prize numbers numerically in API response"
+    )
+    sort_5th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 5th Prize",
+        help_text="Sort 5th prize numbers numerically in API response"
+    )
+    sort_6th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 6th Prize",
+        help_text="Sort 6th prize numbers numerically in API response"
+    )
+    sort_7th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 7th Prize",
+        help_text="Sort 7th prize numbers numerically in API response"
+    )
+    sort_8th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 8th Prize",
+        help_text="Sort 8th prize numbers numerically in API response"
+    )
+    sort_9th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 9th Prize",
+        help_text="Sort 9th prize numbers numerically in API response"
+    )
+    sort_10th_prize = models.BooleanField(
+        default=False,
+        verbose_name="Sort 10th Prize",
+        help_text="Sort 10th prize numbers numerically in API response"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

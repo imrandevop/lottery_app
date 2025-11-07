@@ -138,7 +138,30 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
                 prize_data['tickets'] = tickets
             else:
                 # For all other prizes including consolation, 4th, 5th, 6th, etc.
-                ticket_numbers = ' '.join([ticket['ticket_number'] for ticket in tickets])
+                # Check if this prize type should be sorted
+                should_sort = False
+                if prize_type == '4th' and obj.sort_4th_prize:
+                    should_sort = True
+                elif prize_type == '5th' and obj.sort_5th_prize:
+                    should_sort = True
+                elif prize_type == '6th' and obj.sort_6th_prize:
+                    should_sort = True
+                elif prize_type == '7th' and obj.sort_7th_prize:
+                    should_sort = True
+                elif prize_type == '8th' and obj.sort_8th_prize:
+                    should_sort = True
+                elif prize_type == '9th' and obj.sort_9th_prize:
+                    should_sort = True
+                elif prize_type == '10th' and obj.sort_10th_prize:
+                    should_sort = True
+
+                # Sort ticket numbers numerically if flag is set and all tickets are 4-digit numbers
+                if should_sort and is_grid:
+                    sorted_tickets = sorted(tickets, key=lambda x: int(x['ticket_number']))
+                    ticket_numbers = ' '.join([ticket['ticket_number'] for ticket in sorted_tickets])
+                else:
+                    ticket_numbers = ' '.join([ticket['ticket_number'] for ticket in tickets])
+
                 prize_data['ticket_numbers'] = ticket_numbers
             
             result.append(prize_data)
