@@ -20,7 +20,7 @@ urlpatterns = [
     path('admin/live-status/<int:result_id>/', get_live_status_view, name='get_live_status'),
 
     # Polling endpoint for external cron service (Cron-Job.org)
-    path('api/poll-sessions/', poll_active_sessions_view, name='poll_sessions'),
+    path('poll-sessions/', poll_active_sessions_view, name='poll_sessions'),
 
     # List all published lottery results
     path('results/', views.LotteryResultListView.as_view(), name='lottery-results-list'),
