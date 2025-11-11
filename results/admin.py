@@ -4,6 +4,7 @@ from .models import Lottery, LotteryResult, PrizeEntry, ImageUpdate, News, LiveV
 from .models import DailyPointsPool, UserPointsBalance, PointsTransaction, DailyPointsAwarded
 from .models import DailyCashPool, UserCashBalance, CashTransaction, DailyCashAwarded  # Added cash back models
 from .models import LiveScrapingSession  # Live scraping model
+from .models import TextUpdate  # Text update model
 from django.contrib.auth.models import Group
 from django.forms import ModelForm, CharField, DecimalField
 from django.forms.widgets import CheckboxInput, Select, DateInput, TextInput
@@ -1014,6 +1015,44 @@ class LiveScrapingSessionAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Prevent manual creation - should be created through API
         return False
+
+#<---------------TEXT UPDATE ADMIN---------------->
+@admin.register(TextUpdate)
+class TextUpdateAdmin(admin.ModelAdmin):
+    list_display = ['text_preview', 'is_active', 'updated_at', 'created_at']
+    list_filter = ['is_active', 'created_at']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-updated_at']
+
+    fieldsets = (
+        ('Text Content', {
+            'fields': ('text_content', 'is_active'),
+            'description': 'Enter the text update to display on the results API homepage. Only one text update can be active at a time.'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def text_preview(self, obj):
+        """Display preview of text content"""
+        preview = obj.text_content[:80] + "..." if len(obj.text_content) > 80 else obj.text_content
+        return preview
+    text_preview.short_description = 'Text Preview'
+
+    def save_model(self, request, obj, form, change):
+        """Override save to show message about active status"""
+        if obj.is_active:
+            # Check if there are other active text updates
+            other_active = TextUpdate.objects.filter(is_active=True).exclude(pk=obj.pk).exists()
+            if other_active:
+                self.message_user(
+                    request,
+                    "Other active text updates have been deactivated. Only one text update can be active at a time.",
+                    messages.INFO
+                )
+        super().save_model(request, obj, form, change)
 
 # Register the admin
 admin.site.register(Lottery, LotteryAdmin)

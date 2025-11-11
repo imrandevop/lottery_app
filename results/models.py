@@ -842,15 +842,15 @@ class PeoplesPrediction(models.Model):
     peoples_prediction = models.CharField(max_length=1, help_text="Single digit prediction (0-9)")
     user_ip = models.GenericIPAddressField(null=True, blank=True, help_text="User IP address for tracking")
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = "People's Prediction"
         verbose_name_plural = "People's Predictions"
         ordering = ['-created_at']
-    
+
     def __str__(self):
         return f"Prediction: {self.peoples_prediction} at {self.created_at}"
-    
+
     @classmethod
     def cleanup_old_predictions(cls):
         """
@@ -858,29 +858,71 @@ class PeoplesPrediction(models.Model):
         """
         from datetime import datetime, timedelta, time
         import pytz
-        
+
         india_tz = pytz.timezone('Asia/Kolkata')
         current_datetime = timezone.now().astimezone(india_tz)
         current_date = current_datetime.date()
         current_time = current_datetime.time()
-        
+
         # Calculate the cutoff datetime (yesterday 3:00 PM)
         if current_time >= time(15, 0):  # After 3:00 PM today
             cutoff_date = current_date
         else:  # Before 3:00 PM today
             cutoff_date = current_date - timedelta(days=1)
-        
+
         cutoff_datetime = datetime.combine(cutoff_date, time(15, 0))
         cutoff_datetime = india_tz.localize(cutoff_datetime)
-        
+
         # Delete old predictions
         deleted_count = cls.objects.filter(created_at__lt=cutoff_datetime).count()
         cls.objects.filter(created_at__lt=cutoff_datetime).delete()
-        
+
         if deleted_count > 0:
             logger.info(f"Cleaned up {deleted_count} old people's predictions")
 
         return deleted_count
+
+
+#<---------------------TEXT UPDATE SECTION--------------------->
+class TextUpdate(models.Model):
+    """
+    Model to manage text updates displayed on the results API
+    Only one active text update at a time
+    """
+    text_content = models.TextField(
+        verbose_name="Text Update",
+        help_text="Text content to display on the results API homepage"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Active",
+        help_text="Only one text update should be active at a time"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Text Update"
+        verbose_name_plural = "Text Updates"
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        status = "Active" if self.is_active else "Inactive"
+        preview = self.text_content[:50] + "..." if len(self.text_content) > 50 else self.text_content
+        return f"{status}: {preview}"
+
+    @classmethod
+    def get_active_text(cls):
+        """Get the currently active text update"""
+        active_update = cls.objects.filter(is_active=True).first()
+        return active_update.text_content if active_update else ""
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure only one active text update at a time"""
+        if self.is_active:
+            # Deactivate all other text updates
+            TextUpdate.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
 
 
 #<---------------------LIVE SCRAPING SESSION--------------------->

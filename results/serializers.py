@@ -22,20 +22,22 @@ class LotteryResultSerializer(serializers.ModelSerializer):
     lottery_code = serializers.CharField(source='lottery.code', read_only=True)
     first_prize = serializers.SerializerMethodField()
     consolation_prizes = serializers.SerializerMethodField()
-    
+    live_end = serializers.SerializerMethodField()
+
     class Meta:
         model = LotteryResult
         fields = [
             'date',
             'id',
             'unique_id',  # Added unique_id field
-            'lottery_name', 
+            'lottery_name',
             'lottery_code',
             'draw_number',
             'first_prize',
             'consolation_prizes',
             'is_published',
-            'is_bumper'
+            'is_bumper',
+            'live_end'  # Added live_end field
         ]
     
     def get_first_prize(self, obj):
@@ -52,27 +54,32 @@ class LotteryResultSerializer(serializers.ModelSerializer):
     def get_consolation_prizes(self, obj):
         """Get consolation prizes with amount shown once and ticket numbers grouped"""
         consolation_prizes = obj.prizes.filter(prize_type='consolation')[:6]
-        
+
         if not consolation_prizes:
             return None
-        
+
         # Get the amount (assuming all consolation prizes have the same amount)
         amount = consolation_prizes[0].prize_amount
-        
+
         # Collect all ticket numbers and join them with spaces
         ticket_numbers = ' '.join([prize.ticket_number for prize in consolation_prizes])
-        
+
         return {
             'amount': amount,
             'ticket_numbers': ticket_numbers
         }
+
+    def get_live_end(self, obj):
+        """Get live_end field based on results_ready_notification (notify checkbox)"""
+        return obj.results_ready_notification
 
 class LotteryResultDetailSerializer(serializers.ModelSerializer):
     lottery_name = serializers.CharField(source='lottery.name', read_only=True)
     lottery_code = serializers.CharField(source='lottery.code', read_only=True)
     prizes = serializers.SerializerMethodField()
     re_order = serializers.SerializerMethodField()
-    
+    live_end = serializers.SerializerMethodField()
+
     class Meta:
         model = LotteryResult
         fields = [
@@ -80,14 +87,15 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
             'id',
             'unique_id',  # Added unique_id field
             'lottery_name',
-            'lottery_code', 
+            'lottery_code',
             'draw_number',
             'prizes',
             'is_published',
             'is_bumper',
             're_order',
+            'live_end',  # Added live_end field
             'created_at',
-            'updated_at'    
+            'updated_at'
         ]
     
     def get_prizes(self, obj):
@@ -196,7 +204,11 @@ class LotteryResultDetailSerializer(serializers.ModelSerializer):
         """Get re_order field based on results_ready_notification (notify checkbox)"""
         return obj.results_ready_notification
 
-    
+    def get_live_end(self, obj):
+        """Get live_end field based on results_ready_notification (notify checkbox)"""
+        return obj.results_ready_notification
+
+
 
 # ---------------BAR CODE SCAN SECTION -------------
 

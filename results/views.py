@@ -73,14 +73,19 @@ class LotteryResultListView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        
+
         # Get image settings from database
         image_settings = ImageUpdate.get_images()
-        
+
+        # Get active text update from database
+        from .models import TextUpdate
+        text_update = TextUpdate.get_active_text()
+
         return Response({
             'status': 'success',
             'count': queryset.count(),
             'total_points': 1250,  # Static value since points system removed
+            'text_update': text_update,  # Add text update to response
             'updates': {
                 "image1": {
                     "image_url": image_settings.update_image1,
