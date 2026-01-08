@@ -352,7 +352,7 @@ def handle_form_submission(request):
 
             # Get consolation prize amount from form (if provided)
             consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
-            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '8000'
+            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '5000'
 
             # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
             for i in range(11):
@@ -733,7 +733,7 @@ def handle_edit_form_submission(request, lottery_result):
 
             # Get consolation prize amount from form (if provided)
             consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
-            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '8000'
+            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '5000'
 
             # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
             for i in range(11):
