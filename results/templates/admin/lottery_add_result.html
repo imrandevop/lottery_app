@@ -90,6 +90,16 @@
                             <label for="date">Date <small style="color: #999;">(Optional if using Auto-Import)</small></label>
                             <input type="date" name="date" id="date" class="form-control" value="{% if lottery_result %}{{ lottery_result.date|date:'Y-m-d' }}{% endif %}">
                         </div>
+                        <div class="form-group">
+                            <label for="alphabet_set">Alphabet Set for Consolation Prizes</label>
+                            <select name="alphabet_set" id="alphabet_set" class="form-control">
+                                <option value="set1" {% if lottery_result.alphabet_set == 'set1' or not lottery_result %}selected{% endif %}>Set-1 (A, B, C, D, E, F, G, H, J, K, L, M)</option>
+                                <option value="set2" {% if lottery_result.alphabet_set == 'set2' %}selected{% endif %}>Set-2 (N, O, P, R, S, T, U, V, W, X, Y, Z)</option>
+                            </select>
+                            <small style="color: #666; font-size: 11px; display: block; margin-top: 4px;">
+                                This will generate 11 consolation prizes automatically using the First Prize's last 6 digits
+                            </small>
+                        </div>
                         <!-- Checkboxes moved to bottom fixed bar -->
                     </div>
                 </div>

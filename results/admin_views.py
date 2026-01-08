@@ -237,6 +237,7 @@ def handle_form_submission(request):
             is_published=cleaned_post.get('is_published') == 'on',
             is_bumper=cleaned_post.get('is_bumper') == 'on',
             results_ready_notification=cleaned_post.get('results_ready_notification') == 'on',
+            alphabet_set=cleaned_post.get('alphabet_set', 'set1'),  # Get alphabet set from form
             # Sort flags for 4th-10th prizes
             sort_4th_prize=cleaned_post.get('sort_4th_prize') == 'on',
             sort_5th_prize=cleaned_post.get('sort_5th_prize') == 'on',
@@ -246,10 +247,11 @@ def handle_form_submission(request):
             sort_9th_prize=cleaned_post.get('sort_9th_prize') == 'on',
             sort_10th_prize=cleaned_post.get('sort_10th_prize') == 'on'
         )
-        
-        # Process prize entries
-        prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
-        
+
+        # Process prize entries (excluding consolation - will be auto-generated)
+        prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        first_prize_ticket = None  # Store first prize ticket for consolation generation
+
         for prize_type in prize_types:
             # Clean the list data to remove spaces
             prize_amounts = clean_list_data(request.POST.getlist(f'{prize_type}_prize_amount[]'))
@@ -265,8 +267,9 @@ def handle_form_submission(request):
                         messages.error(request, f'⚠️ {prize_name} prize requires exactly 4 digits! Ticket "{ticket}" is invalid. Please correct it before saving.')
                         return redirect(request.path)
 
-            # Handle special logic for 2nd, 3rd, consolation and 4th-10th prizes (bulk mode with no place)
-            bulk_mode_prizes = ['2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+            # Handle special logic for 2nd, 3rd and 4th-10th prizes (bulk mode with no place)
+            # Note: consolation is excluded as it will be auto-generated
+            bulk_mode_prizes = ['2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
 
             if prize_type in bulk_mode_prizes:
                 # For bulk mode prizes, check if there are tickets without corresponding amounts
@@ -326,19 +329,57 @@ def handle_form_submission(request):
                             ticket_number=ticket,  # Already cleaned of spaces
                             place=place  # Already cleaned of spaces
                         )
-        
+                        # Store first prize ticket for consolation generation
+                        if prize_type == '1st' and not first_prize_ticket:
+                            first_prize_ticket = ticket
+
+        # Auto-generate consolation prizes based on first prize and alphabet set
+        if first_prize_ticket:
+            # Extract last 6 digits from first prize ticket
+            last_6_digits = first_prize_ticket[-6:] if len(first_prize_ticket) >= 6 else first_prize_ticket
+
+            # Define alphabet sets
+            alphabet_sets = {
+                'set1': ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+                'set2': ['N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+            }
+
+            # Get selected alphabet set
+            selected_set = alphabet_sets.get(lottery_result.alphabet_set, alphabet_sets['set1'])
+
+            # Get lottery code from draw_number or lottery object
+            lottery_code = lottery.code if lottery.code else draw_number.split('-')[0]
+
+            # Get consolation prize amount from form (if provided)
+            consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
+            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '8000'
+
+            # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
+            for i in range(11):
+                alphabet = selected_set[i + 1] if i + 1 < len(selected_set) else selected_set[i]
+                consolation_ticket = f"{lottery_code}{alphabet}{last_6_digits}"
+
+                PrizeEntry.objects.create(
+                    lottery_result=lottery_result,
+                    prize_type='consolation',
+                    prize_amount=consolation_amount,
+                    ticket_number=consolation_ticket,
+                    place=None
+                )
+
         # Show appropriate success message
         if lottery_result.results_ready_notification:
             messages.success(request, f'✅ Lottery result for {lottery_result} has been created successfully and users will be notified! 📱')
         else:
             messages.success(request, f'✅ Lottery result for {lottery_result} has been created successfully.')
-        
+
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            # Convert prize entries to a format JavaScript can use
+            # Convert prize entries to a format JavaScript can use (include consolation)
+            all_prize_types = prize_types + ['consolation']
             prize_entries_json = {}
             try:
-                for prize_type in prize_types:
+                for prize_type in all_prize_types:
                     entries = lottery_result.prizes.filter(prize_type=prize_type)
                     prize_entries_json[prize_type] = [
                         {
@@ -570,6 +611,7 @@ def handle_edit_form_submission(request, lottery_result):
         lottery_result.is_published = cleaned_post.get('is_published') == 'on'
         lottery_result.is_bumper = cleaned_post.get('is_bumper') == 'on'
         lottery_result.results_ready_notification = cleaned_post.get('results_ready_notification') == 'on'
+        lottery_result.alphabet_set = cleaned_post.get('alphabet_set', 'set1')  # Get alphabet set from form
         # Sort flags for 4th-10th prizes
         lottery_result.sort_4th_prize = cleaned_post.get('sort_4th_prize') == 'on'
         lottery_result.sort_5th_prize = cleaned_post.get('sort_5th_prize') == 'on'
@@ -582,10 +624,11 @@ def handle_edit_form_submission(request, lottery_result):
         
         # Delete existing prize entries
         lottery_result.prizes.all().delete()
-        
-        # Process prize entries
-        prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', 'consolation']
-        
+
+        # Process prize entries (excluding consolation - will be auto-generated)
+        prize_types = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+        first_prize_ticket = None  # Store first prize ticket for consolation generation
+
         for prize_type in prize_types:
             # Clean the list data to remove spaces
             prize_amounts = clean_list_data(request.POST.getlist(f'{prize_type}_prize_amount[]'))
@@ -602,8 +645,9 @@ def handle_edit_form_submission(request, lottery_result):
                         return redirect(request.path)
 
 
-            # Handle special logic for 2nd, 3rd, consolation and 4th-10th prizes (bulk mode with no place)
-            bulk_mode_prizes = ['2nd', '3rd', 'consolation', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
+            # Handle special logic for 2nd, 3rd and 4th-10th prizes (bulk mode with no place)
+            # Note: consolation is excluded as it will be auto-generated
+            bulk_mode_prizes = ['2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
 
             if prize_type in bulk_mode_prizes:
                 # For bulk mode prizes, check if there are tickets without corresponding amounts
@@ -663,10 +707,50 @@ def handle_edit_form_submission(request, lottery_result):
                             ticket_number=ticket,  # Already cleaned of spaces
                             place=place  # Already cleaned of spaces
                         )
-        
+                        # Store first prize ticket for consolation generation
+                        if prize_type == '1st' and not first_prize_ticket:
+                            first_prize_ticket = ticket
+
+        # Auto-generate consolation prizes based on first prize and alphabet set
+        if first_prize_ticket:
+            # Extract last 6 digits from first prize ticket
+            last_6_digits = first_prize_ticket[-6:] if len(first_prize_ticket) >= 6 else first_prize_ticket
+
+            # Define alphabet sets
+            alphabet_sets = {
+                'set1': ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+                'set2': ['N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+            }
+
+            # Get selected alphabet set
+            selected_set = alphabet_sets.get(lottery_result.alphabet_set, alphabet_sets['set1'])
+
+            # Get lottery object
+            lottery = lottery_result.lottery
+
+            # Get lottery code from draw_number or lottery object
+            lottery_code = lottery.code if lottery.code else draw_number.split('-')[0]
+
+            # Get consolation prize amount from form (if provided)
+            consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
+            consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '8000'
+
+            # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
+            for i in range(11):
+                alphabet = selected_set[i + 1] if i + 1 < len(selected_set) else selected_set[i]
+                consolation_ticket = f"{lottery_code}{alphabet}{last_6_digits}"
+
+                PrizeEntry.objects.create(
+                    lottery_result=lottery_result,
+                    prize_type='consolation',
+                    prize_amount=consolation_amount,
+                    ticket_number=consolation_ticket,
+                    place=None
+                )
+
         # Show appropriate success message
         newly_checked_notification = (
-            lottery_result.results_ready_notification and 
+            lottery_result.results_ready_notification and
             not previous_notification_state
         )
         
@@ -674,13 +758,14 @@ def handle_edit_form_submission(request, lottery_result):
             messages.success(request, f'✅ Lottery result for {lottery_result} has been updated successfully and users will be notified! 📱')
         else:
             messages.success(request, f'✅ Lottery result for {lottery_result} has been updated successfully.')
-        
+
         # For AJAX requests, return the template with updated context
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            # Convert prize entries to a format JavaScript can use
+            # Convert prize entries to a format JavaScript can use (include consolation)
+            all_prize_types = prize_types + ['consolation']
             prize_entries_json = {}
             try:
-                for prize_type in prize_types:
+                for prize_type in all_prize_types:
                     entries = lottery_result.prizes.filter(prize_type=prize_type)
                     prize_entries_json[prize_type] = [
                         {

@@ -49,6 +49,19 @@ class LotteryResult(models.Model):
         help_text="Whether notification has been sent to users"
     )
 
+    # Alphabet set for consolation prize generation
+    ALPHABET_SET_CHOICES = [
+        ('set1', 'Set-1 (A, B, C, D, E, F, G, H, J, K, L, M)'),
+        ('set2', 'Set-2 (N, O, P, R, S, T, U, V, W, X, Y, Z)'),
+    ]
+    alphabet_set = models.CharField(
+        max_length=10,
+        choices=ALPHABET_SET_CHOICES,
+        default='set1',
+        verbose_name="Alphabet Set",
+        help_text="Alphabet set for generating consolation prizes"
+    )
+
     # Sort flags for prize types (4th-10th) - for live result entry sorting
     sort_4th_prize = models.BooleanField(
         default=False,
