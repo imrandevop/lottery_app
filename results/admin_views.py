@@ -350,13 +350,23 @@ def handle_form_submission(request):
             # Get lottery code from draw_number or lottery object
             lottery_code = lottery.code if lottery.code else draw_number.split('-')[0]
 
+            # Extract the alphabet from first prize ticket (e.g., MA445887 -> A)
+            # The alphabet is typically the character after the lottery code
+            first_prize_alphabet = None
+            if len(first_prize_ticket) > len(lottery_code):
+                # Get the character right after the lottery code
+                first_prize_alphabet = first_prize_ticket[len(lottery_code)].upper()
+
             # Get consolation prize amount from form (if provided)
             consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
             consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '5000'
 
-            # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
-            for i in range(11):
-                alphabet = selected_set[i + 1] if i + 1 < len(selected_set) else selected_set[i]
+            # Generate 11 consolation prizes (all alphabets EXCEPT the first prize alphabet)
+            for alphabet in selected_set:
+                # Skip the alphabet used in first prize
+                if alphabet == first_prize_alphabet:
+                    continue
+
                 consolation_ticket = f"{lottery_code}{alphabet}{last_6_digits}"
 
                 PrizeEntry.objects.create(
@@ -731,13 +741,23 @@ def handle_edit_form_submission(request, lottery_result):
             # Get lottery code from draw_number or lottery object
             lottery_code = lottery.code if lottery.code else draw_number.split('-')[0]
 
+            # Extract the alphabet from first prize ticket (e.g., MA445887 -> A)
+            # The alphabet is typically the character after the lottery code
+            first_prize_alphabet = None
+            if len(first_prize_ticket) > len(lottery_code):
+                # Get the character right after the lottery code
+                first_prize_alphabet = first_prize_ticket[len(lottery_code)].upper()
+
             # Get consolation prize amount from form (if provided)
             consolation_amounts = clean_list_data(request.POST.getlist('consolation_prize_amount[]'))
             consolation_amount = consolation_amounts[0] if consolation_amounts and consolation_amounts[0] else '5000'
 
-            # Generate 11 consolation prizes (excluding first prize's alphabet which is index 0)
-            for i in range(11):
-                alphabet = selected_set[i + 1] if i + 1 < len(selected_set) else selected_set[i]
+            # Generate 11 consolation prizes (all alphabets EXCEPT the first prize alphabet)
+            for alphabet in selected_set:
+                # Skip the alphabet used in first prize
+                if alphabet == first_prize_alphabet:
+                    continue
+
                 consolation_ticket = f"{lottery_code}{alphabet}{last_6_digits}"
 
                 PrizeEntry.objects.create(
