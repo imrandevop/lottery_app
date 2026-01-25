@@ -452,25 +452,29 @@ def get_firebase_credentials():
             return firebase_file
         
         # Option 2: Use environment variables (production)
+        prefix = 'FIREBASE_LITE_' if app_version == 'lite' else 'FIREBASE_'
+        default_pid = 'lotto-lite' if app_version == 'lite' else 'lotto-app-f3440'
+
         firebase_creds = {
             "type": "service_account",
-            "project_id": os.environ.get('FIREBASE_PROJECT_ID', 'lotto-app-f3440'),
-            "private_key_id": os.environ.get('FIREBASE_PRIVATE_KEY_ID'),
-            "private_key": os.environ.get('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n'),
-            "client_email": os.environ.get('FIREBASE_CLIENT_EMAIL'),
-            "client_id": os.environ.get('FIREBASE_CLIENT_ID'),
+            "project_id": os.environ.get(f'{prefix}PROJECT_ID', default_pid),
+            "private_key_id": os.environ.get(f'{prefix}PRIVATE_KEY_ID'),
+            "private_key": os.environ.get(f'{prefix}PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": os.environ.get(f'{prefix}CLIENT_EMAIL'),
+            "client_id": os.environ.get(f'{prefix}CLIENT_ID'),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get('FIREBASE_CLIENT_EMAIL')}"
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get(f'{prefix}CLIENT_EMAIL')}"
         }
         
         # Validate required fields
         required_fields = ['private_key_id', 'private_key', 'client_email', 'client_id']
         if all(firebase_creds.get(field) for field in required_fields):
+            print(f"✅ Using {app_version.upper()} Firebase environment variables")
             return firebase_creds
         else:
-            print("⚠️ Firebase credentials incomplete, falling back to test mode")
+            print(f"⚠️ Firebase {app_version.upper()} credentials incomplete in environment")
             return None
             
     except Exception as e:
