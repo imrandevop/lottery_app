@@ -507,33 +507,74 @@ if ENVIRONMENT == 'production':
         "https://www.lottokeralalotteries.com",  # Replace with your actual domain
     ]
 
-# Initialize Firebase when Django starts
-def initialize_firebase():
-    """Initialize Firebase Admin SDK"""
-    if firebase_admin._apps:
-        return  # Already initialized
-    
-    try:
-        firebase_creds = get_firebase_credentials()
-        
-        if firebase_creds is None:
-            print("⚠️ Firebase not initialized - credentials missing")
-            return
-        
-        if isinstance(firebase_creds, Path):
-            # Using service account file (development)
-            cred = credentials.Certificate(str(firebase_creds))
-            print("🔥 Using Firebase service account file")
-        else:
-            # Using environment variables (production)
-            cred = credentials.Certificate(firebase_creds)
-            print("Using Firebase environment variables")
-        
-        firebase_admin.initialize_app(cred)
-        print("Firebase initialized successfully")
-        
-    except Exception as e:
-        print(f"Firebase initialization failed: {e}")
-
 # Initialize Firebase when settings load
+def initialize_firebase():
+    """Initialize both Full and Lite Firebase Admin SDKs"""
+    try:
+        # 1. Initialize Full Version (Default App)
+        if not firebase_admin._apps:
+            full_creds = get_firebase_credentials_by_type('full')
+            if full_creds:
+                if isinstance(full_creds, Path):
+                    cred = credentials.Certificate(str(full_creds))
+                else:
+                    cred = credentials.Certificate(full_creds)
+                
+                firebase_admin.initialize_app(cred)
+                print("✅ Full Version Firebase (Default) initialized")
+            else:
+                print("⚠️ Full Version Firebase credentials missing")
+
+        # 2. Initialize Lite Version (Named App: 'lite')
+        if 'lite' not in [app.name for app in firebase_admin._apps]:
+            lite_creds = get_firebase_credentials_by_type('lite')
+            if lite_creds:
+                if isinstance(lite_creds, Path):
+                    cred_lite = credentials.Certificate(str(lite_creds))
+                else:
+                    cred_lite = credentials.Certificate(lite_creds)
+                
+                firebase_admin.initialize_app(cred_lite, name='lite')
+                print("✅ Lite Version Firebase ('lite') initialized")
+            else:
+                print("⚠️ Lite Version Firebase credentials missing")
+
+    except Exception as e:
+        print(f"❌ Firebase initialization failed: {e}")
+
+def get_firebase_credentials_by_type(version_type):
+    """Helper to get credentials for a specific version"""
+    try:
+        if version_type == 'lite':
+            firebase_file = BASE_DIR / 'lotto-lite-firebase-adminsdk-fbsvc-ddad6470de.json'
+            prefix = 'FIREBASE_LITE_'
+        else:
+            firebase_file = BASE_DIR / 'firebase-service-account-key.json'
+            prefix = 'FIREBASE_'
+
+        # Try file first (Dev)
+        if firebase_file.exists() and ENVIRONMENT != 'production':
+            return firebase_file
+        
+        # Try Env Vars (Production)
+        creds = {
+            "type": "service_account",
+            "project_id": os.environ.get(f'{prefix}PROJECT_ID'),
+            "private_key_id": os.environ.get(f'{prefix}PRIVATE_KEY_ID'),
+            "private_key": os.environ.get(f'{prefix}PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": os.environ.get(f'{prefix}CLIENT_EMAIL'),
+            "client_id": os.environ.get(f'{prefix}CLIENT_ID'),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get(f'{prefix}CLIENT_EMAIL')}"
+        }
+        
+        if all([creds['private_key_id'], creds['private_key'], creds['client_email']]):
+            return creds
+        return None
+    except:
+        return None
+
+# Run initialization
 initialize_firebase()

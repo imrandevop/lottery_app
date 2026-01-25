@@ -304,9 +304,9 @@ class FCMService:
 
     @classmethod
     def send_to_all_users_sequential(cls, title: str, body: str, data: Dict = None, image_url: str = None) -> Dict:
-        """OPTIMIZED: Send notifications using parallel threading for speed"""
+        """OPTIMIZED: Send notifications to both FULL and LITE users"""
         try:
-            from firebase_admin import messaging
+            from firebase_admin import messaging, get_app
             from results.models import FcmToken
             from django.utils import timezone
             import logging
@@ -316,16 +316,13 @@ class FCMService:
 
             logger = logging.getLogger('lottery_app')
 
-            # Initialize Firebase if needed
-            cls._initialize_firebase()
-
-            # Get all active FCM tokens
-            active_tokens = list(FcmToken.objects.filter(
+            # Get all active FCM tokens with version info
+            active_tokens_info = list(FcmToken.objects.filter(
                 is_active=True,
                 notifications_enabled=True
-            ).values_list('fcm_token', flat=True))
+            ).values_list('fcm_token', 'app_version'))
 
-            if not active_tokens:
+            if not active_tokens_info:
                 logger.warning("No active FCM tokens found")
                 return {'success_count': 0, 'failure_count': 0, 'message': 'No active tokens'}
 
@@ -333,7 +330,15 @@ class FCMService:
             if not image_url:
                 image_url = cls.FALLBACK_IMAGE
 
-            logger.info(f"🚀 FAST MODE: Sending to {len(active_tokens)} users using {min(20, len(active_tokens))} parallel threads")
+            logger.info(f"🚀 BROADCAST: Sending to {len(active_tokens_info)} users (Full & Lite)")
+
+            # Initialize apps
+            default_app = get_app()
+            try:
+                lite_app = get_app('lite')
+            except ValueError:
+                lite_app = None
+                logger.warning("⚠️ Lite Firebase app not initialized")
 
             # Thread-safe counters
             success_count = 0
@@ -341,67 +346,44 @@ class FCMService:
             success_lock = threading.Lock()
             failure_lock = threading.Lock()
 
-            def send_single_notification(token):
-                """Send notification to a single token (thread-safe)"""
+            def send_single_notification(token, version):
+                """Send notification using the correct Firebase app"""
                 nonlocal success_count, failure_count
                 try:
-                    # Create base notification without image (to ensure proper icon display)
-                    notification = messaging.Notification(
-                        title=title,
-                        body=body
-                        # Don't set image here - it affects the small icon
-                    )
+                    # Choose app based on version
+                    target_app = lite_app if version == 'lite' and lite_app else default_app
                     
-                    # Android-specific configuration with proper icon/image separation
+                    notification = messaging.Notification(title=title, body=body)
+                    
                     android_config = messaging.AndroidConfig(
                         priority='high',
                         notification=messaging.AndroidNotification(
                             channel_id='default_channel',
-                            sound='default',
-                            icon='ic_notification',  # Your app's small icon on left
+                            icon='ic_notification',
                             color='#FF6B6B',
-                            image=image_url,  # Big picture ONLY when expanded
+                            image=image_url,
                             click_action='FLUTTER_NOTIFICATION_CLICK',
-                            tag='lottery_notification'
                         ),
-                        # Add image as data for better control
-                        data={
-                            'image_url': image_url,
-                            'big_picture': 'true'
-                        }
                     )
                     
-                    # iOS-specific configuration
+                    # iOS config
                     apns_config = messaging.APNSConfig(
                         payload=messaging.APNSPayload(
-                            aps=messaging.Aps(
-                                alert=messaging.ApsAlert(title=title, body=body),
-                                sound='default',
-                                badge=1,
-                                thread_id='lottery_results'
-                            ),
-                            # iOS doesn't support images in basic notifications
-                            # but we can add custom data for rich notifications
+                            aps=messaging.Aps(alert=messaging.ApsAlert(title=title, body=body), sound='default'),
                         ),
-                        headers={
-                            'apns-push-type': 'alert',
-                            'apns-priority': '10'
-                        }
                     )
                     
                     message = messaging.Message(
                         notification=notification,
-                        data={
-                            **{k: str(v) for k, v in (data or {}).items()},
-                            'image_url': image_url,  # Pass image as data
-                            'notification_icon': cls.NOTIFICATION_ICON
-                        },
+                        data={**{k: str(v) for k, v in (data or {}).items()}, 'image_url': image_url},
                         token=token,
                         android=android_config,
                         apns=apns_config
                     )
                     
-                    response = messaging.send(message)
+                    # Send using the specific app
+                    messaging.send(message, app=target_app)
+                    
                     with success_lock:
                         success_count += 1
                     return True
@@ -410,55 +392,31 @@ class FCMService:
                     with failure_lock:
                         failure_count += 1
                     error_str = str(e)
-
-                    # Deactivate invalid tokens
-                    if ("not a valid FCM registration token" in error_str or
-                        "Requested entity was not found" in error_str or
-                        "registration-token-not-registered" in error_str):
+                    if "registration-token-not-registered" in error_str:
                         FcmToken.objects.filter(fcm_token=token).update(is_active=False)
-
-                    # Small delay for rate limiting
-                    time.sleep(0.05)
                     return False
 
-            # 🚀 PARALLEL EXECUTION: Use ThreadPoolExecutor for speed
+            # Parallel Execution
             start_time = time.time()
-            max_workers = min(20, len(active_tokens))  # Max 20 concurrent threads
+            max_workers = min(20, len(active_tokens_info))
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all notification jobs
                 future_to_token = {
-                    executor.submit(send_single_notification, token): token
-                    for token in active_tokens
+                    executor.submit(send_single_notification, t_info[0], t_info[1]): t_info[0]
+                    for t_info in active_tokens_info
                 }
 
-                # Wait for completion with progress logging
-                completed = 0
                 for future in as_completed(future_to_token):
-                    completed += 1
-                    if completed % 100 == 0:  # Log progress every 100 notifications
-                        logger.info(f"📊 Progress: {completed}/{len(active_tokens)} notifications processed")
+                    pass
 
             elapsed_time = time.time() - start_time
-            rate = len(active_tokens) / elapsed_time if elapsed_time > 0 else 0
-
-            # Update last_used for successful tokens (if any succeeded)
-            if success_count > 0:
-                FcmToken.objects.filter(
-                    fcm_token__in=active_tokens,
-                    is_active=True
-                ).update(last_used=timezone.now())
-
-            logger.info(f"🚀 FAST NOTIFICATION COMPLETE: {success_count} success, {failure_count} failed")
-            logger.info(f"⚡ Performance: {len(active_tokens)} notifications in {elapsed_time:.2f}s ({rate:.1f}/sec)")
+            rate = len(active_tokens_info) / elapsed_time if elapsed_time > 0 else 0
 
             return {
                 'success_count': success_count,
                 'failure_count': failure_count,
-                'message': f'Sent to {success_count}/{len(active_tokens)} devices in {elapsed_time:.2f}s ({rate:.1f}/sec)',
+                'message': f'Sent to {success_count}/{len(active_tokens_info)} devices in {elapsed_time:.2f}s',
                 'image_url': image_url,
-                'elapsed_time': elapsed_time,
-                'notifications_per_second': rate
             }
             
         except Exception as e:
