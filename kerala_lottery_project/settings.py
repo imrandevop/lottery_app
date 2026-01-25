@@ -438,9 +438,17 @@ LOGGING = {
 def get_firebase_credentials():
     """Get Firebase credentials from environment variables"""
     try:
+        # Check which app version we're running (full or lite)
+        app_version = os.environ.get('APP_VERSION', 'full')
+        
         # Option 1: Use service account file (development)
-        firebase_file = BASE_DIR / 'firebase-service-account-key.json'
+        if app_version == 'lite':
+            firebase_file = BASE_DIR / 'lotto-lite-firebase-adminsdk-fbsvc-ddad6470de.json'
+        else:
+            firebase_file = BASE_DIR / 'firebase-service-account-key.json'
+        
         if firebase_file.exists() and not ENVIRONMENT == 'production':
+            print(f"🔥 Loading {app_version.upper()} version Firebase from file: {firebase_file.name}")
             return firebase_file
         
         # Option 2: Use environment variables (production)

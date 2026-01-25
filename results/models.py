@@ -391,6 +391,13 @@ class FcmToken(models.Model):
     fcm_token = models.TextField(unique=True)
     notifications_enabled = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    app_version = models.CharField(
+        max_length=10, 
+        default='full',
+        choices=[('full', 'Full Version'), ('lite', 'Lite Version')],
+        db_index=True,
+        help_text="App version: full or lite"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_used = models.DateTimeField(default=timezone.now)
     
@@ -398,7 +405,7 @@ class FcmToken(models.Model):
         db_table = 'fcm_tokens'
     
     def __str__(self):
-        return f"{self.name} ({self.phone_number})"
+        return f"{self.name} ({self.phone_number}) - {self.app_version}"
     
 
 # IMPORTANT: LotteryResult signal handlers have been moved to signals.py

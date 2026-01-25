@@ -1602,6 +1602,7 @@ def register_fcm_token(request):
         phone_number = data.get('phone_number')
         name = data.get('name')
         notifications_enabled = data.get('notifications_enabled', True)
+        app_version = data.get('app_version', 'full')  # Default to 'full' if not specified
         
         # Validate required fields
         if not all([fcm_token, phone_number, name]):
@@ -1618,6 +1619,7 @@ def register_fcm_token(request):
             existing_token.phone_number = phone_number
             existing_token.name = name
             existing_token.notifications_enabled = notifications_enabled
+            existing_token.app_version = app_version
             existing_token.is_active = True
             existing_token.last_used = timezone.now()
             existing_token.save()
@@ -1650,6 +1652,7 @@ def register_fcm_token(request):
                 phone_number=phone_number,
                 name=name,
                 notifications_enabled=notifications_enabled,
+                app_version=app_version,
                 is_active=True,
                 last_used=timezone.now()
             )
